@@ -99,6 +99,7 @@ Single `devices` table:
 | Column | Type | Description |
 |--------|------|-------------|
 | device_id | TEXT PK | Auto-generated UUID |
+| user_id | UUID FK auth.users(id) | Owning user account |
 | readable_name | TEXT UNIQUE | Auto-generated incrementing number (1, 2, 3, ...) |
 | serial_id | TEXT | CPU serial from /proc/cpuinfo |
 | registered_at | TIMESTAMPTZ | Registration timestamp |

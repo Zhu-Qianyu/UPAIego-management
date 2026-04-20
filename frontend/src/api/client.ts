@@ -4,6 +4,7 @@ import { supabase } from "./supabase";
 
 export interface Device {
   device_id: string;
+  user_id: string;
   readable_name: string;
   serial_id: string | null;
   registered_at: string | null;
@@ -33,6 +34,14 @@ function throwOnError<T>(result: { data: T | null; error: any; count?: number | 
   return result.data as T;
 }
 
+async function requireUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw new Error(error.message);
+  const userId = data.user?.id;
+  if (!userId) throw new Error("You must be logged in.");
+  return userId;
+}
+
 // ---------- Next readable name ----------
 
 function nextReadableName(existingNames: string[]): string {
@@ -47,9 +56,11 @@ function nextReadableName(existingNames: string[]): string {
 // ---------- Generate device_id / readable_name pair ----------
 
 export async function generateDevicePair(): Promise<GeneratedDevicePair> {
+  const userId = await requireUserId();
   const { data } = await supabase
     .from("devices")
-    .select("readable_name");
+    .select("readable_name")
+    .eq("user_id", userId);
 
   const names = (data ?? []).map((d: any) => d.readable_name);
   const readable_name = nextReadableName(names);
@@ -63,6 +74,7 @@ export async function generateDevicePair(): Promise<GeneratedDevicePair> {
 export async function registerDevice(params: {
   serial_id?: string;
 }): Promise<Device> {
+  const userId = await requireUserId();
   const { device_id, readable_name } = await generateDevicePair();
 
   const now = new Date().toISOString();
@@ -71,6 +83,7 @@ export async function registerDevice(params: {
     .from("devices")
     .insert({
       device_id,
+      user_id: userId,
       readable_name,
       serial_id: params.serial_id ?? null,
       registered_at: now,
@@ -94,12 +107,14 @@ export async function listDevices(params?: {
   status?: string;
   calibration_status?: string;
 }): Promise<DeviceList> {
+  const userId = await requireUserId();
   const offset = params?.offset ?? 0;
   const limit = params?.limit ?? 50;
 
   let query = supabase
     .from("devices")
-    .select("*", { count: "exact" });
+    .select("*", { count: "exact" })
+    .eq("user_id", userId);
 
   if (params?.status) {
     query = query.eq("status", params.status);
@@ -121,9 +136,11 @@ export async function listDevices(params?: {
 }
 
 export async function getDevice(deviceId: string): Promise<Device> {
+  const userId = await requireUserId();
   const result = await supabase
     .from("devices")
     .select("*")
+    .eq("user_id", userId)
     .eq("device_id", deviceId)
     .single();
 
@@ -144,9 +161,11 @@ export async function updateDevice(
     >
   >
 ): Promise<Device> {
+  const userId = await requireUserId();
   const result = await supabase
     .from("devices")
     .update({ ...body, last_seen: new Date().toISOString() })
+    .eq("user_id", userId)
     .eq("device_id", deviceId)
     .select()
     .single();
@@ -155,9 +174,11 @@ export async function updateDevice(
 }
 
 export async function deleteDevice(deviceId: string): Promise<Device> {
+  const userId = await requireUserId();
   const result = await supabase
     .from("devices")
     .update({ status: "retired", last_seen: new Date().toISOString() })
+    .eq("user_id", userId)
     .eq("device_id", deviceId)
     .select()
     .single();
@@ -169,6 +190,7 @@ export async function searchDevices(
   q: string,
   params?: { offset?: number; limit?: number }
 ): Promise<DeviceList> {
+  const userId = await requireUserId();
   const offset = params?.offset ?? 0;
   const limit = params?.limit ?? 50;
   const pattern = `%${q}%`;
@@ -176,6 +198,7 @@ export async function searchDevices(
   const result = await supabase
     .from("devices")
     .select("*", { count: "exact" })
+    .eq("user_id", userId)
     .or(
       `device_id.ilike.${pattern},readable_name.ilike.${pattern},serial_id.ilike.${pattern},notes.ilike.${pattern}`
     )

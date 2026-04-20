@@ -53,6 +53,7 @@ Go to **SQL Editor** in the Supabase dashboard and run:
 ```sql
 CREATE TABLE IF NOT EXISTS devices (
     device_id          TEXT PRIMARY KEY,
+    user_id            UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     readable_name      TEXT UNIQUE NOT NULL,
     machine_id         TEXT,
     hostname           TEXT,
@@ -70,16 +71,27 @@ CREATE TABLE IF NOT EXISTS devices (
 
 ### Configure Row Level Security (RLS)
 
-For internal / team use, add a permissive policy so the web UI can read/write:
+Create per-user policies so each account only sees its own devices:
 
 ```sql
 ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
 
--- Allow all operations for anyone with the anon key (internal use only)
-CREATE POLICY "Allow all for anon" ON devices
-    FOR ALL
-    USING (true)
-    WITH CHECK (true);
+CREATE POLICY "Users can read own devices" ON devices
+    FOR SELECT
+    USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own devices" ON devices
+    FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own devices" ON devices
+    FOR UPDATE
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own devices" ON devices
+    FOR DELETE
+    USING (auth.uid() = user_id);
 ```
 
 > If you need stricter access control later, update these policies to require authentication.
