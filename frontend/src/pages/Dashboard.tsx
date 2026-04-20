@@ -62,32 +62,32 @@ export default function Dashboard() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Device Dashboard</h1>
-        <span className="text-sm text-gray-500">{total} device{total !== 1 && "s"} total</span>
+        <h1 className="text-2xl font-bold text-gray-900">设备总览</h1>
+        <span className="text-sm text-gray-500">共 {total} 台设备</span>
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4 mb-4">
+      <div className="flex gap-4 mb-4 bg-white border border-indigo-100 rounded-xl p-3 shadow-sm">
         <select
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="maintenance">Maintenance</option>
-          <option value="retired">Retired</option>
+          <option value="">全部状态</option>
+          <option value="active">正常</option>
+          <option value="inactive">未激活</option>
+          <option value="maintenance">维护中</option>
+          <option value="retired">已退役</option>
         </select>
         <select
           value={calFilter}
           onChange={(e) => { setCalFilter(e.target.value); setPage(0); }}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
-          <option value="">All calibration</option>
-          <option value="pending">Pending</option>
-          <option value="calibrated">Calibrated</option>
-          <option value="needs_recalibration">Needs recalibration</option>
+          <option value="">全部校准状态</option>
+          <option value="pending">待校准</option>
+          <option value="calibrated">已校准</option>
+          <option value="needs_recalibration">需重校准</option>
         </select>
       </div>
 
@@ -95,9 +95,9 @@ export default function Dashboard() {
         <Spinner />
       ) : devices.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-lg">No devices found</p>
+          <p className="text-lg">暂无设备数据</p>
           <Link to="/register" className="text-indigo-600 underline text-sm mt-2 inline-block">
-            Register your first device
+            去注册第一台设备
           </Link>
         </div>
       ) : (
@@ -107,12 +107,12 @@ export default function Dashboard() {
               <thead className="bg-gray-50">
                 <tr>
                   {([
-                    ["readable_name", "Name"],
-                    ["device_id", "Device ID"],
-                    ["serial_id", "Serial ID"],
-                    ["status", "Status"],
-                    ["calibration_status", "Calibration"],
-                    ["registered_at", "Registered"],
+                    ["readable_name", "设备名称"],
+                    ["device_id", "设备 ID"],
+                    ["serial_id", "序列号"],
+                    ["status", "状态"],
+                    ["calibration_status", "校准"],
+                    ["registered_at", "注册时间"],
                   ] as [keyof Device, string][]).map(([col, label]) => (
                     <th
                       key={col}
@@ -142,7 +142,7 @@ export default function Dashboard() {
                         to={`/devices/${encodeURIComponent(d.device_id)}`}
                         className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
                       >
-                        View
+                        查看
                       </Link>
                     </td>
                   </tr>
@@ -159,17 +159,17 @@ export default function Dashboard() {
                 onClick={() => setPage(page - 1)}
                 className="px-3 py-1.5 rounded-lg border text-sm disabled:opacity-40 hover:bg-gray-100"
               >
-                Previous
+                上一页
               </button>
               <span className="text-sm text-gray-600">
-                Page {page + 1} of {totalPages}
+                第 {page + 1} / {totalPages} 页
               </span>
               <button
                 disabled={page >= totalPages - 1}
                 onClick={() => setPage(page + 1)}
                 className="px-3 py-1.5 rounded-lg border text-sm disabled:opacity-40 hover:bg-gray-100"
               >
-                Next
+                下一页
               </button>
             </div>
           )}

@@ -28,13 +28,13 @@ export default function Search() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Search Devices</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">搜索设备</h1>
 
       <form onSubmit={handleSearch} className="flex gap-3 mb-6">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by device ID, name, serial ID, or notes..."
+          placeholder="按设备 ID、设备名称、序列号或备注搜索..."
           className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
         <button
@@ -42,7 +42,7 @@ export default function Search() {
           disabled={loading || !query.trim()}
           className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 transition-colors"
         >
-          Search
+          搜索
         </button>
       </form>
 
@@ -51,24 +51,24 @@ export default function Search() {
       {!loading && total !== null && (
         <>
           <p className="text-sm text-gray-500 mb-4">
-            {total} result{total !== 1 && "s"} found
+            共找到 {total} 条结果
           </p>
 
           {results.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
-              No devices match your query.
+              没有匹配的设备。
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Name</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Device ID</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Serial ID</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Status</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Calibration</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">Notes</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">设备名称</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">设备 ID</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">序列号</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">状态</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">校准</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">备注</th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
@@ -88,7 +88,7 @@ export default function Search() {
                           to={`/devices/${encodeURIComponent(d.device_id)}`}
                           className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
                         >
-                          View
+                          查看
                         </Link>
                       </td>
                     </tr>

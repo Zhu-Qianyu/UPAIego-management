@@ -31,7 +31,7 @@ export default function Register() {
       });
       setRegistered(device);
     } catch (err: any) {
-      setError(err.message ?? "Registration failed");
+      setError(err.message ?? "注册失败，请稍后重试");
     } finally {
       setLoading(false);
     }
@@ -42,10 +42,10 @@ export default function Register() {
       <div className="max-w-lg mx-auto">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
           <div className="text-green-600 text-5xl mb-4">&#10003;</div>
-          <h2 className="text-xl font-bold text-gray-900 mb-1">Device Registered</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-1">设备注册成功</h2>
           <p className="text-gray-500 mb-2">
             <span className="font-semibold text-indigo-700">{registered.readable_name}</span>
-            {" "}has been added to the fleet.
+            {" "}已添加到你的设备列表。
           </p>
           <p className="text-xs text-gray-400 mb-6 font-mono">{registered.device_id}</p>
           {qrDataUrl && (
@@ -56,7 +56,7 @@ export default function Register() {
             />
           )}
           <p className="text-xs text-gray-400 mb-6">
-            Print this QR code and attach it to the device.
+            请下载并打印该二维码，贴到设备上。
           </p>
           <div className="flex gap-3 justify-center">
             <button
@@ -68,13 +68,13 @@ export default function Register() {
               }
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
             >
-              Download QR
+              下载二维码
             </button>
             <button
               onClick={() => navigate(`/devices/${encodeURIComponent(registered.device_id)}`)}
               className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             >
-              View Device
+              查看设备
             </button>
             <button
               onClick={() => {
@@ -84,7 +84,7 @@ export default function Register() {
               }}
               className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
             >
-              Register Another
+              继续注册
             </button>
           </div>
         </div>
@@ -94,25 +94,25 @@ export default function Register() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Register New Device</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">注册新设备</h1>
 
       <p className="text-sm text-gray-500 mb-4">
-        Optionally provide the Serial ID (CPU serial) from the board using the CLI:&nbsp;
+        你可以选填设备序列号（CPU Serial），可通过 CLI 获取：&nbsp;
         <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">python cli.py detect --port /dev/ttyUSB0</code>
       </p>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Device Information</h2>
+      <div className="bg-white rounded-2xl shadow-sm border border-indigo-100 p-6">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">设备信息</h2>
         <p className="text-xs text-gray-400 mb-4">
-          A unique Device ID and readable name will be generated automatically.
+          系统会自动生成唯一设备 ID 和设备名称。
         </p>
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Serial ID (optional)</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">序列号（可选）</label>
             <input
               value={serialId}
               onChange={(e) => setSerialId(e.target.value)}
-              placeholder="CPU serial number from rk_board_config.py"
+              placeholder="例如：通过 rk_board_config.py 获取的 CPU 序列号"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
@@ -132,7 +132,7 @@ export default function Register() {
               onClick={handleRegister}
               className="w-full px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
             >
-              Register Device
+              确认注册设备
             </button>
           )}
         </div>

@@ -8,13 +8,23 @@ const statusColors: Record<string, string> = {
   needs_recalibration: "bg-rose-100 text-rose-800",
 };
 
+const statusLabels: Record<string, string> = {
+  active: "正常",
+  inactive: "未激活",
+  maintenance: "维护中",
+  retired: "已退役",
+  pending: "待校准",
+  calibrated: "已校准",
+  needs_recalibration: "需重校准",
+};
+
 export default function StatusBadge({ value }: { value: string }) {
   const color = statusColors[value] ?? "bg-gray-100 text-gray-700";
   return (
     <span
       className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${color}`}
     >
-      {value.replace(/_/g, " ")}
+      {statusLabels[value] ?? value.replace(/_/g, " ")}
     </span>
   );
 }

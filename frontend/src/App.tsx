@@ -8,9 +8,9 @@ import { useAuth } from "./auth/AuthContext";
 import { supabase } from "./api/supabase";
 
 const navLinks = [
-  { to: "/", label: "Dashboard" },
-  { to: "/register", label: "Register Device" },
-  { to: "/search", label: "Search" },
+  { to: "/", label: "设备总览" },
+  { to: "/register", label: "注册设备" },
+  { to: "/search", label: "搜索设备" },
 ];
 
 export default function App() {
@@ -23,7 +23,7 @@ export default function App() {
   }
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-500">Loading...</div>;
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-500">加载中...</div>;
   }
 
   if (!isAuthed) {
@@ -36,13 +36,13 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-indigo-50 via-slate-50 to-gray-50">
       {/* Navigation */}
-      <nav className="bg-white border-b border-gray-200 shadow-sm">
+      <nav className="bg-white/90 backdrop-blur border-b border-indigo-100 shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <Link to="/" className="text-xl font-bold text-indigo-600">
-              UPAIego Fleet
+            <Link to="/" className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">
+              UPAIego 设备管理
             </Link>
             <div className="flex items-center gap-2">
               <span className="hidden md:inline text-xs text-gray-500">{session?.user?.email}</span>
@@ -65,7 +65,7 @@ export default function App() {
                 onClick={handleLogout}
                 className="px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
               >
-                Log Out
+                退出登录
               </button>
             </div>
           </div>
