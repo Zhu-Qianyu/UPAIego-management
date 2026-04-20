@@ -112,7 +112,7 @@ def provision_device(req: ProvisionRequest, db: Session = Depends(get_db)):
 
     1. Connect to board via serial and read CPU serial (serial_id)
     2. Generate a new device_id (UUID) and readable_name
-    3. Write identity JSON to board at /etc/cyber-cap/device_id.json
+    3. Write identity JSON to board at /etc/UPAIego/device_id.json
     4. Register the device in the database
     """
     try:

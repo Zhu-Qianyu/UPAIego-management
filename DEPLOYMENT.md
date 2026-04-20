@@ -22,7 +22,7 @@ Any browser ── HTTPS ── Static Site (Vercel/Netlify) ───┘
 
 1. Go to [https://supabase.com](https://supabase.com) and sign in
 2. Click **New Project**:
-   - **Name:** `cyber-cap-fleet`
+   - **Name:** `UPAIego-fleet`
    - **Database Password:** choose a strong password, **save it**
    - **Region:** pick one close to your team
 3. Wait for the project to finish provisioning (~1 minute)
@@ -167,7 +167,7 @@ npm run build
 npx vercel deploy --prod
 ```
 
-Vercel will give you a URL like `https://cyber-cap-fleet.vercel.app`.
+Vercel will give you a URL like `https://UPAIego-fleet.vercel.app`.
 
 ### Option B: Netlify (free)
 

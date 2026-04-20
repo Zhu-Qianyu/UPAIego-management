@@ -20,7 +20,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link to="/" className="text-xl font-bold text-indigo-600">
-              Cyber Cap Fleet
+              UPAIego Fleet
             </Link>
             <div className="flex gap-1">
               {navLinks.map((link) => (

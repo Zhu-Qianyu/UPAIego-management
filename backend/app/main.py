@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Cyber Cap Fleet Management",
+    title="UPAIego Fleet Management",
     version="1.0.0",
     lifespan=lifespan,
 )

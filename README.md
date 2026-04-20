@@ -1,4 +1,4 @@
-# Cyber Cap Fleet Management
+# UPAIego Fleet Management
 
 Hardware fleet management system for Rockchip dev boards. Detects boards over USB-serial, registers them with auto-generated names and UUIDs, stores metadata in a database (local SQLite or cloud Supabase PostgreSQL), generates QR codes, and provides both a CLI and web UI for browsing and querying devices.
 
@@ -69,7 +69,7 @@ The `provision` command does everything in a single step:
 
 1. Connects to the board via USB-serial and reads the CPU serial ID
 2. Generates a new `device_id` (UUID) and `readable_name` (incrementing number)
-3. Writes `{"device_id": "...", "readable_name": "...", "serial_id": "..."}` to the board at `/etc/cyber-cap/device_id.json`
+3. Writes `{"device_id": "...", "readable_name": "...", "serial_id": "..."}` to the board at `/etc/UPAIego/device_id.json`
 4. Generates a QR code PNG and saves it locally
 5. Registers the device in the database
 

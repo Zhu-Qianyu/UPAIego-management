@@ -13,7 +13,7 @@ if _backend_root not in sys.path:
 
 from rk_board_config import SerialConsole, DEFAULT_PORT  # noqa: E402
 
-DEVICE_ID_PATH = "/etc/cyber-cap/device_id.json"
+DEVICE_ID_PATH = "/etc/UPAIego/device_id.json"
 
 
 def detect_device(
@@ -46,7 +46,7 @@ def read_device_identity(
     user: str,
     password: str,
 ) -> dict | None:
-    """Read /etc/cyber-cap/device_id.json from the board.
+    """Read /etc/UPAIego/device_id.json from the board.
 
     Returns the parsed dict if the file exists and is valid JSON, or None otherwise.
     """
@@ -72,7 +72,7 @@ def write_device_identity(
     readable_name: str,
     serial_id: str,
 ) -> None:
-    """Write the device identity JSON to the board at /etc/cyber-cap/device_id.json.
+    """Write the device identity JSON to the board at /etc/UPAIego/device_id.json.
 
     Creates the directory if it doesn't exist, then writes the JSON file.
     Raises RuntimeError on failure.
@@ -85,7 +85,7 @@ def write_device_identity(
     with SerialConsole(port, baud, timeout, user=user, password=password) as console:
         console.wake()
 
-        console.run_command("sudo mkdir -p /etc/cyber-cap")
+        console.run_command("sudo mkdir -p /etc/UPAIego")
 
         escaped = payload.replace("'", "'\\''")
         result = console.run_command(f"echo '{escaped}' | sudo tee {DEVICE_ID_PATH} > /dev/null")
@@ -149,7 +149,7 @@ def copy_file_to_board(
         )
 
 
-WORKSPACE_DIR = "/home/cat/workspace/cyber-cap"
+WORKSPACE_DIR = "/home/cat/workspace/UPAIego"
 SCRIPTS_DIR = f"{WORKSPACE_DIR}/scripts"
 
 
@@ -163,7 +163,7 @@ def pull_code(
 ) -> dict:
     """Pull latest code and checkout the specified branch on the board.
 
-    Runs under /home/cat/workspace/cyber-cap:
+    Runs under /home/cat/workspace/UPAIego:
         git pull; git checkout <branch>
 
     Returns dict with stdout from each command.
@@ -239,7 +239,7 @@ def run_deploy_scripts(
 ) -> dict:
     """Run build.sh and install.sh sequentially on the board.
 
-    Runs from /home/cat/workspace/cyber-cap with sudo.
+    Runs from /home/cat/workspace/UPAIego with sudo.
     When configure_sim is True, SIM card 4G RNDIS setup is performed
     in the same serial session (before the connection is torn down).
 

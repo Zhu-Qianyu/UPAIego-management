@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fleet — CLI tool for Cyber Cap hardware fleet management.
+fleet — CLI tool for UPAIego hardware fleet management.
 
 Connects directly to the fleet database (SQLite or Supabase PostgreSQL)
 via the DATABASE_URL environment variable or a .env file.
@@ -222,7 +222,7 @@ def cmd_provision(args):
         print(f"      Readable Name:  {readable_name}")
 
         # Step 3: Write identity to hardware
-        print(f"[3/5] Writing identity to board at /etc/cyber-cap/device_id.json ...")
+        print(f"[3/5] Writing identity to board at /etc/UPAIego/device_id.json ...")
         try:
             write_device_identity(
                 port=port, baud=baud, timeout=timeout,
@@ -495,7 +495,7 @@ def cmd_name(args):
         sys.exit(1)
 
 
-BOARD_CERT_PATH = "/etc/cyber-cap/certs/emqxsl-ca.crt"
+BOARD_CERT_PATH = "/etc/UPAIego/certs/emqxsl-ca.crt"
 
 
 def cmd_copy_cert(args):
@@ -526,7 +526,7 @@ def cmd_copy_cert(args):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="fleet",
-        description="Cyber Cap fleet management CLI. Connects to the fleet database directly.",
+        description="UPAIego fleet management CLI. Connects to the fleet database directly.",
     )
     sub = parser.add_subparsers(dest="command", help="Command to run")
 
