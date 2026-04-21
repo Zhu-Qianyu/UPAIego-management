@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import os
+import shlex
+import subprocess
+import time
 from typing import Any, Dict, Optional
 
 import requests
@@ -25,6 +29,13 @@ class WebBridgeNode(Node):
         self.declare_parameter("request_timeout_sec", 5.0)
         self.declare_parameter("firmware_version", "")
         self.declare_parameter("status", "active")
+        self.declare_parameter("record_on_startup", True)
+        self.declare_parameter("recording_device", "/dev/video0")
+        self.declare_parameter("recording_dir", "/home/cat/videos")
+        self.declare_parameter("recording_resolution", "2560x720")
+        self.declare_parameter("recording_fps", 60)
+        self.declare_parameter("recording_bitrate", "5000k")
+        self.declare_parameter("ffmpeg_codec", "h264_rkmpp")
 
         self.mode = str(self.get_parameter("mode").value).lower().strip()
         self.base_url = self.get_parameter("base_url").value.rstrip("/")
@@ -36,6 +47,13 @@ class WebBridgeNode(Node):
         self.request_timeout_sec = float(self.get_parameter("request_timeout_sec").value)
         self.firmware_version = self.get_parameter("firmware_version").value
         self.status = self.get_parameter("status").value
+        self.record_on_startup = bool(self.get_parameter("record_on_startup").value)
+        self.recording_device = str(self.get_parameter("recording_device").value)
+        self.recording_dir = str(self.get_parameter("recording_dir").value)
+        self.recording_resolution = str(self.get_parameter("recording_resolution").value)
+        self.recording_fps = int(self.get_parameter("recording_fps").value)
+        self.recording_bitrate = str(self.get_parameter("recording_bitrate").value)
+        self.ffmpeg_codec = str(self.get_parameter("ffmpeg_codec").value)
 
         if not self.device_id:
             raise ValueError("ROS parameter 'device_id' is required.")
@@ -59,10 +77,14 @@ class WebBridgeNode(Node):
         self.timer = self.create_timer(self.poll_interval_sec, self._sync_once)
         self._last_cpu_total: Optional[int] = None
         self._last_cpu_idle: Optional[int] = None
+        self._recording_started_at: Optional[float] = None
+        self._ffmpeg_process: Optional[subprocess.Popen[str]] = None
 
         self.get_logger().info(
             f"web_bridge started: mode={self.mode}, device_id={self.device_id}"
         )
+        if self.record_on_startup:
+            self._ensure_recording()
 
     def _device_url(self) -> str:
         if self.mode == "supabase":
@@ -95,19 +117,29 @@ class WebBridgeNode(Node):
             return None
 
     def _push_heartbeat(self) -> bool:
+        self._ensure_recording()
         cpu_usage = self._read_cpu_usage_percent()
         cpu_text = "unknown" if cpu_usage is None else f"{cpu_usage:.1f}%"
+        recording_duration = self._recording_duration_sec()
+        is_recording = self._is_recording()
+        now_iso = datetime.now(timezone.utc).isoformat()
         payload = {
             "status": self.status,
+            "last_seen": now_iso,
             "firmware_version": self.firmware_version or None,
             "notes": (
-                f"ros2 heartbeat at {datetime.now(timezone.utc).isoformat()} | "
-                f"cpu_usage={cpu_text}"
+                f"ros2 heartbeat at {now_iso} | "
+                f"cpu_usage={cpu_text} | recording={is_recording} | "
+                f"recording_duration_sec={recording_duration}"
             ),
             "calibration": {
                 "runtime": {
+                    "powered_on": True,
+                    "is_recording": is_recording,
+                    "recording_duration_sec": recording_duration,
+                    "recording_dir": self.recording_dir,
                     "cpu_usage_percent": cpu_usage,
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": now_iso,
                 }
             },
         }
@@ -183,6 +215,81 @@ class WebBridgeNode(Node):
             return None
         usage = (1.0 - (idle_delta / total_delta)) * 100.0
         return max(0.0, min(100.0, usage))
+
+    def _ensure_recording(self) -> None:
+        if not self.record_on_startup:
+            return
+        if self._is_recording():
+            return
+
+        try:
+            os.makedirs(self.recording_dir, exist_ok=True)
+        except OSError as exc:
+            self.get_logger().error(f"create recording dir failed: {exc}")
+            return
+
+        file_name = f"camera_h264_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+        output_path = os.path.join(self.recording_dir, file_name)
+
+        cmd = [
+            "ffmpeg",
+            "-f",
+            "v4l2",
+            "-input_format",
+            "mjpeg",
+            "-video_size",
+            self.recording_resolution,
+            "-framerate",
+            str(self.recording_fps),
+            "-i",
+            self.recording_device,
+            "-vf",
+            "format=yuv420p",
+            "-c:v",
+            self.ffmpeg_codec,
+            "-b:v",
+            self.recording_bitrate,
+            "-y",
+            output_path,
+        ]
+
+        try:
+            self._ffmpeg_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            self._recording_started_at = time.time()
+            self.get_logger().info(
+                "recording started: "
+                + " ".join(shlex.quote(part) for part in cmd)
+            )
+        except OSError as exc:
+            self._ffmpeg_process = None
+            self._recording_started_at = None
+            self.get_logger().error(f"start ffmpeg failed: {exc}")
+
+    def _is_recording(self) -> bool:
+        return (
+            self._ffmpeg_process is not None
+            and self._ffmpeg_process.poll() is None
+        )
+
+    def _recording_duration_sec(self) -> int:
+        if not self._is_recording() or self._recording_started_at is None:
+            return 0
+        return int(max(0.0, time.time() - self._recording_started_at))
+
+    def destroy_node(self) -> bool:
+        if self._ffmpeg_process is not None and self._ffmpeg_process.poll() is None:
+            self.get_logger().info("stopping ffmpeg recorder process")
+            self._ffmpeg_process.terminate()
+            try:
+                self._ffmpeg_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._ffmpeg_process.kill()
+        return super().destroy_node()
 
 
 def main(args: Optional[list[str]] = None) -> None:

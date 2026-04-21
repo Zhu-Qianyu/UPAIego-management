@@ -1,14 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { searchDevices, type Device } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
+import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
 
 export default function Search() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Device[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function handleSearch(e?: React.FormEvent) {
     e?.preventDefault();
@@ -78,7 +85,7 @@ export default function Search() {
                       <td className="px-4 py-3 font-medium text-indigo-700">{d.readable_name}</td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-500">{d.device_id}</td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-500">{d.serial_id ?? "-"}</td>
-                      <td className="px-4 py-3"><StatusBadge value={d.status} /></td>
+                      <td className="px-4 py-3"><StatusBadge value={getEffectiveDeviceStatus(d, nowMs)} /></td>
                       <td className="px-4 py-3"><StatusBadge value={d.calibration_status} /></td>
                       <td className="px-4 py-3 text-gray-500 text-xs max-w-[200px] truncate">
                         {d.notes ?? "-"}

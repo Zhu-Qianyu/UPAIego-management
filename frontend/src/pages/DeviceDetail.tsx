@@ -4,6 +4,7 @@ import { getDevice, updateDevice, deleteDevice, type Device } from "../api/clien
 import { generateQrDataUrl, downloadQr } from "../api/qr";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
+import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
 
 export default function DeviceDetail() {
   const { id } = useParams<{ id: string }>();
@@ -14,6 +15,7 @@ export default function DeviceDetail() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [nowMs, setNowMs] = useState(Date.now());
 
   const [editStatus, setEditStatus] = useState("");
   const [editCal, setEditCal] = useState("");
@@ -36,6 +38,11 @@ export default function DeviceDetail() {
       .catch(() => setError("未找到该设备，或你没有访问权限"))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   async function handleSave() {
     if (!id) return;
@@ -86,7 +93,7 @@ export default function DeviceDetail() {
               <h1 className="text-2xl font-bold text-gray-900">{device.readable_name}</h1>
               <p className="text-sm font-mono text-gray-400 mt-1">{device.device_id}</p>
             </div>
-            <StatusBadge value={device.status} />
+            <StatusBadge value={getEffectiveDeviceStatus(device, nowMs)} />
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-sm mb-6">

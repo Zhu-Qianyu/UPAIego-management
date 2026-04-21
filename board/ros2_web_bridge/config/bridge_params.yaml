@@ -10,3 +10,10 @@ web_bridge_node:
     request_timeout_sec: 5.0
     firmware_version: "ros2-dev"
     status: "active"
+    record_on_startup: true
+    recording_device: "/dev/video0"
+    recording_dir: "/home/cat/videos"
+    recording_resolution: "2560x720"
+    recording_fps: 60
+    recording_bitrate: "5000k"
+    ffmpeg_codec: "h264_rkmpp"

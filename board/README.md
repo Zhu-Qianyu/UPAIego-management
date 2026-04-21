@@ -7,6 +7,8 @@
 - 定时向网站上报设备心跳（更新 `status`、`firmware_version`、`notes`）
 - 按设备 `device_id` 拉取网站侧最新设备信息
 - 支持两种模式：`supabase` 直连（默认）和 `backend` API 模式
+- 启动节点后自动调用 `ffmpeg` 录制视频到 `/home/cat/videos`
+- 实时上报运行状态：是否开机、是否录制中、累计录制时长、CPU 占用率
 
 ## 目录结构
 
@@ -42,6 +44,14 @@ source install/setup.bash
   - `device_id`：设备记录对应的 `device_id`
 - 若 `backend`：
   - `base_url`：例如 `http://192.168.1.100:8000`
+- 录制参数：
+  - `record_on_startup`：是否自动开始录制
+  - `recording_device`：摄像头设备，例如 `/dev/video0`
+  - `recording_dir`：视频目录，默认 `/home/cat/videos`
+  - `recording_resolution`：默认 `2560x720`
+  - `recording_fps`：默认 `60`
+  - `recording_bitrate`：默认 `5000k`
+  - `ffmpeg_codec`：默认 `h264_rkmpp`
 
 4. 运行
 
@@ -62,3 +72,24 @@ ros2 launch ros2_web_bridge web_bridge.launch.py
 - `PUT /api/devices/{device_id}`：上报心跳状态
 
 如需扩展（例如 ROS topic/日志回传），可在 `web_bridge/node.py` 中添加更多 API 调用。
+
+## 开机自启动（推荐）
+
+1. 将服务文件复制到系统目录：
+
+```bash
+sudo cp board/systemd/ros2_web_bridge.service /etc/systemd/system/
+```
+
+2. 修改服务文件里的 `WorkingDirectory`（按你的工作区路径）：
+
+- `/home/cat/ros2_ws`
+
+3. 启用并启动：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable ros2_web_bridge
+sudo systemctl start ros2_web_bridge
+sudo systemctl status ros2_web_bridge
+```

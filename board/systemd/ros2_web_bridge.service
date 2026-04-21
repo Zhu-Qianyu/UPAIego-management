@@ -1,0 +1,15 @@
+[Unit]
+Description=ROS2 Web Bridge Recorder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cat
+WorkingDirectory=/home/cat/ros2_ws
+ExecStart=/bin/bash -lc "source /opt/ros/humble/setup.bash && source /home/cat/ros2_ws/install/setup.bash && ros2 launch ros2_web_bridge web_bridge.launch.py"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

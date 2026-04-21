@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { listDevices, type Device } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
+import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
 
 const PAGE_SIZE = 20;
 
@@ -15,6 +16,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [sortCol, setSortCol] = useState<keyof Device>("registered_at");
   const [sortAsc, setSortAsc] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,6 +39,11 @@ export default function Dashboard() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const sorted = [...devices].sort((a, b) => {
     const va = (a[sortCol] as string) ?? "";
@@ -132,7 +139,7 @@ export default function Dashboard() {
                     <td className="px-4 py-3 font-medium text-indigo-700">{d.readable_name}</td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{d.device_id}</td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-500">{d.serial_id ?? "-"}</td>
-                    <td className="px-4 py-3"><StatusBadge value={d.status} /></td>
+                    <td className="px-4 py-3"><StatusBadge value={getEffectiveDeviceStatus(d, nowMs)} /></td>
                     <td className="px-4 py-3"><StatusBadge value={d.calibration_status} /></td>
                     <td className="px-4 py-3 text-gray-500 text-xs">
                       {d.registered_at ? new Date(d.registered_at).toLocaleDateString() : "-"}
