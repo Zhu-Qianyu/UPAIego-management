@@ -40,6 +40,19 @@ export default function DeviceDetail() {
   }, [id]);
 
   useEffect(() => {
+    if (!id) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const latest = await getDevice(id);
+        setDevice(latest);
+      } catch {
+        // Keep current UI state; transient polling errors are non-fatal.
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [id]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
@@ -129,6 +142,27 @@ export default function DeviceDetail() {
                   : "-"}
               </p>
             </div>
+            <div>
+              <span className="text-gray-500">最新图片帧时间</span>
+              <p className="text-gray-800 mt-0.5">
+                {device.calibration?.runtime?.latest_frame_at
+                  ? new Date(device.calibration.runtime.latest_frame_at).toLocaleString()
+                  : "-"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <span className="text-gray-500 text-sm">设备实时图片帧（每分钟更新）</span>
+            {device.calibration?.runtime?.latest_frame_jpeg_base64 ? (
+              <img
+                src={`data:image/jpeg;base64,${device.calibration.runtime.latest_frame_jpeg_base64}`}
+                alt="设备最新帧"
+                className="mt-2 w-full max-w-xl rounded-xl border border-gray-200"
+              />
+            ) : (
+              <p className="text-sm text-gray-400 mt-2">暂未收到图片帧</p>
+            )}
           </div>
 
           {device.notes && (
