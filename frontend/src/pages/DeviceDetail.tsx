@@ -114,6 +114,14 @@ export default function DeviceDetail() {
               <span className="text-gray-500">固件版本</span>
               <p className="text-gray-800 mt-0.5">{device.firmware_version ?? "-"}</p>
             </div>
+            <div>
+              <span className="text-gray-500">实时 CPU 占用率</span>
+              <p className="text-gray-800 mt-0.5">
+                {typeof device.calibration?.runtime?.cpu_usage_percent === "number"
+                  ? `${device.calibration.runtime.cpu_usage_percent.toFixed(1)}%`
+                  : "-"}
+              </p>
+            </div>
           </div>
 
           {device.notes && (
