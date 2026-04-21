@@ -1,0 +1,12 @@
+web_bridge_node:
+  ros__parameters:
+    mode: "supabase"
+    base_url: "http://127.0.0.1:8000"
+    supabase_url: "https://your-project-ref.supabase.co"
+    supabase_key: "replace-with-your-supabase-key"
+    supabase_table: "devices"
+    device_id: "replace-with-device-id"
+    poll_interval_sec: 10.0
+    request_timeout_sec: 5.0
+    firmware_version: "ros2-dev"
+    status: "active"
