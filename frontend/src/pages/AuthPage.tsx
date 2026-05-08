@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { supabase } from "../api/supabase";
+import type { UserRole } from "../types/roles";
+import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "../auth/roleLabels";
 
 type Mode = "login" | "register";
 
@@ -7,6 +9,7 @@ export default function AuthPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [registerRole, setRegisterRole] = useState<UserRole>("device_operator");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -22,6 +25,9 @@ export default function AuthPage() {
         const { error: signUpError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
+          options: {
+            data: { role: registerRole },
+          },
         });
         if (signUpError) throw signUpError;
 
@@ -44,11 +50,11 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-white to-violet-100 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-white to-violet-100 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-md bg-white/95 backdrop-blur rounded-2xl shadow-xl border border-indigo-100 p-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">UPAIego 设备管理</h1>
         <p className="text-sm text-gray-500 mb-6">
-          {mode === "login" ? "登录后即可查看你账号下的设备。" : "注册账号后即可管理你自己的设备数据。"}
+          {mode === "login" ? "登录后进入与你角色匹配的工作台。" : "选择账号类型并注册；生产环境请限制管理员注册方式。"}
         </p>
 
         <div className="grid grid-cols-2 gap-2 bg-gray-100 rounded-lg p-1 mb-5">
@@ -73,6 +79,34 @@ export default function AuthPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === "register" && (
+            <div>
+              <span className="block text-xs font-medium text-gray-500 mb-2">注册为</span>
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
+                  <label
+                    key={r}
+                    className={`flex gap-3 rounded-xl border p-3 cursor-pointer text-sm transition-colors ${
+                      registerRole === r ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="role"
+                      checked={registerRole === r}
+                      onChange={() => setRegisterRole(r)}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="font-medium text-gray-900">{ROLE_LABELS[r]}</span>
+                      <span className="block text-xs text-gray-500 mt-0.5">{ROLE_DESCRIPTIONS[r]}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">邮箱</label>
             <input

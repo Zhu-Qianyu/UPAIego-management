@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getDevice, updateDevice, deleteDevice, type Device } from "../api/client";
+import { getDevice, updateDevice, deleteDevice, type Device, type DeviceListScope } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import { generateQrDataUrl, downloadQr } from "../api/qr";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
@@ -9,6 +10,8 @@ import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
 export default function DeviceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const deviceScope: DeviceListScope = profile?.role === "admin" ? "fleet" : "own";
   const [device, setDevice] = useState<Device | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,7 +28,7 @@ export default function DeviceDetail() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    getDevice(id)
+    getDevice(id, { scope: deviceScope })
       .then((d) => {
         setDevice(d);
         setEditStatus(d.status);
@@ -37,20 +40,20 @@ export default function DeviceDetail() {
       .then(setQrDataUrl)
       .catch(() => setError("未找到该设备，或你没有访问权限"))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, deviceScope]);
 
   useEffect(() => {
     if (!id) return;
     const timer = window.setInterval(async () => {
       try {
-        const latest = await getDevice(id);
+        const latest = await getDevice(id, { scope: deviceScope });
         setDevice(latest);
       } catch {
         // Keep current UI state; transient polling errors are non-fatal.
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [id]);
+  }, [id, deviceScope]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
@@ -63,12 +66,16 @@ export default function DeviceDetail() {
     setError("");
     setSuccess("");
     try {
-      const updated = await updateDevice(id, {
-        status: editStatus,
-        calibration_status: editCal,
-        firmware_version: editFw || undefined,
-        notes: editNotes || undefined,
-      });
+      const updated = await updateDevice(
+        id,
+        {
+          status: editStatus,
+          calibration_status: editCal,
+          firmware_version: editFw || undefined,
+          notes: editNotes || undefined,
+        },
+        { scope: deviceScope }
+      );
       setDevice(updated);
       setSuccess("修改已保存");
       setTimeout(() => setSuccess(""), 3000);
@@ -82,7 +89,7 @@ export default function DeviceDetail() {
   async function handleDelete() {
     if (!id || !confirm("确认将该设备设为已退役吗？")) return;
     try {
-      await deleteDevice(id);
+      await deleteDevice(id, { scope: deviceScope });
       navigate("/");
     } catch (err: any) {
       setError(err.message ?? "操作失败，请稍后重试");

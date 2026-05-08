@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
 import os
 import shlex
@@ -36,6 +37,9 @@ class WebBridgeNode(Node):
         self.declare_parameter("recording_fps", 60)
         self.declare_parameter("recording_bitrate", "5000k")
         self.declare_parameter("ffmpeg_codec", "h264_rkmpp")
+        self.declare_parameter("frame_upload_interval_sec", 60)
+        self.declare_parameter("frame_max_width", 640)
+        self.declare_parameter("frame_jpeg_quality", 6)
 
         self.mode = str(self.get_parameter("mode").value).lower().strip()
         self.base_url = self.get_parameter("base_url").value.rstrip("/")
@@ -54,6 +58,11 @@ class WebBridgeNode(Node):
         self.recording_fps = int(self.get_parameter("recording_fps").value)
         self.recording_bitrate = str(self.get_parameter("recording_bitrate").value)
         self.ffmpeg_codec = str(self.get_parameter("ffmpeg_codec").value)
+        self.frame_upload_interval_sec = int(
+            self.get_parameter("frame_upload_interval_sec").value
+        )
+        self.frame_max_width = int(self.get_parameter("frame_max_width").value)
+        self.frame_jpeg_quality = int(self.get_parameter("frame_jpeg_quality").value)
 
         if not self.device_id:
             raise ValueError("ROS parameter 'device_id' is required.")
@@ -79,6 +88,10 @@ class WebBridgeNode(Node):
         self._last_cpu_idle: Optional[int] = None
         self._recording_started_at: Optional[float] = None
         self._ffmpeg_process: Optional[subprocess.Popen[str]] = None
+        self._recording_output_path: Optional[str] = None
+        self._last_frame_uploaded_at: float = 0.0
+        self._latest_frame_b64: Optional[str] = None
+        self._latest_frame_at: Optional[str] = None
 
         self.get_logger().info(
             f"web_bridge started: mode={self.mode}, device_id={self.device_id}"
@@ -123,6 +136,7 @@ class WebBridgeNode(Node):
         recording_duration = self._recording_duration_sec()
         is_recording = self._is_recording()
         now_iso = datetime.now(timezone.utc).isoformat()
+        self._maybe_capture_frame()
         payload = {
             "status": self.status,
             "last_seen": now_iso,
@@ -139,6 +153,8 @@ class WebBridgeNode(Node):
                     "recording_duration_sec": recording_duration,
                     "recording_dir": self.recording_dir,
                     "cpu_usage_percent": cpu_usage,
+                    "latest_frame_jpeg_base64": self._latest_frame_b64,
+                    "latest_frame_at": self._latest_frame_at,
                     "updated_at": now_iso,
                 }
             },
@@ -261,6 +277,7 @@ class WebBridgeNode(Node):
                 text=True,
             )
             self._recording_started_at = time.time()
+            self._recording_output_path = output_path
             self.get_logger().info(
                 "recording started: "
                 + " ".join(shlex.quote(part) for part in cmd)
@@ -268,6 +285,7 @@ class WebBridgeNode(Node):
         except OSError as exc:
             self._ffmpeg_process = None
             self._recording_started_at = None
+            self._recording_output_path = None
             self.get_logger().error(f"start ffmpeg failed: {exc}")
 
     def _is_recording(self) -> bool:
@@ -280,6 +298,61 @@ class WebBridgeNode(Node):
         if not self._is_recording() or self._recording_started_at is None:
             return 0
         return int(max(0.0, time.time() - self._recording_started_at))
+
+    def _maybe_capture_frame(self) -> None:
+        if not self._is_recording() or not self._recording_output_path:
+            return
+        now = time.time()
+        if now - self._last_frame_uploaded_at < self.frame_upload_interval_sec:
+            return
+        frame_bytes = self._capture_frame_from_video(self._recording_output_path)
+        if frame_bytes is None:
+            return
+        self._latest_frame_b64 = base64.b64encode(frame_bytes).decode("ascii")
+        self._latest_frame_at = datetime.now(timezone.utc).isoformat()
+        self._last_frame_uploaded_at = now
+
+    def _capture_frame_from_video(self, video_path: str) -> Optional[bytes]:
+        if not os.path.exists(video_path):
+            return None
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-sseof",
+            "-0.1",
+            "-i",
+            video_path,
+            "-vf",
+            f"scale={self.frame_max_width}:-1",
+            "-vframes",
+            "1",
+            "-q:v",
+            str(self.frame_jpeg_quality),
+            "-f",
+            "image2pipe",
+            "-vcodec",
+            "mjpeg",
+            "-",
+        ]
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=False,
+                timeout=10,
+                check=False,
+            )
+        except OSError as exc:
+            self.get_logger().warning(f"capture frame failed: {exc}")
+            return None
+        except subprocess.TimeoutExpired:
+            self.get_logger().warning("capture frame timeout")
+            return None
+        if result.returncode != 0 or not result.stdout:
+            return None
+        return result.stdout
 
     def destroy_node(self) -> bool:
         if self._ffmpeg_process is not None and self._ffmpeg_process.poll() is None:

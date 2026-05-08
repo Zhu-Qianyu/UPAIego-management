@@ -17,3 +17,6 @@ web_bridge_node:
     recording_fps: 60
     recording_bitrate: "5000k"
     ffmpeg_codec: "h264_rkmpp"
+    frame_upload_interval_sec: 60
+    frame_max_width: 640
+    frame_jpeg_quality: 6

@@ -1,13 +1,19 @@
 import { useEffect, useState, useCallback } from "react";
-import { Link } from "react-router-dom";
-import { listDevices, type Device } from "../api/client";
+import { Link, useLocation } from "react-router-dom";
+import { listDevices, type Device, type DeviceListScope } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
 import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
+import { useAuth } from "../auth/AuthContext";
 
 const PAGE_SIZE = 20;
 
 export default function Dashboard() {
+  const { profile } = useAuth();
+  const location = useLocation();
+  const listScope: DeviceListScope =
+    location.pathname === "/fleet" && profile?.role === "admin" ? "fleet" : "own";
+
   const [devices, setDevices] = useState<Device[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -26,6 +32,7 @@ export default function Dashboard() {
         limit: PAGE_SIZE,
         status: statusFilter || undefined,
         calibration_status: calFilter || undefined,
+        scope: listScope,
       });
       setDevices(res.devices);
       setTotal(res.total);
@@ -34,7 +41,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter, calFilter]);
+  }, [page, statusFilter, calFilter, listScope]);
 
   useEffect(() => {
     load();
@@ -69,7 +76,9 @@ export default function Dashboard() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">设备总览</h1>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {listScope === "fleet" ? "全平台设备总览" : "设备总览"}
+        </h1>
         <span className="text-sm text-gray-500">共 {total} 台设备</span>
       </div>
 

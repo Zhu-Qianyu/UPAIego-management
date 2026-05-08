@@ -2,6 +2,8 @@ import { supabase } from "./supabase";
 
 // ---------- Types ----------
 
+export type DeviceListScope = "own" | "fleet";
+
 export interface Device {
   device_id: string;
   user_id: string;
@@ -15,6 +17,11 @@ export interface Device {
   firmware_version: string | null;
   notes: string | null;
   calibration: any | null;
+  map_lat?: number | null;
+  map_lng?: number | null;
+  storage_used_mb?: number | null;
+  storage_capacity_mb?: number | null;
+  last_data_pickup_at?: string | null;
 }
 
 export interface DeviceList {
@@ -55,12 +62,11 @@ function nextReadableName(existingNames: string[]): string {
 
 // ---------- Generate device_id / readable_name pair ----------
 
-export async function generateDevicePair(): Promise<GeneratedDevicePair> {
+export async function generateDevicePair(scope: DeviceListScope = "own"): Promise<GeneratedDevicePair> {
   const userId = await requireUserId();
-  const { data } = await supabase
-    .from("devices")
-    .select("readable_name")
-    .eq("user_id", userId);
+  let q = supabase.from("devices").select("readable_name");
+  if (scope === "own") q = q.eq("user_id", userId);
+  const { data } = await q;
 
   const names = (data ?? []).map((d: any) => d.readable_name);
   const readable_name = nextReadableName(names);
@@ -73,9 +79,12 @@ export async function generateDevicePair(): Promise<GeneratedDevicePair> {
 
 export async function registerDevice(params: {
   serial_id?: string;
+  /** 管理员登记设备时仍记在本人名下；若将来支持代录可再扩展 */
+  listScope?: DeviceListScope;
 }): Promise<Device> {
   const userId = await requireUserId();
-  const { device_id, readable_name } = await generateDevicePair();
+  const scope = params.listScope ?? "own";
+  const { device_id, readable_name } = await generateDevicePair(scope);
 
   const now = new Date().toISOString();
 
@@ -106,15 +115,15 @@ export async function listDevices(params?: {
   limit?: number;
   status?: string;
   calibration_status?: string;
+  scope?: DeviceListScope;
 }): Promise<DeviceList> {
   const userId = await requireUserId();
   const offset = params?.offset ?? 0;
   const limit = params?.limit ?? 50;
+  const scope = params?.scope ?? "own";
 
-  let query = supabase
-    .from("devices")
-    .select("*", { count: "exact" })
-    .eq("user_id", userId);
+  let query = supabase.from("devices").select("*", { count: "exact" });
+  if (scope === "own") query = query.eq("user_id", userId);
 
   if (params?.status) {
     query = query.eq("status", params.status);
@@ -135,14 +144,12 @@ export async function listDevices(params?: {
   };
 }
 
-export async function getDevice(deviceId: string): Promise<Device> {
+export async function getDevice(deviceId: string, opts?: { scope?: DeviceListScope }): Promise<Device> {
   const userId = await requireUserId();
-  const result = await supabase
-    .from("devices")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("device_id", deviceId)
-    .single();
+  const scope = opts?.scope ?? "own";
+  let q = supabase.from("devices").select("*").eq("device_id", deviceId);
+  if (scope === "own") q = q.eq("user_id", userId);
+  const result = await q.single();
 
   return throwOnError(result);
 }
@@ -158,47 +165,53 @@ export async function updateDevice(
       | "firmware_version"
       | "notes"
       | "calibration"
+      | "map_lat"
+      | "map_lng"
+      | "storage_used_mb"
+      | "storage_capacity_mb"
     >
-  >
+  >,
+  opts?: { scope?: DeviceListScope }
 ): Promise<Device> {
   const userId = await requireUserId();
-  const result = await supabase
+  const scope = opts?.scope ?? "own";
+  let q = supabase
     .from("devices")
     .update({ ...body, last_seen: new Date().toISOString() })
-    .eq("user_id", userId)
-    .eq("device_id", deviceId)
-    .select()
-    .single();
+    .eq("device_id", deviceId);
+  if (scope === "own") q = q.eq("user_id", userId);
+  const result = await q.select().single();
 
   return throwOnError(result);
 }
 
-export async function deleteDevice(deviceId: string): Promise<Device> {
+export async function deleteDevice(deviceId: string, opts?: { scope?: DeviceListScope }): Promise<Device> {
   const userId = await requireUserId();
-  const result = await supabase
+  const scope = opts?.scope ?? "own";
+  let q = supabase
     .from("devices")
     .update({ status: "retired", last_seen: new Date().toISOString() })
-    .eq("user_id", userId)
-    .eq("device_id", deviceId)
-    .select()
-    .single();
+    .eq("device_id", deviceId);
+  if (scope === "own") q = q.eq("user_id", userId);
+  const result = await q.select().single();
 
   return throwOnError(result);
 }
 
 export async function searchDevices(
   q: string,
-  params?: { offset?: number; limit?: number }
+  params?: { offset?: number; limit?: number; scope?: DeviceListScope }
 ): Promise<DeviceList> {
   const userId = await requireUserId();
   const offset = params?.offset ?? 0;
   const limit = params?.limit ?? 50;
   const pattern = `%${q}%`;
+  const scope = params?.scope ?? "own";
 
-  const result = await supabase
-    .from("devices")
-    .select("*", { count: "exact" })
-    .eq("user_id", userId)
+  let query = supabase.from("devices").select("*", { count: "exact" });
+  if (scope === "own") query = query.eq("user_id", userId);
+
+  const result = await query
     .or(
       `device_id.ilike.${pattern},readable_name.ilike.${pattern},serial_id.ilike.${pattern},notes.ilike.${pattern}`
     )
@@ -211,4 +224,10 @@ export async function searchDevices(
     total: result.count ?? 0,
     devices: (result.data ?? []) as Device[],
   };
+}
+
+/** 数采执行员 / 管理员：收菜后由 RPC 清零 storage_used_mb */
+export async function harvestDevice(deviceId: string): Promise<void> {
+  const { error } = await supabase.rpc("harvest_device", { p_device_id: deviceId });
+  if (error) throw new Error(error.message);
 }

@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { searchDevices, type Device } from "../api/client";
+import { searchDevices, type Device, type DeviceListScope } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
 import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
 
 export default function Search() {
+  const { profile } = useAuth();
+  const searchScope: DeviceListScope = profile?.role === "admin" ? "fleet" : "own";
+
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Device[]>([]);
   const [total, setTotal] = useState<number | null>(null);
@@ -22,7 +26,7 @@ export default function Search() {
     if (!query.trim()) return;
     setLoading(true);
     try {
-      const res = await searchDevices(query.trim());
+      const res = await searchDevices(query.trim(), { scope: searchScope });
       setResults(res.devices);
       setTotal(res.total);
     } catch {

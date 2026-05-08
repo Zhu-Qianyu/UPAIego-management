@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { registerDevice, type Device } from "../api/client";
+import { registerDevice, type Device, type DeviceListScope } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
 import { generateQrDataUrl, downloadQr } from "../api/qr";
 import Spinner from "../components/Spinner";
 
 export default function Register() {
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const listScope: DeviceListScope = profile?.role === "admin" ? "fleet" : "own";
 
   const [serialId, setSerialId] = useState("");
 
@@ -28,6 +31,7 @@ export default function Register() {
     try {
       const device = await registerDevice({
         serial_id: serialId.trim() || undefined,
+        listScope,
       });
       setRegistered(device);
     } catch (err: any) {
