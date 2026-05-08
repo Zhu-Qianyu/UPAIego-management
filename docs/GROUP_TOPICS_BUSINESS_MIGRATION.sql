@@ -13,22 +13,6 @@ BEGIN FOR pol IN
 END LOOP;
 END $$;
 
-CREATE OR REPLACE FUNCTION public.user_active_group_id()
-RETURNS uuid LANGUAGE sql SECURITY DEFINER SET search_path = public STABLE AS $$
-  SELECT gm.group_id FROM public.group_members gm
-  WHERE gm.user_id = auth.uid() AND gm.membership_status = 'active'
-  ORDER BY gm.created_at ASC LIMIT 1;
-$$;
-REVOKE ALL ON FUNCTION public.user_active_group_id() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.user_active_group_id() TO authenticated;
-
-CREATE OR REPLACE FUNCTION public.user_owned_group_id()
-RETURNS uuid LANGUAGE sql SECURITY DEFINER SET search_path = public STABLE AS $$
-  SELECT id FROM public.work_groups WHERE owner_user_id = auth.uid() LIMIT 1;
-$$;
-REVOKE ALL ON FUNCTION public.user_owned_group_id() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.user_owned_group_id() TO authenticated;
-
 CREATE TABLE IF NOT EXISTS public.work_groups (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   invite_code text NOT NULL DEFAULT ''::text,
@@ -71,6 +55,23 @@ CREATE TABLE IF NOT EXISTS public.group_members (
 );
 
 CREATE INDEX IF NOT EXISTS idx_group_members_g_status ON public.group_members (group_id, membership_status);
+
+-- Must be defined AFTER work_groups + group_members exist (Postgres validates SQL function bodies).
+CREATE OR REPLACE FUNCTION public.user_active_group_id()
+RETURNS uuid LANGUAGE sql SECURITY DEFINER SET search_path = public STABLE AS $$
+  SELECT gm.group_id FROM public.group_members gm
+  WHERE gm.user_id = auth.uid() AND gm.membership_status = 'active'
+  ORDER BY gm.created_at ASC LIMIT 1;
+$$;
+REVOKE ALL ON FUNCTION public.user_active_group_id() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.user_active_group_id() TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.user_owned_group_id()
+RETURNS uuid LANGUAGE sql SECURITY DEFINER SET search_path = public STABLE AS $$
+  SELECT id FROM public.work_groups WHERE owner_user_id = auth.uid() LIMIT 1;
+$$;
+REVOKE ALL ON FUNCTION public.user_owned_group_id() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.user_owned_group_id() TO authenticated;
 
 CREATE TABLE IF NOT EXISTS public.group_topics (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
