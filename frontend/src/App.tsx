@@ -9,30 +9,47 @@ import RoleHome from "./pages/RoleHome";
 import AdminConsole from "./pages/AdminConsole";
 import SceneTasksPage from "./pages/SceneTasksPage";
 import ExecutorMapPage from "./pages/ExecutorMapPage";
+import JoinGroupPage from "./pages/JoinGroupPage";
+import TopicsPage from "./pages/TopicsPage";
+import AdminGroupPage from "./pages/AdminGroupPage";
 import { useAuth } from "./auth/AuthContext";
 import { supabase } from "./api/supabase";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "./auth/roleLabels";
 import type { UserRole } from "./types/roles";
 import RoleRoute from "./components/RoleRoute";
 import AnnouncementsBanner from "./components/AnnouncementsBanner";
+import GroupStatusBanner from "./components/GroupStatusBanner";
 
 function navForRole(role: UserRole): { to: string; label: string }[] {
   const byRole: Record<UserRole, { to: string; label: string }[]> = {
     admin: [
       { to: "/admin", label: "管理台" },
+      { to: "/admin/group", label: "群组" },
+      { to: "/topics", label: "话题" },
+      { to: "/join", label: "入群" },
       { to: "/fleet", label: "全量设备" },
       { to: "/register", label: "注册设备" },
       { to: "/search", label: "搜索" },
-      { to: "/scene", label: "场景任务" },
+      { to: "/scene", label: "业务与场景" },
       { to: "/map", label: "数采地图" },
     ],
     device_operator: [
       { to: "/", label: "设备总览" },
+      { to: "/topics", label: "话题" },
+      { to: "/join", label: "入群" },
       { to: "/register", label: "注册设备" },
       { to: "/search", label: "搜索" },
     ],
-    scene_operator: [{ to: "/scene", label: "场景任务" }],
-    collection_executor: [{ to: "/map", label: "数采地图" }],
+    scene_operator: [
+      { to: "/scene", label: "业务与场景" },
+      { to: "/topics", label: "话题" },
+      { to: "/join", label: "入群" },
+    ],
+    collection_executor: [
+      { to: "/map", label: "数采地图" },
+      { to: "/topics", label: "话题" },
+      { to: "/join", label: "入群" },
+    ],
   };
   return byRole[role];
 }
@@ -187,6 +204,7 @@ export default function App() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <GroupStatusBanner />
         <AnnouncementsBanner />
         <Routes>
           <Route path="/" element={<RoleHome />} />
@@ -243,6 +261,16 @@ export default function App() {
             element={
               <RoleRoute allow={["admin", "collection_executor"]}>
                 <ExecutorMapPage />
+              </RoleRoute>
+            }
+          />
+          <Route path="/topics" element={<TopicsPage />} />
+          <Route path="/join" element={<JoinGroupPage />} />
+          <Route
+            path="/admin/group"
+            element={
+              <RoleRoute allow={["admin"]}>
+                <AdminGroupPage />
               </RoleRoute>
             }
           />
