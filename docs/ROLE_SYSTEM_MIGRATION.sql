@@ -40,13 +40,27 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- Read invoker's role without RLS recursion (policies must NOT use EXISTS subqueries on profiles).
+CREATE OR REPLACE FUNCTION public.current_profile_role()
+RETURNS text
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT role FROM public.profiles WHERE id = auth.uid() LIMIT 1;
+$$;
+
+REVOKE ALL ON FUNCTION public.current_profile_role() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.current_profile_role() TO authenticated;
+
 SELECT public._role_migration_drop_policies('profiles');
 
 CREATE POLICY "profiles_select_self_or_admin"
   ON public.profiles FOR SELECT TO authenticated
   USING (
     id = auth.uid()
-    OR EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
+    OR public.current_profile_role() = 'admin'
   );
 
 CREATE POLICY "profiles_insert_self"
@@ -60,7 +74,7 @@ CREATE POLICY "profiles_update_self"
 
 CREATE POLICY "profiles_admin_update"
   ON public.profiles FOR UPDATE TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin'))
+  USING (public.current_profile_role() = 'admin')
   WITH CHECK (true);
 
 -- ---------------------------------------------------------------------------
@@ -141,27 +155,27 @@ CREATE POLICY "admin_kpis_read_authenticated"
 
 CREATE POLICY "admin_kpis_insert_admin"
   ON public.admin_kpis FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin'));
+  WITH CHECK (public.current_profile_role() = 'admin');
 
 CREATE POLICY "admin_kpis_update_admin"
   ON public.admin_kpis FOR UPDATE TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin'))
-  WITH CHECK (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin'));
+  USING (public.current_profile_role() = 'admin')
+  WITH CHECK (public.current_profile_role() = 'admin');
 
 CREATE POLICY "admin_kpis_delete_admin"
   ON public.admin_kpis FOR DELETE TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin'));
+  USING (public.current_profile_role() = 'admin');
 
 CREATE POLICY "admin_messages_read_authenticated"
   ON public.admin_messages FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY "admin_messages_write_admin"
   ON public.admin_messages FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin'));
+  WITH CHECK (public.current_profile_role() = 'admin');
 
 CREATE POLICY "admin_messages_delete_admin"
   ON public.admin_messages FOR DELETE TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin'));
+  USING (public.current_profile_role() = 'admin');
 
 -- ---------------------------------------------------------------------------
 -- 6. Scene tasks & collection requirements
@@ -196,59 +210,52 @@ SELECT public._role_migration_drop_policies('collection_requirements');
 CREATE POLICY "scene_tasks_select"
   ON public.scene_tasks FOR SELECT TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
-    OR EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'scene_operator')
-    OR (
-      EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'collection_executor')
-      AND status = 'published'
-    )
+    public.current_profile_role() = 'admin'
+    OR public.current_profile_role() = 'scene_operator'
+    OR (public.current_profile_role() = 'collection_executor' AND status = 'published')
   );
 
 CREATE POLICY "scene_tasks_insert_scene_or_admin"
   ON public.scene_tasks FOR INSERT TO authenticated
   WITH CHECK (
     created_by = auth.uid()
-    AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'scene_operator'))
+    AND public.current_profile_role() IN ('admin', 'scene_operator')
   );
 
 CREATE POLICY "scene_tasks_update_scene_or_admin"
   ON public.scene_tasks FOR UPDATE TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
-    OR (
-      EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'scene_operator')
-      AND created_by = auth.uid()
-    )
+    public.current_profile_role() = 'admin'
+    OR (public.current_profile_role() = 'scene_operator' AND created_by = auth.uid())
   )
   WITH CHECK (true);
 
 CREATE POLICY "scene_tasks_delete_scene_or_admin"
   ON public.scene_tasks FOR DELETE TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
-    OR (
-      EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'scene_operator')
-      AND created_by = auth.uid()
-    )
+    public.current_profile_role() = 'admin'
+    OR (public.current_profile_role() = 'scene_operator' AND created_by = auth.uid())
   );
 
 CREATE POLICY "collection_req_select"
   ON public.collection_requirements FOR SELECT TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'scene_operator'))
-    OR EXISTS (
-      SELECT 1 FROM public.scene_tasks t
-      WHERE t.id = scene_task_id AND t.status = 'published'
-        AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'collection_executor')
+    public.current_profile_role() IN ('admin', 'scene_operator')
+    OR (
+      public.current_profile_role() = 'collection_executor'
+      AND EXISTS (
+        SELECT 1 FROM public.scene_tasks t
+        WHERE t.id = scene_task_id AND t.status = 'published'
+      )
     )
   );
 
 CREATE POLICY "collection_req_insert_scene_or_admin"
   ON public.collection_requirements FOR INSERT TO authenticated
   WITH CHECK (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
+    public.current_profile_role() = 'admin'
     OR (
-      EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'scene_operator')
+      public.current_profile_role() = 'scene_operator'
       AND EXISTS (
         SELECT 1 FROM public.scene_tasks t
         WHERE t.id = scene_task_id AND t.created_by = auth.uid()
@@ -260,9 +267,9 @@ CREATE POLICY "collection_req_insert_scene_or_admin"
 CREATE POLICY "collection_req_update_scene_or_admin"
   ON public.collection_requirements FOR UPDATE TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
+    public.current_profile_role() = 'admin'
     OR (
-      EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'scene_operator')
+      public.current_profile_role() = 'scene_operator'
       AND EXISTS (
         SELECT 1 FROM public.scene_tasks t
         WHERE t.id = scene_task_id AND t.created_by = auth.uid()
@@ -270,9 +277,9 @@ CREATE POLICY "collection_req_update_scene_or_admin"
     )
   )
   WITH CHECK (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
+    public.current_profile_role() = 'admin'
     OR (
-      EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'scene_operator')
+      public.current_profile_role() = 'scene_operator'
       AND EXISTS (
         SELECT 1 FROM public.scene_tasks t
         WHERE t.id = scene_task_id AND t.created_by = auth.uid()
@@ -283,9 +290,9 @@ CREATE POLICY "collection_req_update_scene_or_admin"
 CREATE POLICY "collection_req_delete_scene_or_admin"
   ON public.collection_requirements FOR DELETE TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
+    public.current_profile_role() = 'admin'
     OR (
-      EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'scene_operator')
+      public.current_profile_role() = 'scene_operator'
       AND EXISTS (
         SELECT 1 FROM public.scene_tasks t
         WHERE t.id = scene_task_id AND t.created_by = auth.uid()
@@ -304,41 +311,32 @@ CREATE POLICY "devices_select"
   ON public.devices FOR SELECT TO authenticated
   USING (
     user_id = auth.uid()
-    OR EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'collection_executor'))
+    OR public.current_profile_role() IN ('admin', 'collection_executor')
   );
 
 CREATE POLICY "devices_insert_ops_or_admin"
   ON public.devices FOR INSERT TO authenticated
   WITH CHECK (
     user_id = auth.uid()
-    AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role IN ('admin', 'device_operator'))
+    AND public.current_profile_role() IN ('admin', 'device_operator')
   );
 
 CREATE POLICY "devices_update_ops_or_admin"
   ON public.devices FOR UPDATE TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
-    OR (
-      user_id = auth.uid()
-      AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'device_operator')
-    )
+    public.current_profile_role() = 'admin'
+    OR (user_id = auth.uid() AND public.current_profile_role() = 'device_operator')
   )
   WITH CHECK (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
-    OR (
-      user_id = auth.uid()
-      AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'device_operator')
-    )
+    public.current_profile_role() = 'admin'
+    OR (user_id = auth.uid() AND public.current_profile_role() = 'device_operator')
   );
 
 CREATE POLICY "devices_delete_ops_or_admin"
   ON public.devices FOR DELETE TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
-    OR (
-      user_id = auth.uid()
-      AND EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'device_operator')
-    )
+    public.current_profile_role() = 'admin'
+    OR (user_id = auth.uid() AND public.current_profile_role() = 'device_operator')
   );
 
 -- ---------------------------------------------------------------------------
@@ -351,10 +349,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role IN ('collection_executor', 'admin')
-  ) THEN
+  IF coalesce(public.current_profile_role(), '') NOT IN ('collection_executor', 'admin') THEN
     RAISE EXCEPTION 'not allowed';
   END IF;
 

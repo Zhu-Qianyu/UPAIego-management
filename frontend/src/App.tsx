@@ -11,7 +11,7 @@ import SceneTasksPage from "./pages/SceneTasksPage";
 import ExecutorMapPage from "./pages/ExecutorMapPage";
 import { useAuth } from "./auth/AuthContext";
 import { supabase } from "./api/supabase";
-import { ROLE_LABELS } from "./auth/roleLabels";
+import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "./auth/roleLabels";
 import type { UserRole } from "./types/roles";
 import RoleRoute from "./components/RoleRoute";
 import AnnouncementsBanner from "./components/AnnouncementsBanner";
@@ -148,9 +148,20 @@ export default function App() {
               UPAIego
             </Link>
             <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
-              <span className="hidden lg:inline text-xs text-gray-500 max-w-[200px] truncate">
-                {session?.user?.email} · {ROLE_LABELS[profile.role]}
-              </span>
+              <div
+                className="flex items-center gap-2 min-w-0 mr-1 border-r border-gray-200/90 pr-2 sm:pr-3"
+                title={`${ROLE_LABELS[profile.role]} — ${ROLE_DESCRIPTIONS[profile.role]}`}
+              >
+                <span className="hidden sm:inline truncate text-xs text-gray-600 max-w-[160px] md:max-w-[220px]">
+                  {session?.user?.email}
+                </span>
+                <span
+                  className="shrink-0 rounded-md bg-indigo-100 text-indigo-800 px-2 py-0.5 text-[11px] sm:text-xs font-semibold tracking-tight ring-1 ring-indigo-200/80"
+                  aria-label={`当前角色：${ROLE_LABELS[profile.role]}`}
+                >
+                  {ROLE_LABELS[profile.role]}
+                </span>
+              </div>
               {navItems.map((link) => (
                 <Link
                   key={link.to}
