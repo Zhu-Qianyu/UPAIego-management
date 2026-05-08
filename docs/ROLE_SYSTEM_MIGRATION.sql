@@ -1,5 +1,30 @@
--- Role-based access for UPAIego fleet UI. Run once in Supabase SQL Editor (or split into migrations).
+-- Role-based access for UPAIego fleet UI. Safe to re-run in Supabase SQL Editor.
+-- IMPORTANT: Run the ENTIRE script (Ctrl+A in SQL editor). Running only the CREATE POLICY
+-- section will fail if policies already exist — the blocks below drop them from pg_policy first.
 -- After run: optionally UPDATE public.profiles SET role = 'admin' WHERE id = '<your-user-uuid>';
+
+-- ---------------------------------------------------------------------------
+-- 0. Helpers: drop every RLS policy on a table (handles re-runs & name mismatches)
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public._role_migration_drop_policies(tbl text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE pol text;
+BEGIN
+  FOR pol IN
+    SELECT p.polname::text
+    FROM pg_policy p
+    JOIN pg_class c ON c.oid = p.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = tbl
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol, tbl);
+  END LOOP;
+END;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 1. Profiles (1:1 with auth.users)
@@ -14,6 +39,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 );
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+SELECT public._role_migration_drop_policies('profiles');
 
 CREATE POLICY "profiles_select_self_or_admin"
   ON public.profiles FOR SELECT TO authenticated
@@ -106,6 +133,9 @@ CREATE TABLE IF NOT EXISTS public.admin_messages (
 ALTER TABLE public.admin_kpis ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_messages ENABLE ROW LEVEL SECURITY;
 
+SELECT public._role_migration_drop_policies('admin_kpis');
+SELECT public._role_migration_drop_policies('admin_messages');
+
 CREATE POLICY "admin_kpis_read_authenticated"
   ON public.admin_kpis FOR SELECT TO authenticated USING (true);
 
@@ -159,6 +189,9 @@ CREATE TABLE IF NOT EXISTS public.collection_requirements (
 
 ALTER TABLE public.scene_tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.collection_requirements ENABLE ROW LEVEL SECURITY;
+
+SELECT public._role_migration_drop_policies('scene_tasks');
+SELECT public._role_migration_drop_policies('collection_requirements');
 
 CREATE POLICY "scene_tasks_select"
   ON public.scene_tasks FOR SELECT TO authenticated
@@ -265,10 +298,7 @@ CREATE POLICY "collection_req_delete_scene_or_admin"
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.devices ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Users can read own devices" ON public.devices;
-DROP POLICY IF EXISTS "Users can insert own devices" ON public.devices;
-DROP POLICY IF EXISTS "Users can update own devices" ON public.devices;
-DROP POLICY IF EXISTS "Users can delete own devices" ON public.devices;
+SELECT public._role_migration_drop_policies('devices');
 
 CREATE POLICY "devices_select"
   ON public.devices FOR SELECT TO authenticated
@@ -338,3 +368,6 @@ $$;
 
 REVOKE ALL ON FUNCTION public.harvest_device(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.harvest_device(text) TO authenticated;
+
+-- Optional: remove helper (comment out if you want to keep it for future migrations)
+DROP FUNCTION IF EXISTS public._role_migration_drop_policies(text);

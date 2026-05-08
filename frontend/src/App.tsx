@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Register from "./pages/Register";
@@ -37,16 +38,71 @@ function navForRole(role: UserRole): { to: string; label: string }[] {
 }
 
 function MigrationNotice() {
+  const { session, refreshProfile, profileSyncHint } = useAuth();
+  const [retrying, setRetrying] = useState(false);
+  const userId = session?.user?.id ?? "";
+
+  async function retry() {
+    setRetrying(true);
+    try {
+      await refreshProfile();
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-amber-50/50">
-      <div className="max-w-lg rounded-2xl border border-amber-200 bg-white p-6 text-sm text-amber-950 shadow-sm">
-        <p className="font-semibold text-base mb-2">未检测到账号角色（profiles）</p>
-        <p className="text-amber-900/90 mb-3">
-          请已在 Supabase 执行角色迁移脚本后再刷新页面。脚本路径：
+      <div className="max-w-lg rounded-2xl border border-amber-200 bg-white p-6 text-sm text-amber-950 shadow-sm space-y-4">
+        <p className="font-semibold text-base">未检测到账号角色（profiles）</p>
+        <p className="text-amber-900/90">
+          任选一种方式修复后，点击下方「同步并重试」即可，无需改代码。
         </p>
-        <code className="block text-xs bg-amber-100/80 rounded-lg p-3 break-all text-amber-950">
-          docs/ROLE_SYSTEM_MIGRATION.sql
-        </code>
+
+        <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 space-y-2">
+          <p className="font-medium text-gray-800 text-xs uppercase tracking-wide">方式 A（最快）</p>
+          <p className="text-gray-700 text-xs">
+            Supabase → <strong>Table Editor</strong> → <code className="bg-white px-1 rounded">profiles</code> →
+            新增一行：<code className="bg-white px-1 rounded">id</code> =
+            你的用户 UUID，
+            <code className="bg-white px-1 rounded">role</code> ={" "}
+            <code className="bg-white px-1 rounded">device_operator</code>（或{" "}
+            <code className="bg-white px-1 rounded">admin</code>）。
+          </p>
+          {userId && (
+            <p className="text-xs font-mono break-all text-indigo-800 bg-indigo-50 rounded-lg px-2 py-1">
+              id: {userId}
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 space-y-2">
+          <p className="font-medium text-gray-800 text-xs uppercase tracking-wide">方式 B（SQL Editor）</p>
+          <p className="text-gray-600 text-xs">把下面的 YOUR_USER_UUID 换成上面复制的 id 后执行一次：</p>
+          <pre className="text-[11px] leading-relaxed bg-stone-900 text-stone-100 rounded-lg p-3 overflow-x-auto">
+            {`INSERT INTO public.profiles (id, role)\nVALUES ('YOUR_USER_UUID', 'device_operator')\nON CONFLICT (id) DO UPDATE\nSET role = EXCLUDED.role, updated_at = now();`}
+          </pre>
+        </div>
+
+        <p className="text-xs text-gray-600">
+          若尚未建表：在仓库中执行完整脚本{" "}
+          <code className="bg-gray-100 px-1 rounded">docs/ROLE_SYSTEM_MIGRATION.sql</code>
+        </p>
+
+        {profileSyncHint && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+            {profileSyncHint}
+          </div>
+        )}
+
+        <button
+          type="button"
+          disabled={retrying}
+          onClick={() => void retry()}
+          className="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+        >
+          {retrying ? "同步中..." : "同步并重试"}
+        </button>
       </div>
     </div>
   );

@@ -20,10 +20,14 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
 }
 
 /** Call after signup if DB trigger is not yet applied — inserts own profile once. */
-export async function ensureProfileRow(userId: string, role: UserRole): Promise<void> {
+export async function ensureProfileRow(userId: string, role: UserRole): Promise<string | null> {
   const { error } = await supabase.from("profiles").upsert(
     { id: userId, role, updated_at: new Date().toISOString() },
     { onConflict: "id" }
   );
-  if (error) console.error("ensureProfileRow", error);
+  if (error) {
+    console.error("ensureProfileRow", error);
+    return error.message;
+  }
+  return null;
 }
