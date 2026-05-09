@@ -11,6 +11,8 @@ export interface SceneTask {
   created_at: string;
   due_at: string | null;
   group_id: string | null;
+  /** 非空时，自动子任务仅针对该场景岗位与甲方大类匹配 */
+  scenario_position_id?: string | null;
 }
 
 export interface CollectionRequirement {
@@ -47,6 +49,7 @@ export async function createSceneTask(input: {
   status?: SceneTaskStatus;
   due_at?: string | null;
   group_id: string;
+  scenario_position_id: string;
 }): Promise<SceneTask> {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("未登录");
@@ -58,6 +61,7 @@ export async function createSceneTask(input: {
       status: input.status ?? "draft",
       due_at: input.due_at ?? null,
       group_id: input.group_id,
+      scenario_position_id: input.scenario_position_id,
       created_by: user.id,
     })
     .select()

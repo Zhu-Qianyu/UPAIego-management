@@ -841,7 +841,7 @@ function SceneTasksInner({
 }) {
   const { profile, session } = useAuth();
   const innerCacheKey = useMemo(
-    () => routeViewCacheKeyExtra(session?.user?.id, "scene-tasks-inner", "v1"),
+    () => routeViewCacheKeyExtra(session?.user?.id, "scene-tasks-inner", "v2"),
     [session?.user?.id]
   );
 
@@ -856,8 +856,7 @@ function SceneTasksInner({
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState("");
 
-  const [tTitle, setTTitle] = useState("");
-  const [tDesc, setTDesc] = useState("");
+  const [positionIdForCreate, setPositionIdForCreate] = useState("");
   const [dueLocal, setDueLocal] = useState("");
   const fetchedOnceRef = useRef(false);
 
@@ -935,21 +934,45 @@ function SceneTasksInner({
     void loadReqs(selected.id);
   }, [selected?.id, selected?.due_at]);
 
+  function buildSceneTaskFromPosition(p: ScenarioPosition): { title: string; description: string } {
+    const title = `【${p.title}】场景采集任务`;
+    const lines = [
+      "本任务由管理员基于现有场景岗位「业务强制」创建；发布后仅在该岗位下与甲方业务大类匹配生成子任务。",
+      p.process_description?.trim() && `岗位说明：${p.process_description.trim()}`,
+      `厂区：${[p.address_province, p.address_city, p.address_district].filter(Boolean).join(" ")}${p.address_detail ? ` ${p.address_detail}` : ""}`,
+    ].filter(Boolean) as string[];
+    return { title, description: lines.join("\n\n") };
+  }
+
   async function handleCreateTask(e: React.FormEvent) {
     e.preventDefault();
+    if (!isAdmin) {
+      setErr("仅管理员可创建场景任务。");
+      return;
+    }
     setErr("");
+    if (!positionIdForCreate) {
+      setErr("请选择一个现有场景岗位。");
+      return;
+    }
+    const p = positions.get(positionIdForCreate);
+    if (!p) {
+      setErr("所选岗位不存在或已删除，请刷新后重选。");
+      return;
+    }
     try {
+      const { title, description } = buildSceneTaskFromPosition(p);
       await createSceneTask({
-        title: tTitle.trim(),
-        description: tDesc.trim() || undefined,
+        title,
+        description,
         group_id: groupId,
+        scenario_position_id: p.id,
       });
-      setTTitle("");
-      setTDesc("");
+      setPositionIdForCreate("");
       await loadTasks();
       await syncSceneTaskAssignments(groupId);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "创建失败");
+    } catch (err: unknown) {
+      setErr(err instanceof Error ? err.message : "创建失败");
     }
   }
 
@@ -979,7 +1002,7 @@ function SceneTasksInner({
 
   function canDeleteDraft(t: SceneTask): boolean {
     if (t.status !== "draft") return false;
-    return profile?.role === "admin" || t.created_by === session?.user?.id;
+    return profile?.role === "admin" || profile?.role === "scene_operator";
   }
 
   if (loading && tasks.length === 0) return <Spinner />;
@@ -993,27 +1016,40 @@ function SceneTasksInner({
           <p className="text-sm text-gray-500">
             {isExecutorView
               ? "查看已发布任务及采集进度；已执行小时由你填报。"
-              : "创建任务并发布；子任务由系统按甲方业务与场景岗位的大类匹配自动生成。"}
+              : isAdmin
+                ? "由管理员选择本群已有场景岗位并「业务强制」生成草稿；发布后仅在该岗位下与甲方大类匹配子任务。业务员可发布与维护截止时间与进度。"
+                : "场景任务由管理员基于岗位创建；你可发布任务、设置截止时间并查看进度。"}
           </p>
           {err && <p className="text-sm text-red-600">{err}</p>}
-          {!isExecutorView && (
+          {!isExecutorView && isAdmin && (
             <form onSubmit={handleCreateTask} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-2">
-              <input
+              <label className="block text-xs font-medium text-gray-700">选择现有场景岗位（必填）</label>
+              <select
                 required
-                placeholder="任务标题"
-                value={tTitle}
-                onChange={(e) => setTTitle(e.target.value)}
+                value={positionIdForCreate}
+                onChange={(e) => setPositionIdForCreate(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-              <textarea
-                placeholder="描述（可选）"
-                value={tDesc}
-                onChange={(e) => setTDesc(e.target.value)}
-                rows={2}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-              <button type="submit" className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium">
-                创建草稿
+              >
+                <option value="">请选择岗位…</option>
+                {[...positions.values()]
+                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title} · {[p.address_province, p.address_city].filter(Boolean).join("")}
+                    </option>
+                  ))}
+              </select>
+              {positions.size === 0 && (
+                <p className="text-xs text-amber-700">
+                  当前工作群尚无场景岗位，请先到「场景岗位 / 快照」页添加后再创建任务。
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={positions.size === 0}
+                className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+              >
+                基于所选岗位创建草稿（业务强制）
               </button>
             </form>
           )}
@@ -1032,6 +1068,11 @@ function SceneTasksInner({
                     {t.status === "draft" && "草稿"}
                     {t.status === "published" && "已发布"}
                     {t.status === "closed" && "已关闭"}
+                    {t.scenario_position_id && positions.get(t.scenario_position_id) && (
+                      <span className="block text-[11px] text-gray-400 mt-0.5">
+                        岗位：{positions.get(t.scenario_position_id)!.title}
+                      </span>
+                    )}
                   </span>
                 </button>
                 {!isExecutorView && canDeleteDraft(t) && (
@@ -1071,6 +1112,14 @@ function SceneTasksInner({
                   <h2 className="text-xl font-bold text-gray-900">{selected.title}</h2>
                   {selected.description && (
                     <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{selected.description}</p>
+                  )}
+                  {selected.scenario_position_id && positions.get(selected.scenario_position_id) && (
+                    <p className="text-sm text-indigo-900 mt-2">
+                      绑定场景岗位：
+                      <span className="font-medium">
+                        {positions.get(selected.scenario_position_id)!.title}
+                      </span>
+                    </p>
                   )}
                   {selected.due_at && (
                     <p className="text-sm text-amber-800 mt-2">
