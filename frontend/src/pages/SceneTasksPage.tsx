@@ -14,6 +14,7 @@ import {
   uploadWorkstationSnapshot,
   uploadPartyDeviceSnapshot,
   syncSceneTaskAssignments,
+  batchGenerateSceneTasksForGroup,
   listAssignmentsForWorkGroup,
   updateAssignmentExecutedHours,
   type PartyDemand,
@@ -833,6 +834,7 @@ function SceneTasksInner({
 
   const [positionIdForCreate, setPositionIdForCreate] = useState("");
   const [dueByTaskId, setDueByTaskId] = useState<Record<string, string>>({});
+  const [batchBusy, setBatchBusy] = useState(false);
   const fetchedOnceRef = useRef(false);
 
   const assignmentsByTaskId = useMemo(() => {
@@ -999,11 +1001,40 @@ function SceneTasksInner({
             {isExecutorView
               ? "列表布局与场景岗位一致（无现场快照）；请在下方的业务读条中填报已执行小时。"
               : isAdmin
-                ? "由管理员选择岗位生成草稿；列表为岗位式卡片（无快照），已发布后展示业务读条。业务员可发布、维护截止时间。"
+                ? "可由后台一键为全部场景岗位补齐草稿，或逐个选择岗位创建；已发布后展示业务读条。业务员可发布、维护截止时间。"
                 : "任务由管理员创建；你可发布并维护截止时间。每条任务展示绑定岗位信息与业务读条。"}
           </p>
         </div>
         {err && <p className="text-sm text-red-600">{err}</p>}
+        {!isExecutorView && isAdmin && (
+          <div className="bg-white rounded-xl border border-indigo-100 p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
+              <p className="text-xs text-gray-600">为本群所有「尚无绑定任务」的场景岗位各建一条草稿（服务端批量插入，已存在的岗位会跳过）。</p>
+              <button
+                type="button"
+                disabled={batchBusy || positions.size === 0}
+                onClick={() => {
+                  void (async () => {
+                    setErr("");
+                    setBatchBusy(true);
+                    try {
+                      const n = await batchGenerateSceneTasksForGroup(groupId);
+                      await loadTasks();
+                      if (n === 0) setErr("没有新增：每个岗位已有对应场景任务，或当前群无场景岗位。");
+                    } catch (e: unknown) {
+                      setErr(e instanceof Error ? e.message : "批量生成失败");
+                    } finally {
+                      setBatchBusy(false);
+                    }
+                  })();
+                }}
+                className="shrink-0 px-3 py-2 rounded-lg text-sm font-medium bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50"
+              >
+                {batchBusy ? "批量生成中…" : "一键批量生成草稿"}
+              </button>
+            </div>
+          </div>
+        )}
         {!isExecutorView && isAdmin && (
           <form onSubmit={handleCreateTask} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-2">
             <label className="block text-xs font-medium text-gray-700">选择现有场景岗位（必填）</label>
@@ -1044,7 +1075,7 @@ function SceneTasksInner({
               {isExecutorView
                 ? "仅展示已发布任务；若管理员刚创建草稿，需发布后才可见。请确认当前工作群与任务所属群一致。"
                 : isAdmin
-                  ? "请在上文选择场景岗位并创建草稿。若数据库中旧任务的 group_id 为空，需在库中补全后才会出现在本群列表。"
+                  ? "可使用上文「一键批量生成草稿」，或选择单个岗位创建。若旧数据 group_id 为空，需在库中补全后才会出现在本群列表。"
                   : "任务由管理员创建；你可协助发布与维护截止时间。若仅有草稿，列表仍会为空直至发布。"}
             </span>
           </p>

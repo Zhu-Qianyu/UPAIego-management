@@ -223,6 +223,13 @@ export async function syncSceneTaskAssignments(groupId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** 管理员：为本工作群每个尚无绑定任务的场景岗位插入一条草稿（RPC，见 docs/SCENE_TASKS_BATCH_GENERATION_MIGRATION.sql）。返回新建条数。 */
+export async function batchGenerateSceneTasksForGroup(groupId: string): Promise<number> {
+  const { data, error } = await supabase.rpc("batch_generate_scene_tasks_for_group", { p_group_id: groupId });
+  if (error) throw new Error(error.message);
+  return typeof data === "number" ? data : Number(data ?? 0);
+}
+
 export async function listAssignmentsForSceneTask(sceneTaskId: string): Promise<SceneTaskAssignment[]> {
   const { data, error } = await supabase
     .from(STA)
