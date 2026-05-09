@@ -1,1 +1,162 @@
 @import "tailwindcss";
+
+@keyframes auth-mesh-move {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes auth-blob-1 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(24px, -18px) scale(1.05);
+  }
+}
+
+@keyframes auth-blob-2 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-28px, 22px) scale(1.08);
+  }
+}
+
+@keyframes auth-blob-3 {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  33% {
+    transform: translate(-16px, 12px);
+  }
+  66% {
+    transform: translate(20px, -10px);
+  }
+}
+
+@keyframes auth-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes auth-brand-shine {
+  0% {
+    background-position: 0% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes auth-sparkle {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.15);
+  }
+}
+
+.auth-root {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.auth-mesh {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, #e0e7ff 0%, #faf5ff 35%, #cffafe 70%, #e9d5ff 100%);
+  background-size: 240% 240%;
+  animation: auth-mesh-move 18s ease-in-out infinite alternate;
+}
+
+.auth-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(48px);
+  pointer-events: none;
+}
+
+.auth-blob--a {
+  width: 18rem;
+  height: 18rem;
+  left: -10%;
+  top: 22%;
+  background: rgba(99, 102, 241, 0.35);
+  animation: auth-blob-1 14s ease-in-out infinite;
+}
+
+.auth-blob--b {
+  width: 22rem;
+  height: 22rem;
+  right: -12%;
+  bottom: 18%;
+  background: rgba(168, 85, 247, 0.28);
+  animation: auth-blob-2 20s ease-in-out infinite;
+}
+
+.auth-blob--c {
+  width: 14rem;
+  height: 14rem;
+  left: 40%;
+  top: -8%;
+  background: rgba(56, 189, 248, 0.22);
+  animation: auth-blob-3 16s ease-in-out infinite;
+}
+
+.auth-card {
+  animation: auth-card-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-brand-title {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-size: 1.75rem;
+  line-height: 1.2;
+  margin-bottom: 0.35rem;
+  background: linear-gradient(105deg, #4338ca, #6d28d9, #c026d3, #2563eb, #4338ca);
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: auth-brand-shine 6s linear infinite;
+}
+
+.auth-sparkle {
+  display: inline-block;
+  margin-left: 0.15em;
+  animation: auth-sparkle 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-mesh,
+  .auth-blob--a,
+  .auth-blob--b,
+  .auth-blob--c,
+  .auth-brand-title,
+  .auth-sparkle {
+    animation: none;
+  }
+
+  .auth-card {
+    animation: auth-card-enter 0.01s ease-out both;
+  }
+}

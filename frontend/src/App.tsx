@@ -19,6 +19,7 @@ import AnnouncementsBanner from "./components/AnnouncementsBanner";
 import KpiBanner from "./components/KpiBanner";
 import GroupStatusBanner from "./components/GroupStatusBanner";
 import AccountDeleteModal from "./components/AccountDeleteModal";
+import { SITE_DISPLAY_NAME } from "./branding";
 
 const SIDEBAR_COLLAPSED_KEY = "upai:sidebar-collapsed";
 
@@ -274,10 +275,10 @@ export default function App() {
             className={`font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent truncate min-w-0 ${
               sidebarCollapsed ? "md:text-center md:text-sm flex-1" : "text-lg flex-1"
             }`}
-            title="UPAIego"
+            title={SITE_DISPLAY_NAME}
           >
-            <span className="md:hidden">UPAIego</span>
-            <span className="hidden md:inline">{sidebarCollapsed ? "U" : "UPAIego"}</span>
+            <span className="md:hidden">{SITE_DISPLAY_NAME}</span>
+            <span className="hidden md:inline">{sidebarCollapsed ? "u" : SITE_DISPLAY_NAME}</span>
           </Link>
           <button
             type="button"
