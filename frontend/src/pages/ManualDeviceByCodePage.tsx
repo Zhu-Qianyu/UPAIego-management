@@ -64,8 +64,8 @@ export default function ManualDeviceByCodePage() {
     return (
       <div className="max-w-lg mx-auto py-8 space-y-3">
         <p className="text-sm text-gray-700">登记编号格式无效（应为 10 位十六进制）。</p>
-        <Link to="/devices/manage?tab=offline" className="text-sm text-indigo-700 underline">
-          返回离线登记
+        <Link to="/devices/manage" className="text-sm text-indigo-700 underline">
+          返回设备管理
         </Link>
       </div>
     );
@@ -83,8 +83,8 @@ export default function ManualDeviceByCodePage() {
     return (
       <div className="max-w-lg mx-auto py-8 space-y-4">
         <p className="text-sm text-red-600">{err}</p>
-        <Link to="/devices/manage?tab=offline" className="text-sm text-indigo-700 underline">
-          返回离线登记
+        <Link to="/devices/manage" className="text-sm text-indigo-700 underline">
+          返回设备管理
         </Link>
       </div>
     );
@@ -94,8 +94,8 @@ export default function ManualDeviceByCodePage() {
     return (
       <div className="max-w-lg mx-auto py-8 space-y-3">
         <p className="text-sm text-gray-700">未找到该登记编号，或您不在对应工作群内。</p>
-        <Link to="/devices/manage?tab=offline" className="text-sm text-indigo-700 underline">
-          返回离线登记
+        <Link to="/devices/manage" className="text-sm text-indigo-700 underline">
+          返回设备管理
         </Link>
       </div>
     );
@@ -122,8 +122,8 @@ export default function ManualDeviceByCodePage() {
           </div>
         )}
       </div>
-      <Link to="/devices/manage?tab=offline" className="text-sm text-indigo-700 underline inline-block">
-        返回设备管理 · 离线登记
+      <Link to="/devices/manage" className="text-sm text-indigo-700 underline inline-block">
+        返回设备管理
       </Link>
     </div>
   );

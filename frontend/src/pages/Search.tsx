@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { searchDevices, type Device, type DeviceListScope } from "../api/client";
+import { formatManualTrackedDeviceLabel, searchManualTrackedDevices, type ManualTrackedDevice } from "../api/operations";
+import { fetchActiveGroupId } from "../api/groups";
 import { useAuth } from "../auth/AuthContext";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
@@ -13,6 +15,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Device[]>([]);
+  const [manualResults, setManualResults] = useState<ManualTrackedDevice[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
@@ -27,11 +30,18 @@ export default function Search({ embedded }: { embedded?: boolean }) {
     if (!query.trim()) return;
     setLoading(true);
     try {
-      const res = await searchDevices(query.trim(), { scope: searchScope });
+      const q = query.trim();
+      const groupId = await fetchActiveGroupId();
+      const [res, manuals] = await Promise.all([
+        searchDevices(q, { scope: searchScope }),
+        searchManualTrackedDevices(q, { scope: searchScope, groupId }),
+      ]);
       setResults(res.devices);
       setTotal(res.total);
+      setManualResults(manuals);
     } catch {
       setResults([]);
+      setManualResults([]);
       setTotal(0);
     } finally {
       setLoading(false);
@@ -44,11 +54,18 @@ export default function Search({ embedded }: { embedded?: boolean }) {
     setNowMs(Date.now());
     setLoading(true);
     try {
-      const res = await searchDevices(query.trim(), { scope: searchScope });
+      const q = query.trim();
+      const groupId = await fetchActiveGroupId();
+      const [res, manuals] = await Promise.all([
+        searchDevices(q, { scope: searchScope }),
+        searchManualTrackedDevices(q, { scope: searchScope, groupId }),
+      ]);
       setResults(res.devices);
       setTotal(res.total);
+      setManualResults(manuals);
     } catch {
       setResults([]);
+      setManualResults([]);
       setTotal(0);
     } finally {
       setLoading(false);
@@ -64,7 +81,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="按设备 ID、设备名称、序列号或备注搜索..."
+          placeholder="设备 ID、名称、序列号、备注，或离线登记编号 / UUID / 设备简称…"
           className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
         <button
@@ -81,18 +98,21 @@ export default function Search({ embedded }: { embedded?: boolean }) {
       {!loading && total !== null && (
         <>
           <p className="text-sm text-gray-500 mb-4">
-            共找到 {total} 条结果
+            在线设备 {total} 条；离线登记 {manualResults.length} 条
           </p>
 
-          {results.length === 0 ? (
+          {results.length === 0 && manualResults.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
-              没有匹配的设备。
+              没有匹配的设备或离线登记。
             </div>
           ) : (
+            <>
+            {results.length > 0 && (
             <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600 w-24">来源</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">设备名称</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">设备 ID</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">序列号</th>
@@ -113,6 +133,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
                 <tbody className="divide-y divide-gray-100">
                   {results.map((d) => (
                     <tr key={d.device_id} className="hover:bg-indigo-50/40 transition-colors">
+                      <td className="px-4 py-3 text-xs text-gray-500">在线</td>
                       <td className="px-4 py-3 font-medium text-indigo-700">{d.readable_name}</td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-500">{d.device_id}</td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-500">{d.serial_id ?? "-"}</td>
@@ -134,6 +155,47 @@ export default function Search({ embedded }: { embedded?: boolean }) {
                 </tbody>
               </table>
             </div>
+            )}
+
+            {manualResults.length > 0 && (
+              <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/80 shadow-sm">
+                <p className="text-xs font-semibold text-slate-700 px-4 py-2 border-b border-slate-200">离线登记（无心跳）</p>
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-100/80">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-600">设备类型</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-600">登记编号</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-600">内部 ID</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-600">状态</th>
+                      <th className="px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {manualResults.map((m) => (
+                      <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 font-medium text-slate-900">{formatManualTrackedDeviceLabel(m)}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-indigo-700">{m.public_code}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-gray-500 break-all max-w-[200px]">{m.id}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={m.status_ok ? "text-emerald-700" : "text-amber-800"}>
+                            {m.status_ok ? "正常" : "异常"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Link
+                            to={`/devices/manual/${encodeURIComponent(m.public_code)}`}
+                            className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
+                          >
+                            打开
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            </>
           )}
         </>
       )}

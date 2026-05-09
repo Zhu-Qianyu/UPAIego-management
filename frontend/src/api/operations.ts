@@ -332,6 +332,43 @@ export async function listManualTrackedDevices(groupId: string): Promise<ManualT
   return (data ?? []) as ManualTrackedDevice[];
 }
 
+/** 当前账号在 RLS 下可见的全部离线登记（管理员 fleet 总览等）。 */
+export async function listAllManualTrackedDevices(): Promise<ManualTrackedDevice[]> {
+  const { data, error } = await supabase
+    .from(MTD)
+    .select("*, party_demands(client_company,title,device_type)")
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ManualTrackedDevice[];
+}
+
+function manualTrackedRowMatchesQuery(row: ManualTrackedDevice, q: string): boolean {
+  const n = q.trim().toLowerCase();
+  if (!n) return false;
+  if (row.public_code.toLowerCase().includes(n)) return true;
+  if (row.id.toLowerCase().includes(n)) return true;
+  if (row.device_short_label.toLowerCase().includes(n)) return true;
+  if (formatManualTrackedDeviceLabel(row).toLowerCase().includes(n)) return true;
+  return false;
+}
+
+/** 按登记编号、内部 UUID、简称或展示类型筛选离线登记；fleet 为全量可见范围，own 为当前工作群。 */
+export async function searchManualTrackedDevices(
+  query: string,
+  opts: { scope: "own" | "fleet"; groupId: string | null }
+): Promise<ManualTrackedDevice[]> {
+  const q = query.trim();
+  if (!q) return [];
+  let rows: ManualTrackedDevice[];
+  if (opts.scope === "fleet") {
+    rows = await listAllManualTrackedDevices();
+  } else {
+    if (!opts.groupId) return [];
+    rows = await listManualTrackedDevices(opts.groupId);
+  }
+  return rows.filter((r) => manualTrackedRowMatchesQuery(r, q));
+}
+
 export async function getManualTrackedDeviceByPublicCode(publicCode: string): Promise<ManualTrackedDevice | null> {
   const code = publicCode.trim().toUpperCase();
   if (!/^[0-9A-F]{10}$/.test(code)) return null;

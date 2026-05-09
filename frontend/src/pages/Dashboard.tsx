@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { listDevices, type Device, type DeviceListScope } from "../api/client";
+import {
+  formatManualTrackedDeviceLabel,
+  listAllManualTrackedDevices,
+  listManualTrackedDevices,
+  type ManualTrackedDevice,
+} from "../api/operations";
+import { fetchActiveGroupId } from "../api/groups";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
@@ -39,6 +46,7 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
   );
 
   const [devices, setDevices] = useState<Device[]>([]);
+  const [manualRows, setManualRows] = useState<ManualTrackedDevice[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [statusFilter, setStatusFilter] = useState("");
@@ -75,6 +83,18 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
       });
       setDevices(res.devices);
       setTotal(res.total);
+      let manuals: ManualTrackedDevice[] = [];
+      try {
+        if (listScope === "fleet") {
+          manuals = await listAllManualTrackedDevices();
+        } else {
+          const gid = await fetchActiveGroupId();
+          if (gid) manuals = await listManualTrackedDevices(gid);
+        }
+      } catch {
+        manuals = [];
+      }
+      setManualRows(manuals);
       if (cacheKey) {
         writeRouteViewCache(cacheKey, {
           v: 1,
@@ -143,7 +163,15 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
             </p>
           )}
         </div>
-        <span className="text-sm text-gray-500 shrink-0">共 {total} 台设备</span>
+        <span className="text-sm text-gray-500 shrink-0 text-right">
+          在线 <span className="font-semibold text-gray-800">{total}</span> 台
+          {manualRows.length > 0 && (
+            <>
+              {" "}
+              · 离线登记 <span className="font-semibold text-slate-800">{manualRows.length}</span> 台
+            </>
+          )}
+        </span>
       </div>
 
       {/* Filters */}
@@ -173,7 +201,7 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
 
       {loading && devices.length === 0 ? (
         <Spinner />
-      ) : devices.length === 0 && !loading ? (
+      ) : devices.length === 0 && manualRows.length === 0 && !loading ? (
         <div className="text-center py-16 text-gray-400">
           <p className="text-lg">暂无设备数据</p>
           <Link to="/devices/manage" className="text-indigo-600 underline text-sm mt-2 inline-block">
@@ -182,6 +210,7 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
         </div>
       ) : (
         <>
+          {devices.length > 0 && (
           <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead className="bg-gray-50">
@@ -259,6 +288,56 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
               </tbody>
             </table>
           </div>
+          )}
+
+          {manualRows.length > 0 && (
+            <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/90 shadow-sm">
+              <p className="text-xs font-semibold text-slate-800 px-4 py-2 border-b border-slate-200 bg-slate-100/80">
+                离线登记（无网站心跳）
+              </p>
+              <table className="min-w-full divide-y divide-slate-200 text-sm bg-white">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">设备类型</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">登记编号</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">内部 ID</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">状态</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">登记时间</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {[...manualRows]
+                    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+                    .map((m) => (
+                      <tr key={m.id} className="hover:bg-slate-50/80">
+                        <td className="px-4 py-3 font-medium text-slate-900">{formatManualTrackedDeviceLabel(m)}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-indigo-700">{m.public_code}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-gray-500 max-w-[140px] truncate" title={m.id}>
+                          {m.id}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={m.status_ok ? "text-emerald-700" : "text-amber-800"}>
+                            {m.status_ok ? "正常" : "异常"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">
+                          {new Date(m.created_at).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Link
+                            to={`/devices/manual/${encodeURIComponent(m.public_code)}`}
+                            className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
+                          >
+                            打开
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {/* Pagination */}
           {totalPages > 1 && (
