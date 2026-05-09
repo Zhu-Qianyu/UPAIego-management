@@ -1,7 +1,9 @@
 import { supabase } from "./supabase";
+import type { SceneCategoryKey } from "../utils/sceneCategories";
 
 const PD = "party_demands";
 const SP = "scenario_positions";
+const STA = "scene_task_assignments";
 export const SNAPSHOT_BUCKET = "scenario-workstation-snapshots";
 
 export interface PartyDemand {
@@ -10,6 +12,11 @@ export interface PartyDemand {
   title: string;
   client_company: string | null;
   requirement_summary: string | null;
+  device_snapshot_bucket: string | null;
+  device_snapshot_path: string | null;
+  total_hours_required: number | null;
+  max_hours_per_scene: number;
+  scene_categories: string[];
   created_by: string;
   created_at: string;
 }
@@ -22,7 +29,22 @@ export interface ScenarioPosition {
   process_description: string | null;
   snapshot_bucket: string;
   snapshot_path: string;
+  scene_categories: string[];
+  address_province: string;
+  address_city: string;
+  address_district: string;
+  address_detail: string | null;
   created_by: string;
+  created_at: string;
+}
+
+export interface SceneTaskAssignment {
+  id: string;
+  scene_task_id: string;
+  scenario_position_id: string;
+  party_demand_id: string;
+  max_hours_cap: number;
+  executed_hours: number;
   created_at: string;
 }
 
@@ -39,7 +61,12 @@ export async function listPartyDemands(groupId: string): Promise<PartyDemand[]> 
 export async function createPartyDemand(row: {
   group_id: string;
   title: string;
-  client_company?: string;
+  client_company: string;
+  device_snapshot_bucket: string;
+  device_snapshot_path: string;
+  total_hours_required: number | null;
+  max_hours_per_scene: number;
+  scene_categories: string[];
   requirement_summary?: string;
 }): Promise<PartyDemand> {
   const u = (await supabase.auth.getUser()).data.user;
@@ -49,7 +76,12 @@ export async function createPartyDemand(row: {
     .insert({
       group_id: row.group_id,
       title: row.title.trim(),
-      client_company: row.client_company?.trim() || null,
+      client_company: row.client_company.trim(),
+      device_snapshot_bucket: row.device_snapshot_bucket,
+      device_snapshot_path: row.device_snapshot_path,
+      total_hours_required: row.total_hours_required,
+      max_hours_per_scene: row.max_hours_per_scene,
+      scene_categories: row.scene_categories,
       requirement_summary: row.requirement_summary?.trim() || null,
       created_by: u.id,
     })
@@ -80,7 +112,23 @@ export async function uploadWorkstationSnapshot(
 ): Promise<{ path: string; bucket: string }> {
   const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
   const safe = ["jpg", "jpeg", "png", "webp"].includes(ext) ? ext : "jpg";
-  const name = `${groupId}/${crypto.randomUUID()}.${safe}`;
+  const name = `${groupId}/workstation/${crypto.randomUUID()}.${safe}`;
+  const { error: upErr } = await supabase.storage.from(SNAPSHOT_BUCKET).upload(name, file, {
+    cacheControl: "3600",
+    upsert: false,
+  });
+  if (upErr) throw new Error(upErr.message);
+  return { path: name, bucket: SNAPSHOT_BUCKET };
+}
+
+/** 甲方业务「设备快照」：与工位快照同一 bucket，路径前缀便于区分。 */
+export async function uploadPartyDeviceSnapshot(
+  groupId: string,
+  file: File
+): Promise<{ path: string; bucket: string }> {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const safe = ["jpg", "jpeg", "png", "webp"].includes(ext) ? ext : "jpg";
+  const name = `${groupId}/party-device/${crypto.randomUUID()}.${safe}`;
   const { error: upErr } = await supabase.storage.from(SNAPSHOT_BUCKET).upload(name, file, {
     cacheControl: "3600",
     upsert: false,
@@ -101,6 +149,11 @@ export async function createScenarioPosition(row: {
   process_description?: string;
   party_demand_id?: string | null;
   snapshot_path: string;
+  scene_categories: SceneCategoryKey[];
+  address_province: string;
+  address_city: string;
+  address_district: string;
+  address_detail?: string;
 }): Promise<ScenarioPosition> {
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) throw new Error("未登录");
@@ -113,6 +166,11 @@ export async function createScenarioPosition(row: {
       party_demand_id: row.party_demand_id ?? null,
       snapshot_path: row.snapshot_path,
       snapshot_bucket: SNAPSHOT_BUCKET,
+      scene_categories: row.scene_categories,
+      address_province: row.address_province.trim(),
+      address_city: row.address_city.trim(),
+      address_district: row.address_district.trim(),
+      address_detail: row.address_detail?.trim() || null,
       created_by: u.id,
     })
     .select()
@@ -123,5 +181,25 @@ export async function createScenarioPosition(row: {
 
 export async function deleteScenarioPosition(id: string): Promise<void> {
   const { error } = await supabase.from(SP).delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function syncSceneTaskAssignments(groupId: string): Promise<void> {
+  const { error } = await supabase.rpc("sync_scene_task_assignments", { p_group_id: groupId });
+  if (error) throw new Error(error.message);
+}
+
+export async function listAssignmentsForSceneTask(sceneTaskId: string): Promise<SceneTaskAssignment[]> {
+  const { data, error } = await supabase
+    .from(STA)
+    .select("*")
+    .eq("scene_task_id", sceneTaskId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as SceneTaskAssignment[];
+}
+
+export async function updateAssignmentExecutedHours(id: string, executedHours: number): Promise<void> {
+  const { error } = await supabase.from(STA).update({ executed_hours: executedHours }).eq("id", id);
   if (error) throw new Error(error.message);
 }

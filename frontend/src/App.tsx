@@ -68,6 +68,7 @@ function navForRole(role: UserRole): { to: string; label: string }[] {
     ],
     collection_executor: [
       { to: "/map", label: "数采地图" },
+      { to: "/scene", label: "场景采集" },
       { to: "/group", label: "群组" },
     ],
   };
@@ -419,7 +420,7 @@ export default function App() {
           <Route
             path="/scene"
             element={
-              <RoleRoute allow={["admin", "scene_operator"]}>
+              <RoleRoute allow={["admin", "scene_operator", "collection_executor"]}>
                 <SceneTasksPage />
               </RoleRoute>
             }

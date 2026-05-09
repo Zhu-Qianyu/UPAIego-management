@@ -16,6 +16,26 @@ L.Icon.Default.mergeOptions({
 
 const CN_CENTER: L.LatLngExpression = [35.0, 105.0];
 
+/** 默认 OSM；国内若底图全灰，可在 .env 设 VITE_MAP_TILE_URL 为下方 Esri 示例（无需 Key）。 */
+const DEFAULT_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+const DEFAULT_TILE_ATTRIB =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+
+function tileLayerOptions(url: string): L.TileLayerOptions {
+  const envAttrib = (import.meta.env.VITE_MAP_TILE_ATTRIBUTION as string | undefined)?.trim();
+  const attribution =
+    envAttrib ||
+    (url.includes("openstreetmap") ? DEFAULT_TILE_ATTRIB
+      : url.includes("arcgisonline.com") ? "Tiles &copy; Esri"
+      : "Map");
+  const opt: L.TileLayerOptions = { attribution };
+  if (url.includes("{s}")) {
+    if (url.includes("openstreetmap")) opt.subdomains = "abc";
+    else if (url.includes("cartocdn")) opt.subdomains = "abcd";
+  }
+  return opt;
+}
+
 function storageRatio(d: Device): number {
   const cap = Number(d.storage_capacity_mb) || 1024;
   const used = Number(d.storage_used_mb) || 0;
@@ -40,6 +60,7 @@ export default function ExecutorMapPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  const [tileHint, setTileHint] = useState("");
   const fetchedOnceRef = useRef(false);
 
   useLayoutEffect(() => {
@@ -77,12 +98,26 @@ export default function ExecutorMapPage() {
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current).setView(CN_CENTER, 4);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap",
-    }).addTo(map);
+    const tileUrl = (import.meta.env.VITE_MAP_TILE_URL as string | undefined)?.trim() || DEFAULT_TILE_URL;
+    const base = L.tileLayer(tileUrl, tileLayerOptions(tileUrl)).addTo(map);
+    let tileErrors = 0;
+    base.on("tileerror", () => {
+      tileErrors += 1;
+      if (tileErrors === 3) {
+        setTileHint(
+          "底图瓦片多次加载失败（常见于网络无法访问 OpenStreetMap）。请在 frontend/.env 设置 VITE_MAP_TILE_URL 为文档中的备用地址后重启 dev。"
+        );
+      }
+    });
     markersLayer.current = L.layerGroup().addTo(map);
     mapRef.current = map;
+    const relayout = () => {
+      map.invalidateSize({ animate: false });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(relayout));
+    window.addEventListener("resize", relayout);
     return () => {
+      window.removeEventListener("resize", relayout);
       map.remove();
       mapRef.current = null;
       markersLayer.current = null;
@@ -149,6 +184,11 @@ export default function ExecutorMapPage() {
       </div>
 
       {err && <div className="mb-4 text-sm text-red-600">{err}</div>}
+      {tileHint && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          {tileHint}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 rounded-2xl overflow-hidden border border-gray-200 shadow-sm h-[420px] min-h-[320px]">

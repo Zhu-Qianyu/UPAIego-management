@@ -10,6 +10,7 @@ export interface SceneTask {
   created_by: string;
   created_at: string;
   due_at: string | null;
+  group_id: string | null;
 }
 
 export interface CollectionRequirement {
@@ -23,10 +24,21 @@ export interface CollectionRequirement {
   created_at: string;
 }
 
-export async function listSceneTasks(): Promise<SceneTask[]> {
-  const { data, error } = await supabase.from("scene_tasks").select("*").order("created_at", { ascending: false });
+export async function listSceneTasks(opts: { groupId: string | null; isAdmin: boolean }): Promise<SceneTask[]> {
+  let q = supabase.from("scene_tasks").select("*").order("created_at", { ascending: false });
+  if (!opts.isAdmin) {
+    if (!opts.groupId) return [];
+    q = q.eq("group_id", opts.groupId);
+  }
+  const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []) as SceneTask[];
+}
+
+export async function getSceneTask(id: string): Promise<SceneTask | null> {
+  const { data, error } = await supabase.from("scene_tasks").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data ?? null) as SceneTask | null;
 }
 
 export async function createSceneTask(input: {
@@ -34,6 +46,7 @@ export async function createSceneTask(input: {
   description?: string;
   status?: SceneTaskStatus;
   due_at?: string | null;
+  group_id: string;
 }): Promise<SceneTask> {
   const user = (await supabase.auth.getUser()).data.user;
   if (!user) throw new Error("未登录");
@@ -44,6 +57,7 @@ export async function createSceneTask(input: {
       description: input.description ?? null,
       status: input.status ?? "draft",
       due_at: input.due_at ?? null,
+      group_id: input.group_id,
       created_by: user.id,
     })
     .select()
