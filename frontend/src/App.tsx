@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Register from "./pages/Register";
@@ -206,14 +206,51 @@ export default function App() {
   }
 
   const navItems = navForRole(profile.role);
+  const [navMenuOpen, setNavMenuOpen] = useState(false);
+  const navShellRef = useRef<HTMLNavElement | null>(null);
+
+  useEffect(() => {
+    setNavMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!navMenuOpen) return;
+    function onPointerDown(e: PointerEvent) {
+      const el = navShellRef.current;
+      if (el && !el.contains(e.target as Node)) setNavMenuOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [navMenuOpen]);
+
+  useEffect(() => {
+    if (!navMenuOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setNavMenuOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navMenuOpen]);
+
+  const homeTo =
+    profile.role === "admin"
+      ? "/admin"
+      : profile.role === "scene_operator"
+        ? "/scene"
+        : profile.role === "collection_executor"
+          ? "/map"
+          : "/";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-50 via-slate-50 to-gray-50">
-      <nav className="bg-white/90 backdrop-blur border-b border-indigo-100 shadow-sm sticky top-0 z-20">
+      <nav
+        ref={navShellRef}
+        className="bg-white/90 backdrop-blur border-b border-indigo-100 shadow-sm sticky top-0 z-20"
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-3">
             <Link
-              to={profile.role === "admin" ? "/admin" : profile.role === "scene_operator" ? "/scene" : profile.role === "collection_executor" ? "/map" : "/"}
+              to={homeTo}
               className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent shrink-0"
             >
               UPAIego
@@ -244,27 +281,61 @@ export default function App() {
                   {ROLE_LABELS[profile.role]}
                 </span>
               </div>
-              <div className="flex items-center gap-1 overflow-x-auto max-w-[min(100%,42vw)] sm:max-w-[min(100%,52vw)] md:max-w-none min-w-0 [scrollbar-width:thin]">
-                {navItems.map((link) => (
-                  <Link
-                    key={link.to}
-                    to={link.to}
-                    className={`shrink-0 px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
-                      location.pathname === link.to
-                        ? "bg-indigo-100 text-indigo-700"
-                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-              </div>
+              <button
+                type="button"
+                aria-expanded={navMenuOpen}
+                aria-controls="app-nav-menu"
+                id="app-nav-menu-trigger"
+                onClick={() => setNavMenuOpen((o) => !o)}
+                className="flex items-center gap-1.5 shrink-0 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium text-indigo-800 bg-indigo-50 ring-1 ring-indigo-200/80 hover:bg-indigo-100 transition-colors"
+              >
+                功能菜单
+                <svg
+                  className={`w-4 h-4 text-indigo-600 transition-transform ${navMenuOpen ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
               <AccountNavActions
                 onOpenDelete={() => setAccountDeleteOpen(true)}
                 onLogout={handleLogout}
               />
             </div>
           </div>
+
+          {navMenuOpen && (
+            <div
+              id="app-nav-menu"
+              role="region"
+              aria-labelledby="app-nav-menu-trigger"
+              className="border-t border-indigo-100/90 pb-3 pt-1 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 bg-white/95"
+            >
+              <ul className="flex flex-col gap-0.5 max-h-[min(70vh,28rem)] overflow-y-auto">
+                {navItems.map((link) => {
+                  const active = location.pathname === link.to;
+                  return (
+                    <li key={link.to}>
+                      <Link
+                        to={link.to}
+                        onClick={() => setNavMenuOpen(false)}
+                        className={`block rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                          active
+                            ? "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200/80"
+                            : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                        }`}
+                      >
+                        {link.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       </nav>
 
