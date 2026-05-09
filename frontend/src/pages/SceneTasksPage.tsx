@@ -870,7 +870,7 @@ function SceneTasksInner({
     if (fetchedOnceRef.current) setRefreshing(true);
     else setLoading(true);
     try {
-      const t = await listSceneTasks({ groupId, isAdmin });
+      const t = await listSceneTasks({ groupId });
       const visible = isExecutorView ? t.filter((x) => x.status === "published") : t;
       setTasks(visible);
       setDueByTaskId((prev) => {
@@ -888,7 +888,7 @@ function SceneTasksInner({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [groupId, isAdmin, isExecutorView, loadAssignments]);
+  }, [groupId, isExecutorView, loadAssignments]);
 
   useEffect(() => {
     if (!innerCacheKey) return;
@@ -1038,8 +1038,15 @@ function SceneTasksInner({
         )}
 
         {tasks.length === 0 && !loading && (
-          <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">
-            暂无场景任务。
+          <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center space-y-1">
+            <span className="block font-medium text-gray-600">暂无场景任务</span>
+            <span className="block text-xs leading-relaxed">
+              {isExecutorView
+                ? "仅展示已发布任务；若管理员刚创建草稿，需发布后才可见。请确认当前工作群与任务所属群一致。"
+                : isAdmin
+                  ? "请在上文选择场景岗位并创建草稿。若数据库中旧任务的 group_id 为空，需在库中补全后才会出现在本群列表。"
+                  : "任务由管理员创建；你可协助发布与维护截止时间。若仅有草稿，列表仍会为空直至发布。"}
+            </span>
           </p>
         )}
 

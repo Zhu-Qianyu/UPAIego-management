@@ -26,13 +26,13 @@ export interface CollectionRequirement {
   created_at: string;
 }
 
-export async function listSceneTasks(opts: { groupId: string | null; isAdmin: boolean }): Promise<SceneTask[]> {
-  let q = supabase.from("scene_tasks").select("*").order("created_at", { ascending: false });
-  if (!opts.isAdmin) {
-    if (!opts.groupId) return [];
-    q = q.eq("group_id", opts.groupId);
-  }
-  const { data, error } = await q;
+/** 始终按当前工作群过滤，与创建任务时的 group_id 一致；管理员不再拉全库以免与页面上下文错位。 */
+export async function listSceneTasks(opts: { groupId: string }): Promise<SceneTask[]> {
+  const { data, error } = await supabase
+    .from("scene_tasks")
+    .select("*")
+    .eq("group_id", opts.groupId)
+    .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as SceneTask[];
 }
