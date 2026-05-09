@@ -19,6 +19,7 @@ import type { UserRole } from "./types/roles";
 import RoleRoute from "./components/RoleRoute";
 import AnnouncementsBanner from "./components/AnnouncementsBanner";
 import GroupStatusBanner from "./components/GroupStatusBanner";
+import AccountDeleteModal from "./components/AccountDeleteModal";
 
 function navForRole(role: UserRole): { to: string; label: string }[] {
   const byRole: Record<UserRole, { to: string; label: string }[]> = {
@@ -129,6 +130,7 @@ export default function App() {
   const { session, profile, loading } = useAuth();
   const location = useLocation();
   const isAuthed = !!session?.user;
+  const [accountDeleteOpen, setAccountDeleteOpen] = useState(false);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -193,6 +195,14 @@ export default function App() {
                 </Link>
               ))}
               <button
+                type="button"
+                onClick={() => setAccountDeleteOpen(true)}
+                className="px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700"
+              >
+                注销账号
+              </button>
+              <button
+                type="button"
                 onClick={handleLogout}
                 className="px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
               >
@@ -202,6 +212,12 @@ export default function App() {
           </div>
         </div>
       </nav>
+
+      <AccountDeleteModal
+        open={accountDeleteOpen}
+        onClose={() => setAccountDeleteOpen(false)}
+        email={session?.user?.email}
+      />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <GroupStatusBanner />
