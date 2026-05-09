@@ -4,7 +4,9 @@ import QRCode from "qrcode";
 import {
   formatManualTrackedDeviceLabel,
   getManualTrackedDeviceByPublicCode,
+  normalizeExternalDeviceStatus,
   updateManualTrackedDevice,
+  type ExternalDeviceStatus,
   type ManualTrackedDevice,
 } from "../api/operations";
 import Spinner from "../components/Spinner";
@@ -21,7 +23,7 @@ export default function ManualDeviceByCodePage() {
   const [row, setRow] = useState<ManualTrackedDevice | null | undefined>(undefined);
   const [qr, setQr] = useState<string | null>(null);
   const [err, setErr] = useState("");
-  const [localOk, setLocalOk] = useState(true);
+  const [localStatus, setLocalStatus] = useState<ExternalDeviceStatus>("normal");
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusErr, setStatusErr] = useState("");
 
@@ -69,8 +71,8 @@ export default function ManualDeviceByCodePage() {
   }, [url, row]);
 
   useEffect(() => {
-    if (row && row.status_ok !== undefined) setLocalOk(row.status_ok);
-  }, [row?.id, row?.status_ok, row?.updated_at]);
+    if (row) setLocalStatus(normalizeExternalDeviceStatus(row.external_status));
+  }, [row?.id, row?.external_status, row?.updated_at]);
 
   if (codeInvalid) {
     return (
@@ -113,14 +115,15 @@ export default function ManualDeviceByCodePage() {
     );
   }
 
-  const statusDirty = row && localOk !== row.status_ok;
+  const statusDirty =
+    row && normalizeExternalDeviceStatus(localStatus) !== normalizeExternalDeviceStatus(row.external_status);
 
   async function saveStatus() {
     if (!row) return;
     setStatusErr("");
     setStatusBusy(true);
     try {
-      await updateManualTrackedDevice(row.id, { status_ok: localOk });
+      await updateManualTrackedDevice(row.id, { external_status: normalizeExternalDeviceStatus(localStatus) });
       const next = await getManualTrackedDeviceByPublicCode(normalized);
       setRow(next);
     } catch (e: unknown) {
@@ -140,12 +143,13 @@ export default function ManualDeviceByCodePage() {
           <p className="text-sm text-gray-700 font-medium">设备状态</p>
           <div className="flex flex-wrap items-center gap-2">
             <select
-              value={localOk ? "ok" : "fault"}
-              onChange={(e) => setLocalOk(e.target.value === "ok")}
+              value={localStatus}
+              onChange={(e) => setLocalStatus(normalizeExternalDeviceStatus(e.target.value))}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
             >
-              <option value="ok">正常</option>
+              <option value="normal">正常</option>
               <option value="fault">异常（据人员反馈）</option>
+              <option value="factory_repair">返厂维修</option>
             </select>
             <button
               type="button"

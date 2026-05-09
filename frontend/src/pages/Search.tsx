@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { searchDevices, type Device, type DeviceListScope } from "../api/client";
-import { formatManualTrackedDeviceLabel, searchManualTrackedDevices, type ManualTrackedDevice } from "../api/operations";
+import {
+  externalDeviceStatusAttentionRank,
+  formatManualTrackedDeviceLabel,
+  labelExternalDeviceStatus,
+  searchManualTrackedDevices,
+  type ManualTrackedDevice,
+} from "../api/operations";
 import { fetchActiveGroupId } from "../api/groups";
 import { useAuth } from "../auth/AuthContext";
 import StatusBadge from "../components/StatusBadge";
@@ -179,7 +185,9 @@ export default function Search({ embedded }: { embedded?: boolean }) {
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {[...manualResults]
                       .sort((a, b) => {
-                        if (a.status_ok !== b.status_ok) return (a.status_ok ? 1 : 0) - (b.status_ok ? 1 : 0);
+                        const ra = externalDeviceStatusAttentionRank(a.external_status);
+                        const rb = externalDeviceStatusAttentionRank(b.external_status);
+                        if (rb !== ra) return rb - ra;
                         return b.created_at.localeCompare(a.created_at);
                       })
                       .map((m) => (
@@ -188,8 +196,16 @@ export default function Search({ embedded }: { embedded?: boolean }) {
                         <td className="px-4 py-3 font-mono text-xs text-indigo-700">{m.public_code}</td>
                         <td className="px-4 py-3 font-mono text-xs text-gray-500 break-all max-w-[200px]">{m.id}</td>
                         <td className="px-4 py-3 text-sm">
-                          <span className={m.status_ok ? "text-emerald-700" : "text-amber-800"}>
-                            {m.status_ok ? "正常" : "异常"}
+                          <span
+                            className={
+                              m.external_status === "normal"
+                                ? "text-emerald-700"
+                                : m.external_status === "fault"
+                                  ? "text-amber-800"
+                                  : "text-violet-800"
+                            }
+                          >
+                            {labelExternalDeviceStatus(m.external_status)}
                           </span>
                         </td>
                         <td className="px-4 py-3">

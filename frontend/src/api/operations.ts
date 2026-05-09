@@ -296,6 +296,39 @@ export async function updateAssignmentExecutedHours(id: string, executedHours: n
 
 const MTD = "manual_tracked_devices";
 
+export const EXTERNAL_DEVICE_STATUSES = ["normal", "fault", "factory_repair"] as const;
+export type ExternalDeviceStatus = (typeof EXTERNAL_DEVICE_STATUSES)[number];
+
+export function isExternalDeviceStatus(v: string | null | undefined): v is ExternalDeviceStatus {
+  return v !== undefined && v !== null && (EXTERNAL_DEVICE_STATUSES as readonly string[]).includes(v);
+}
+
+export function normalizeExternalDeviceStatus(v: string | null | undefined): ExternalDeviceStatus {
+  if (isExternalDeviceStatus(v)) return v;
+  return "normal";
+}
+
+export function labelExternalDeviceStatus(s: string | null | undefined): string {
+  switch (normalizeExternalDeviceStatus(s)) {
+    case "normal":
+      return "正常";
+    case "fault":
+      return "异常";
+    case "factory_repair":
+      return "返厂维修";
+    default:
+      return "正常";
+  }
+}
+
+/** 列表排序：数值越大越靠前（需关注）。 */
+export function externalDeviceStatusAttentionRank(s: string | null | undefined): number {
+  const x = normalizeExternalDeviceStatus(s);
+  if (x === "factory_repair") return 3;
+  if (x === "fault") return 2;
+  return 1;
+}
+
 export type ManualTrackedPartyRow = {
   client_company: string | null;
   title: string;
@@ -307,7 +340,7 @@ export interface ManualTrackedDevice {
   group_id: string;
   party_demand_id: string;
   device_short_label: string;
-  status_ok: boolean;
+  external_status: ExternalDeviceStatus;
   public_code: string;
   created_by: string;
   created_at: string;
@@ -349,6 +382,7 @@ function manualTrackedRowMatchesQuery(row: ManualTrackedDevice, q: string): bool
   if (row.id.toLowerCase().includes(n)) return true;
   if (row.device_short_label.toLowerCase().includes(n)) return true;
   if (formatManualTrackedDeviceLabel(row).toLowerCase().includes(n)) return true;
+  if (labelExternalDeviceStatus(row.external_status).toLowerCase().includes(n)) return true;
   return false;
 }
 
@@ -394,7 +428,7 @@ export async function createManualTrackedDevice(input: {
       group_id: input.group_id,
       party_demand_id: input.party_demand_id,
       device_short_label: input.device_short_label.trim(),
-      status_ok: true,
+      external_status: "normal",
       created_by: u.id,
     })
     .select("*, party_demands(client_company,title,device_type)")
@@ -405,10 +439,12 @@ export async function createManualTrackedDevice(input: {
 
 export async function updateManualTrackedDevice(
   id: string,
-  patch: Partial<Pick<ManualTrackedDevice, "status_ok" | "device_short_label">>
+  patch: Partial<Pick<ManualTrackedDevice, "external_status" | "device_short_label">>
 ): Promise<void> {
   const payload: Record<string, unknown> = {};
-  if (patch.status_ok !== undefined) payload.status_ok = patch.status_ok;
+  if (patch.external_status !== undefined) {
+    payload.external_status = normalizeExternalDeviceStatus(patch.external_status);
+  }
   if (patch.device_short_label !== undefined) payload.device_short_label = patch.device_short_label.trim();
   if (Object.keys(payload).length === 0) return;
   const { error } = await supabase.from(MTD).update(payload).eq("id", id);

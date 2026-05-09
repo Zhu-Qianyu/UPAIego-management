@@ -1,5 +1,6 @@
 -- 无网站心跳的第三方设备：运维员手动登记；登记编号(public_code)用于二维码；设备类型展示为「甲方公司名 · 设备简称」。
 -- Prerequisite: work_groups, party_demands, policy_work_group_accessible, current_profile_role().
+-- After this script, run EXTERNAL_DEVICE_STATUS_MIGRATION.sql to replace status_ok with external_status (normal / fault / factory_repair).
 
 CREATE TABLE IF NOT EXISTS public.manual_tracked_devices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

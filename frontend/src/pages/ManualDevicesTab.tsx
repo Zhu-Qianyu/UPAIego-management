@@ -7,6 +7,8 @@ import {
   listManualTrackedDevices,
   listPartyDemands,
   updateManualTrackedDevice,
+  normalizeExternalDeviceStatus,
+  type ExternalDeviceStatus,
   type ManualTrackedDevice,
   type PartyDemand,
 } from "../api/operations";
@@ -26,7 +28,7 @@ function ManualTrackedDeviceRow({
   row: ManualTrackedDevice;
   onChanged: () => void;
 }) {
-  const [localOk, setLocalOk] = useState(row.status_ok);
+  const [localStatus, setLocalStatus] = useState<ExternalDeviceStatus>(normalizeExternalDeviceStatus(row.external_status));
   const [qr, setQr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -34,8 +36,8 @@ function ManualTrackedDeviceRow({
   const url = useMemo(() => stickerLandingUrl(row.public_code), [row.public_code]);
 
   useEffect(() => {
-    setLocalOk(row.status_ok);
-  }, [row.status_ok, row.id, row.updated_at]);
+    setLocalStatus(normalizeExternalDeviceStatus(row.external_status));
+  }, [row.external_status, row.id, row.updated_at]);
 
   useEffect(() => {
     let cancel = false;
@@ -51,13 +53,13 @@ function ManualTrackedDeviceRow({
     };
   }, [url]);
 
-  const dirty = localOk !== row.status_ok;
+  const dirty = normalizeExternalDeviceStatus(localStatus) !== normalizeExternalDeviceStatus(row.external_status);
 
   async function saveStatus() {
     setErr("");
     setBusy(true);
     try {
-      await updateManualTrackedDevice(row.id, { status_ok: localOk });
+      await updateManualTrackedDevice(row.id, { external_status: normalizeExternalDeviceStatus(localStatus) });
       await onChanged();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "保存失败");
@@ -86,14 +88,15 @@ function ManualTrackedDeviceRow({
         </p>
         <p className="text-xs text-gray-400 font-mono break-all">内部 ID：{row.id}</p>
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          <span className="text-sm text-gray-700">运行状态</span>
+          <span className="text-sm text-gray-700">设备状态</span>
           <select
-            value={localOk ? "ok" : "fault"}
-            onChange={(e) => setLocalOk(e.target.value === "ok")}
+            value={localStatus}
+            onChange={(e) => setLocalStatus(normalizeExternalDeviceStatus(e.target.value))}
             className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm bg-white"
           >
-            <option value="ok">正常</option>
+            <option value="normal">正常</option>
             <option value="fault">异常（据人员反馈）</option>
+            <option value="factory_repair">返厂维修</option>
           </select>
           <button
             type="button"

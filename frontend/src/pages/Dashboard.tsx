@@ -2,7 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "reac
 import { Link, useLocation } from "react-router-dom";
 import { listDevices, type Device, type DeviceListScope } from "../api/client";
 import {
+  externalDeviceStatusAttentionRank,
   formatManualTrackedDeviceLabel,
+  labelExternalDeviceStatus,
   listAllManualTrackedDevices,
   listManualTrackedDevices,
   type ManualTrackedDevice,
@@ -165,7 +167,7 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
             {listScope === "fleet" ? "全平台设备总览" : "设备总览"}
           </h1>
           <p className="text-xs text-gray-500 mt-1 max-w-xl">
-            在线设备列表已优先展示<strong>心跳离线</strong>、<strong>非 active 状态</strong>与<strong>待校准/需重校准</strong>项；外部设备列表优先展示<strong>状态异常</strong>项。
+            在线设备列表已优先展示<strong>心跳离线</strong>、<strong>非 active 状态</strong>与<strong>待校准/需重校准</strong>项；外部设备优先展示<strong>返厂维修</strong>、<strong>异常</strong>，其次为正常。
           </p>
           {listScope === "fleet" && (
             <p className="text-xs text-gray-500 mt-1 max-w-xl">
@@ -319,7 +321,9 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
                 <tbody className="divide-y divide-slate-100">
                   {[...manualRows]
                     .sort((a, b) => {
-                      if (a.status_ok !== b.status_ok) return (a.status_ok ? 1 : 0) - (b.status_ok ? 1 : 0);
+                      const ra = externalDeviceStatusAttentionRank(a.external_status);
+                      const rb = externalDeviceStatusAttentionRank(b.external_status);
+                      if (rb !== ra) return rb - ra;
                       return b.created_at.localeCompare(a.created_at);
                     })
                     .map((m) => (
@@ -330,8 +334,16 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
                           {m.id}
                         </td>
                         <td className="px-4 py-3 text-sm">
-                          <span className={m.status_ok ? "text-emerald-700" : "text-amber-800"}>
-                            {m.status_ok ? "正常" : "异常"}
+                          <span
+                            className={
+                              m.external_status === "normal"
+                                ? "text-emerald-700"
+                                : m.external_status === "fault"
+                                  ? "text-amber-800"
+                                  : "text-violet-800"
+                            }
+                          >
+                            {labelExternalDeviceStatus(m.external_status)}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-gray-500 text-xs">
