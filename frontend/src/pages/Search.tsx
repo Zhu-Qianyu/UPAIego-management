@@ -7,7 +7,11 @@ import { useAuth } from "../auth/AuthContext";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
 import DeviceOnlineRefreshButton from "../components/DeviceOnlineRefreshButton";
-import { getEffectiveDeviceStatus, resetDeviceConnectivityHysteresis } from "../utils/deviceStatus";
+import {
+  getEffectiveDeviceStatus,
+  onlineDeviceAttentionRank,
+  resetDeviceConnectivityHysteresis,
+} from "../utils/deviceStatus";
 
 export default function Search({ embedded }: { embedded?: boolean }) {
   const { profile } = useAuth();
@@ -81,7 +85,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="设备 ID、名称、序列号、备注，或离线登记编号 / UUID / 设备简称…"
+          placeholder="设备 ID、名称、序列号、备注，或外部设备登记编号 / UUID / 设备简称…"
           className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
         <button
@@ -98,12 +102,12 @@ export default function Search({ embedded }: { embedded?: boolean }) {
       {!loading && total !== null && (
         <>
           <p className="text-sm text-gray-500 mb-4">
-            在线设备 {total} 条；离线登记 {manualResults.length} 条
+            在线设备 {total} 条；外部设备 {manualResults.length} 条
           </p>
 
           {results.length === 0 && manualResults.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
-              没有匹配的设备或离线登记。
+              没有匹配的设备或外部设备。
             </div>
           ) : (
             <>
@@ -131,7 +135,9 @@ export default function Search({ embedded }: { embedded?: boolean }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {results.map((d) => (
+                  {[...results]
+                    .sort((a, b) => onlineDeviceAttentionRank(b, nowMs) - onlineDeviceAttentionRank(a, nowMs))
+                    .map((d) => (
                     <tr key={d.device_id} className="hover:bg-indigo-50/40 transition-colors">
                       <td className="px-4 py-3 text-xs text-gray-500">在线</td>
                       <td className="px-4 py-3 font-medium text-indigo-700">{d.readable_name}</td>
@@ -159,7 +165,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
 
             {manualResults.length > 0 && (
               <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/80 shadow-sm">
-                <p className="text-xs font-semibold text-slate-700 px-4 py-2 border-b border-slate-200">离线登记（无心跳）</p>
+                <p className="text-xs font-semibold text-slate-700 px-4 py-2 border-b border-slate-200">外部设备</p>
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-100/80">
                     <tr>
@@ -171,7 +177,12 @@ export default function Search({ embedded }: { embedded?: boolean }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {manualResults.map((m) => (
+                    {[...manualResults]
+                      .sort((a, b) => {
+                        if (a.status_ok !== b.status_ok) return (a.status_ok ? 1 : 0) - (b.status_ok ? 1 : 0);
+                        return b.created_at.localeCompare(a.created_at);
+                      })
+                      .map((m) => (
                       <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-4 py-3 font-medium text-slate-900">{formatManualTrackedDeviceLabel(m)}</td>
                         <td className="px-4 py-3 font-mono text-xs text-indigo-700">{m.public_code}</td>

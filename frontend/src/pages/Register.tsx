@@ -145,9 +145,9 @@ export default function Register({ embedded }: { embedded?: boolean }) {
       </div>
 
       <div className="mt-10 pt-8 border-t border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">无网站心跳的设备（离线登记）</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">外部设备（无法连接本站）</h2>
         <p className="text-sm text-gray-500 mb-4">
-          第三方设备无法接入本站心跳时，在此登记：系统分配<strong>登记编号与二维码</strong>，类型由<strong>甲方业务 + 设备简称</strong>组成；运维据人员反馈更新是否正常。
+          第三方设备无法接入本站心跳时，在此登记为<strong>外部设备</strong>：系统分配<strong>登记编号与二维码</strong>，类型由<strong>甲方业务 + 设备简称</strong>组成；可在详情页或此处更新运行状态。
         </p>
         <ManualDevicesTab />
       </div>

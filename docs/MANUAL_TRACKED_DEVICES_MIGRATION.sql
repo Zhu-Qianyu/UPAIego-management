@@ -174,6 +174,6 @@ CREATE POLICY "mtd_delete"
     )
   );
 
-COMMENT ON TABLE public.manual_tracked_devices IS 'Devices without site heartbeat: operator-maintained status and sticker code (QR).';
+COMMENT ON TABLE public.manual_tracked_devices IS '外部设备（无法连接本站心跳）：运维维护状态与贴签登记编号(QR)。';
 COMMENT ON COLUMN public.manual_tracked_devices.public_code IS '10-char hex sticker id; immutable after insert.';
 COMMENT ON COLUMN public.manual_tracked_devices.device_short_label IS 'Short label combined with party demand company for display type.';

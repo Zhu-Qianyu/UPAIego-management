@@ -76,7 +76,7 @@ function ManualTrackedDeviceRow({
             二维码生成中…
           </div>
         )}
-        <p className="text-[10px] text-gray-400 text-center max-w-[10rem] break-all">扫码打开本设备页</p>
+        <p className="text-[10px] text-gray-400 text-center max-w-[10rem] break-all">扫码打开外部设备详情</p>
       </div>
       <div className="flex-1 min-w-0 space-y-2">
         <p className="font-medium text-gray-900">{formatManualTrackedDeviceLabel(row)}</p>
@@ -110,7 +110,7 @@ function ManualTrackedDeviceRow({
             type="button"
             className="text-xs text-red-600"
             onClick={() => {
-              if (!confirm("删除该条离线登记？登记编号将作废。")) return;
+              if (!confirm("删除该外部设备登记？登记编号将作废。")) return;
               void (async () => {
                 try {
                   await deleteManualTrackedDevice(row.id);
@@ -121,7 +121,7 @@ function ManualTrackedDeviceRow({
               })();
             }}
           >
-            删除登记
+            删除外部设备
           </button>
         </div>
       </div>
@@ -219,7 +219,7 @@ export default function ManualDevicesTab() {
   if (!groupId) {
     return (
       <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-        请先加入已审批的工作群组后再登记无心跳设备。
+        请先加入已审批的工作群组后再登记外部设备。
       </p>
     );
   }
@@ -228,14 +228,13 @@ export default function ManualDevicesTab() {
     <div className="space-y-6">
       <RefreshStrip active={refreshing} />
       <p className="text-sm text-gray-600">
-        适用于<strong>无法接入本站心跳</strong>的第三方设备：由<strong>设备运维员</strong>据现场或人员反馈维护。
-        每条仅保留<strong>运行是否正常</strong>、系统分配的<strong>登记编号与二维码</strong>，以及由<strong>甲方公司名 + 设备简称</strong>组成的设备类型（甲方请在「场景业务 →
-        甲方业务」中维护）。
+        <strong>外部设备</strong>指无法接入本站心跳的第三方设备，由<strong>设备运维员</strong>据现场或人员反馈维护。
+        每条保留<strong>运行是否正常</strong>、系统分配的<strong>登记编号与二维码</strong>，以及由<strong>甲方公司名 + 设备简称</strong>组成的设备类型（甲方请在「场景业务 → 甲方业务」中维护）。
       </p>
       {err && <p className="text-sm text-red-600">{err}</p>}
 
       <form onSubmit={onAdd} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-3">
-        <p className="text-xs font-medium text-gray-800">新增离线登记</p>
+        <p className="text-xs font-medium text-gray-800">新增外部设备</p>
         <label className="block text-xs text-gray-500">关联甲方业务（取公司名）</label>
         <select
           value={partyId}
@@ -275,7 +274,7 @@ export default function ManualDevicesTab() {
         </button>
       </div>
       {rows.length === 0 ? (
-        <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">暂无离线登记设备</p>
+        <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">暂无外部设备</p>
       ) : (
         <ul className="space-y-4">
           {rows.map((r) => (

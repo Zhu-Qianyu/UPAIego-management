@@ -51,6 +51,18 @@ export function getEffectiveDeviceStatus(device: Device, nowMs = Date.now()): st
   return connected ? device.status : "offline";
 }
 
+/** 列表排序用：越大表示越应靠前展示（心跳离线、业务状态异常、校准待处理等）。 */
+export function onlineDeviceAttentionRank(device: Device, nowMs = Date.now()): number {
+  const eff = getEffectiveDeviceStatus(device, nowMs);
+  let r = 0;
+  if (eff === "offline") r += 10_000;
+  if (device.status === "maintenance" || device.status === "inactive") r += 5000;
+  if (device.calibration_status === "needs_recalibration") r += 2000;
+  if (device.calibration_status === "pending") r += 1000;
+  if (device.status === "retired") r -= 3000;
+  return r;
+}
+
 /**
  * 手动刷新时清空滞回记忆，使灰区重新按服务端 `status` 与最新 `last_seen` 判定。
  * 不传 `ids` 时清空全部（例如列表整表刷新）。

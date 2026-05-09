@@ -12,7 +12,11 @@ import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import DeviceOnlineRefreshButton from "../components/DeviceOnlineRefreshButton";
-import { getEffectiveDeviceStatus, resetDeviceConnectivityHysteresis } from "../utils/deviceStatus";
+import {
+  getEffectiveDeviceStatus,
+  onlineDeviceAttentionRank,
+  resetDeviceConnectivityHysteresis,
+} from "../utils/deviceStatus";
 import { useAuth } from "../auth/AuthContext";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 
@@ -129,6 +133,9 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
   }, []);
 
   const sorted = [...devices].sort((a, b) => {
+    const ra = onlineDeviceAttentionRank(a, nowMs);
+    const rb = onlineDeviceAttentionRank(b, nowMs);
+    if (rb !== ra) return rb - ra;
     const va = (a[sortCol] as string) ?? "";
     const vb = (b[sortCol] as string) ?? "";
     return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
@@ -157,6 +164,9 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
           <h1 className="text-2xl font-bold text-gray-900">
             {listScope === "fleet" ? "全平台设备总览" : "设备总览"}
           </h1>
+          <p className="text-xs text-gray-500 mt-1 max-w-xl">
+            在线设备列表已优先展示<strong>心跳离线</strong>、<strong>非 active 状态</strong>与<strong>待校准/需重校准</strong>项；外部设备列表优先展示<strong>状态异常</strong>项。
+          </p>
           {listScope === "fleet" && (
             <p className="text-xs text-gray-500 mt-1 max-w-xl">
               仅展示当前工作群内成员名下的设备（与入群、群主范围一致）；未入群或群外用户设备不会出现在此列表。
@@ -168,7 +178,7 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
           {manualRows.length > 0 && (
             <>
               {" "}
-              · 离线登记 <span className="font-semibold text-slate-800">{manualRows.length}</span> 台
+              · 外部设备 <span className="font-semibold text-slate-800">{manualRows.length}</span> 台
             </>
           )}
         </span>
@@ -293,7 +303,7 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
           {manualRows.length > 0 && (
             <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/90 shadow-sm">
               <p className="text-xs font-semibold text-slate-800 px-4 py-2 border-b border-slate-200 bg-slate-100/80">
-                离线登记（无网站心跳）
+                外部设备（无法连接本站）
               </p>
               <table className="min-w-full divide-y divide-slate-200 text-sm bg-white">
                 <thead className="bg-slate-50">
@@ -308,7 +318,10 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {[...manualRows]
-                    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+                    .sort((a, b) => {
+                      if (a.status_ok !== b.status_ok) return (a.status_ok ? 1 : 0) - (b.status_ok ? 1 : 0);
+                      return b.created_at.localeCompare(a.created_at);
+                    })
                     .map((m) => (
                       <tr key={m.id} className="hover:bg-slate-50/80">
                         <td className="px-4 py-3 font-medium text-slate-900">{formatManualTrackedDeviceLabel(m)}</td>

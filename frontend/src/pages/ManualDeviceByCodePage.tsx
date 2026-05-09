@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import QRCode from "qrcode";
-import { formatManualTrackedDeviceLabel, getManualTrackedDeviceByPublicCode, type ManualTrackedDevice } from "../api/operations";
+import {
+  formatManualTrackedDeviceLabel,
+  getManualTrackedDeviceByPublicCode,
+  updateManualTrackedDevice,
+  type ManualTrackedDevice,
+} from "../api/operations";
 import Spinner from "../components/Spinner";
 
 function stickerLandingUrl(publicCode: string): string {
@@ -16,6 +21,9 @@ export default function ManualDeviceByCodePage() {
   const [row, setRow] = useState<ManualTrackedDevice | null | undefined>(undefined);
   const [qr, setQr] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  const [localOk, setLocalOk] = useState(true);
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusErr, setStatusErr] = useState("");
 
   const url = useMemo(() => (normalized ? stickerLandingUrl(normalized) : ""), [normalized]);
 
@@ -60,6 +68,10 @@ export default function ManualDeviceByCodePage() {
     };
   }, [url, row]);
 
+  useEffect(() => {
+    if (row && row.status_ok !== undefined) setLocalOk(row.status_ok);
+  }, [row?.id, row?.status_ok, row?.updated_at]);
+
   if (codeInvalid) {
     return (
       <div className="max-w-lg mx-auto py-8 space-y-3">
@@ -101,24 +113,58 @@ export default function ManualDeviceByCodePage() {
     );
   }
 
+  const statusDirty = row && localOk !== row.status_ok;
+
+  async function saveStatus() {
+    if (!row) return;
+    setStatusErr("");
+    setStatusBusy(true);
+    try {
+      await updateManualTrackedDevice(row.id, { status_ok: localOk });
+      const next = await getManualTrackedDeviceByPublicCode(normalized);
+      setRow(next);
+    } catch (e: unknown) {
+      setStatusErr(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setStatusBusy(false);
+    }
+  }
+
   return (
     <div className="max-w-lg mx-auto py-8 space-y-6">
-      <h1 className="text-xl font-bold text-gray-900">离线登记设备</h1>
+      <h1 className="text-xl font-bold text-gray-900">外部设备</h1>
+      <p className="text-sm text-gray-500 -mt-4">无法连接本站心跳的设备，由运维据现场或人员反馈维护状态。</p>
       <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
         <p className="font-medium text-gray-900">{formatManualTrackedDeviceLabel(row)}</p>
-        <p className="text-sm text-gray-600">
-          运行状态：
-          <span className={row.status_ok ? "text-emerald-700 font-medium" : "text-amber-800 font-medium"}>
-            {row.status_ok ? "正常" : "异常"}
-          </span>
-        </p>
+        <div className="space-y-2">
+          <p className="text-sm text-gray-700 font-medium">设备状态</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={localOk ? "ok" : "fault"}
+              onChange={(e) => setLocalOk(e.target.value === "ok")}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+            >
+              <option value="ok">正常</option>
+              <option value="fault">异常（据人员反馈）</option>
+            </select>
+            <button
+              type="button"
+              disabled={!statusDirty || statusBusy}
+              onClick={() => void saveStatus()}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white disabled:opacity-40"
+            >
+              {statusBusy ? "保存中…" : "保存状态"}
+            </button>
+          </div>
+          {statusErr && <p className="text-xs text-red-600">{statusErr}</p>}
+        </div>
         <p className="text-xs text-gray-500 font-mono">
           登记编号：<span className="font-semibold text-indigo-800">{row.public_code}</span>
         </p>
         {qr && (
           <div className="flex flex-col items-center gap-2 pt-2 border-t border-gray-100">
             <img src={qr} alt="" className="w-48 h-48 object-contain" />
-            <p className="text-xs text-gray-500 text-center">与贴签相同的链接二维码</p>
+            <p className="text-xs text-gray-500 text-center">与外部设备贴签相同的链接二维码</p>
           </div>
         )}
       </div>
