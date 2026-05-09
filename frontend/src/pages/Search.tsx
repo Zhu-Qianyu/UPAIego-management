@@ -4,7 +4,8 @@ import { searchDevices, type Device, type DeviceListScope } from "../api/client"
 import { useAuth } from "../auth/AuthContext";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
-import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
+import DeviceOnlineRefreshButton from "../components/DeviceOnlineRefreshButton";
+import { getEffectiveDeviceStatus, resetDeviceConnectivityHysteresis } from "../utils/deviceStatus";
 
 export default function Search({ embedded }: { embedded?: boolean }) {
   const { profile } = useAuth();
@@ -24,6 +25,23 @@ export default function Search({ embedded }: { embedded?: boolean }) {
   async function handleSearch(e?: React.FormEvent) {
     e?.preventDefault();
     if (!query.trim()) return;
+    setLoading(true);
+    try {
+      const res = await searchDevices(query.trim(), { scope: searchScope });
+      setResults(res.devices);
+      setTotal(res.total);
+    } catch {
+      setResults([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshSearchStatuses() {
+    if (!query.trim()) return;
+    resetDeviceConnectivityHysteresis();
+    setNowMs(Date.now());
     setLoading(true);
     try {
       const res = await searchDevices(query.trim(), { scope: searchScope });
@@ -78,7 +96,15 @@ export default function Search({ embedded }: { embedded?: boolean }) {
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">设备名称</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">设备 ID</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">序列号</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">状态</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <DeviceOnlineRefreshButton
+                          disabled={loading}
+                          onRefresh={refreshSearchStatuses}
+                        />
+                        <span>状态</span>
+                      </div>
+                    </th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">校准</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">备注</th>
                     <th className="px-4 py-3" />

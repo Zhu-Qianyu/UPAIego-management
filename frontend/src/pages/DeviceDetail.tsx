@@ -6,7 +6,8 @@ import { generateQrDataUrl, downloadQr } from "../api/qr";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
-import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
+import DeviceOnlineRefreshButton from "../components/DeviceOnlineRefreshButton";
+import { getEffectiveDeviceStatus, resetDeviceConnectivityHysteresis } from "../utils/deviceStatus";
 import { readRouteViewCache, routeViewCacheKeyExtra, writeRouteViewCache } from "../utils/routeViewCache";
 
 type DeviceDetailCacheV1 = { v: 1; device: Device };
@@ -138,6 +139,20 @@ export default function DeviceDetail() {
     }
   }
 
+  async function handleRefreshDeviceStatus() {
+    if (!id) return;
+    resetDeviceConnectivityHysteresis([id]);
+    setNowMs(Date.now());
+    setRefreshing(true);
+    try {
+      const latest = await getDevice(id, { scope: deviceScope });
+      setDevice(latest);
+      if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, device: latest });
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   if (loading && !device) return <Spinner />;
   if (!device) return <p className="text-center text-gray-500 py-12">{error || "未找到设备"}</p>;
 
@@ -156,7 +171,13 @@ export default function DeviceDetail() {
               <h1 className="text-2xl font-bold text-gray-900">{device.readable_name}</h1>
               <p className="text-sm font-mono text-gray-400 mt-1">{device.device_id}</p>
             </div>
-            <StatusBadge value={getEffectiveDeviceStatus(device, nowMs)} />
+            <div className="flex shrink-0 items-center gap-2">
+              <StatusBadge value={getEffectiveDeviceStatus(device, nowMs)} />
+              <DeviceOnlineRefreshButton
+                disabled={refreshing}
+                onRefresh={handleRefreshDeviceStatus}
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-sm mb-6">

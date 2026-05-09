@@ -4,7 +4,8 @@ import { listDevices, type Device, type DeviceListScope } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
-import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
+import DeviceOnlineRefreshButton from "../components/DeviceOnlineRefreshButton";
+import { getEffectiveDeviceStatus, resetDeviceConnectivityHysteresis } from "../utils/deviceStatus";
 import { useAuth } from "../auth/AuthContext";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 
@@ -91,6 +92,12 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
       setRefreshing(false);
     }
   }, [page, statusFilter, calFilter, listScope, cacheKey]);
+
+  const refreshDeviceStatuses = useCallback(async () => {
+    resetDeviceConnectivityHysteresis();
+    setNowMs(Date.now());
+    await load();
+  }, [load]);
 
   useEffect(() => {
     void load();
@@ -186,16 +193,45 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
                     ["status", "状态"],
                     ["calibration_status", "校准"],
                     ["registered_at", "注册时间"],
-                  ] as [keyof Device, string][]).map(([col, label]) => (
-                    <th
-                      key={col}
-                      onClick={() => toggleSort(col)}
-                      className="px-4 py-3 text-left font-semibold text-gray-600 cursor-pointer select-none hover:bg-gray-100"
-                    >
-                      {label}
-                      <SortIcon col={col} />
-                    </th>
-                  ))}
+                  ] as [keyof Device, string][]).map(([col, label]) =>
+                    col === "status" ? (
+                      <th
+                        key={col}
+                        className="px-4 py-3 text-left font-semibold text-gray-600 select-none"
+                      >
+                        <div className="flex items-center gap-2">
+                          <DeviceOnlineRefreshButton
+                            disabled={refreshing || loading}
+                            onRefresh={refreshDeviceStatuses}
+                          />
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => toggleSort(col)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                toggleSort(col);
+                              }
+                            }}
+                            className="inline-flex cursor-pointer items-center hover:bg-gray-100 rounded px-0.5 -mx-0.5"
+                          >
+                            {label}
+                            <SortIcon col={col} />
+                          </span>
+                        </div>
+                      </th>
+                    ) : (
+                      <th
+                        key={col}
+                        onClick={() => toggleSort(col)}
+                        className="px-4 py-3 text-left font-semibold text-gray-600 cursor-pointer select-none hover:bg-gray-100"
+                      >
+                        {label}
+                        <SortIcon col={col} />
+                      </th>
+                    )
+                  )}
                   <th className="px-4 py-3" />
                 </tr>
               </thead>

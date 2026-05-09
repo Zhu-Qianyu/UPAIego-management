@@ -50,3 +50,15 @@ export function getEffectiveDeviceStatus(device: Device, nowMs = Date.now()): st
   lastConnectivity.set(id, connected);
   return connected ? device.status : "offline";
 }
+
+/**
+ * 手动刷新时清空滞回记忆，使灰区重新按服务端 `status` 与最新 `last_seen` 判定。
+ * 不传 `ids` 时清空全部（例如列表整表刷新）。
+ */
+export function resetDeviceConnectivityHysteresis(ids?: readonly string[]): void {
+  if (ids === undefined) {
+    lastConnectivity.clear();
+    return;
+  }
+  for (const id of ids) lastConnectivity.delete(id);
+}
