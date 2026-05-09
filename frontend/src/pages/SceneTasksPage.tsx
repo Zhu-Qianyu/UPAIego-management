@@ -264,7 +264,7 @@ function PartyDemandsTab({
     <div className="space-y-6">
       <RefreshStrip active={refreshing} />
       <p className="text-sm text-gray-500">
-        <strong>甲方业务</strong>：填写甲方公司、设备类型、设备快照、小时量与场景大类；发布后由系统按大类匹配到场景岗位并生成子任务。
+        <strong>甲方业务</strong>：填写甲方公司、设备类型、设备快照、小时量与场景大类；下方列表可预览设备快照。发布后由系统按大类匹配到场景岗位并生成子任务。
       </p>
       <form onSubmit={onAdd} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-3">
         <input
@@ -375,6 +375,10 @@ function PartyDemandsTab({
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
                 <div>
+                  <p className="text-xs text-gray-500 mb-1">当前设备快照</p>
+                  <PartyDemandDeviceSnapshot snapshotPath={r.device_snapshot_path} />
+                </div>
+                <div>
                   <label className="block text-xs text-gray-500 mb-1">更换设备快照（可选）</label>
                   <input
                     type="file"
@@ -460,49 +464,114 @@ function PartyDemandsTab({
                 </div>
               </form>
             ) : (
-              <div className="flex justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-medium text-gray-900">{r.client_company || r.title}</p>
-                  <p className="text-sm text-gray-600 mt-1">设备类型：{r.device_type?.trim() || "—"}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    大类：{labelSceneCategories(r.scene_categories)} · 每场景上限 {r.max_hours_per_scene}h
-                    {r.total_hours_required != null ? ` · 需求总计 ${r.total_hours_required}h` : " · 需求总计：无限"}
-                  </p>
-                  {r.requirement_summary && (
-                    <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{r.requirement_summary}</p>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2 shrink-0 items-end">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(r)}
-                    className="text-xs text-indigo-700 font-medium px-2 py-1 rounded border border-indigo-200 hover:bg-indigo-50"
-                  >
-                    编辑
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!confirm("删除该条甲方业务？关联的自动子任务会同步更新。")) return;
-                      if (editingId === r.id) closeEdit();
-                      try {
-                        await deletePartyDemand(r.id);
-                        await syncSceneTaskAssignments(groupId);
-                        await load();
-                      } catch (ex: unknown) {
-                        setErr(ex instanceof Error ? ex.message : "删除失败");
-                      }
-                    }}
-                    className="text-xs text-red-600"
-                  >
-                    删除
-                  </button>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <PartyDemandDeviceSnapshot snapshotPath={r.device_snapshot_path} />
+                <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900">{r.client_company || r.title}</p>
+                    <p className="text-sm text-gray-600 mt-1">设备类型：{r.device_type?.trim() || "—"}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      大类：{labelSceneCategories(r.scene_categories)} · 每场景上限 {r.max_hours_per_scene}h
+                      {r.total_hours_required != null ? ` · 需求总计 ${r.total_hours_required}h` : " · 需求总计：无限"}
+                    </p>
+                    {r.requirement_summary && (
+                      <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{r.requirement_summary}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-row sm:flex-col gap-2 shrink-0 sm:items-end">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(r)}
+                      className="text-xs text-indigo-700 font-medium px-2 py-1 rounded border border-indigo-200 hover:bg-indigo-50"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!confirm("删除该条甲方业务？关联的自动子任务会同步更新。")) return;
+                        if (editingId === r.id) closeEdit();
+                        try {
+                          await deletePartyDemand(r.id);
+                          await syncSceneTaskAssignments(groupId);
+                          await load();
+                        } catch (ex: unknown) {
+                          setErr(ex instanceof Error ? ex.message : "删除失败");
+                        }
+                      }}
+                      className="text-xs text-red-600"
+                    >
+                      删除
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** 甲方业务设备图：与工位快照同一 bucket，路径存于 device_snapshot_path */
+function PartyDemandDeviceSnapshot({ snapshotPath }: { snapshotPath: string | null | undefined }) {
+  const pathKey = snapshotPath?.trim() ?? "";
+  const [src, setSrc] = useState<string | null>(null);
+  const [loadErr, setLoadErr] = useState(false);
+
+  useEffect(() => {
+    if (!pathKey) {
+      setSrc(null);
+      setLoadErr(false);
+      return;
+    }
+    let cancel = false;
+    setSrc(null);
+    setLoadErr(false);
+    getSnapshotPublicUrl(pathKey)
+      .then((u) => {
+        if (!cancel) setSrc(u);
+      })
+      .catch(() => {
+        if (!cancel) setLoadErr(true);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [pathKey]);
+
+  if (!pathKey) {
+    return (
+      <div className="w-full max-w-xs sm:w-44 shrink-0 min-h-[8rem] flex items-center justify-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg px-2 text-center">
+        暂无设备快照
+      </div>
+    );
+  }
+  if (loadErr) {
+    return (
+      <div className="w-full max-w-xs sm:w-44 shrink-0 min-h-[8rem] flex items-center justify-center text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 text-center">
+        无法加载设备快照
+      </div>
+    );
+  }
+  if (!src) {
+    return (
+      <div className="w-full max-w-xs sm:w-44 shrink-0 h-32 flex items-center justify-center text-xs text-gray-400 border border-gray-100 rounded-lg bg-gray-50">
+        加载快照…
+      </div>
+    );
+  }
+  return (
+    <div className="shrink-0 w-full max-w-xs sm:w-44">
+      <a href={src} target="_blank" rel="noopener noreferrer" className="block group">
+        <img
+          src={src}
+          alt="设备快照"
+          className="w-full h-32 object-cover rounded-lg border border-gray-100 group-hover:opacity-95"
+        />
+        <span className="text-xs text-indigo-600 mt-1 inline-block group-hover:underline">新标签页打开原图</span>
+      </a>
     </div>
   );
 }
