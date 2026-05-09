@@ -293,3 +293,92 @@ export async function updateAssignmentExecutedHours(id: string, executedHours: n
   const { error } = await supabase.from(STA).update({ executed_hours: executedHours }).eq("id", id);
   if (error) throw new Error(error.message);
 }
+
+const MTD = "manual_tracked_devices";
+
+export type ManualTrackedPartyRow = {
+  client_company: string | null;
+  title: string;
+  device_type?: string | null;
+};
+
+export interface ManualTrackedDevice {
+  id: string;
+  group_id: string;
+  party_demand_id: string;
+  device_short_label: string;
+  status_ok: boolean;
+  public_code: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  party_demands?: ManualTrackedPartyRow | ManualTrackedPartyRow[] | null;
+}
+
+export function formatManualTrackedDeviceLabel(d: ManualTrackedDevice): string {
+  const raw = d.party_demands;
+  const p = Array.isArray(raw) ? raw[0] : raw;
+  const company = (p?.client_company || p?.title || "").trim() || "甲方";
+  return `${company} · ${d.device_short_label.trim()}`;
+}
+
+export async function listManualTrackedDevices(groupId: string): Promise<ManualTrackedDevice[]> {
+  const { data, error } = await supabase
+    .from(MTD)
+    .select("*, party_demands(client_company,title,device_type)")
+    .eq("group_id", groupId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ManualTrackedDevice[];
+}
+
+export async function getManualTrackedDeviceByPublicCode(publicCode: string): Promise<ManualTrackedDevice | null> {
+  const code = publicCode.trim().toUpperCase();
+  if (!/^[0-9A-F]{10}$/.test(code)) return null;
+  const { data, error } = await supabase
+    .from(MTD)
+    .select("*, party_demands(client_company,title,device_type)")
+    .eq("public_code", code)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data ?? null) as ManualTrackedDevice | null;
+}
+
+export async function createManualTrackedDevice(input: {
+  group_id: string;
+  party_demand_id: string;
+  device_short_label: string;
+}): Promise<ManualTrackedDevice> {
+  const u = (await supabase.auth.getUser()).data.user;
+  if (!u) throw new Error("未登录");
+  const { data, error } = await supabase
+    .from(MTD)
+    .insert({
+      group_id: input.group_id,
+      party_demand_id: input.party_demand_id,
+      device_short_label: input.device_short_label.trim(),
+      status_ok: true,
+      created_by: u.id,
+    })
+    .select("*, party_demands(client_company,title,device_type)")
+    .single();
+  if (error) throw new Error(error.message);
+  return data as ManualTrackedDevice;
+}
+
+export async function updateManualTrackedDevice(
+  id: string,
+  patch: Partial<Pick<ManualTrackedDevice, "status_ok" | "device_short_label">>
+): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (patch.status_ok !== undefined) payload.status_ok = patch.status_ok;
+  if (patch.device_short_label !== undefined) payload.device_short_label = patch.device_short_label.trim();
+  if (Object.keys(payload).length === 0) return;
+  const { error } = await supabase.from(MTD).update(payload).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteManualTrackedDevice(id: string): Promise<void> {
+  const { error } = await supabase.from(MTD).delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}

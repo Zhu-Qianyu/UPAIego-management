@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
 import DeviceDetail from "./pages/DeviceDetail";
 import DeviceManagePage from "./pages/DeviceManagePage";
+import ManualDeviceByCodePage from "./pages/ManualDeviceByCodePage";
 import AuthPage from "./pages/AuthPage";
 import RoleHome from "./pages/RoleHome";
 import AdminConsole from "./pages/AdminConsole";
@@ -404,6 +405,14 @@ export default function App() {
             element={
               <RoleRoute allow={["admin", "device_operator"]}>
                 <DeviceManagePage />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/devices/manual/:code"
+            element={
+              <RoleRoute allow={["admin", "device_operator"]}>
+                <ManualDeviceByCodePage />
               </RoleRoute>
             }
           />
