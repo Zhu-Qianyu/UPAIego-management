@@ -11,6 +11,8 @@ export interface PartyDemand {
   group_id: string;
   title: string;
   client_company: string | null;
+  /** 甲方设备类型（与公司并列）；旧数据可能未回填 */
+  device_type?: string | null;
   requirement_summary: string | null;
   device_snapshot_bucket: string | null;
   device_snapshot_path: string | null;
@@ -62,6 +64,7 @@ export async function createPartyDemand(row: {
   group_id: string;
   title: string;
   client_company: string;
+  device_type: string;
   device_snapshot_bucket: string;
   device_snapshot_path: string;
   total_hours_required: number | null;
@@ -77,6 +80,7 @@ export async function createPartyDemand(row: {
       group_id: row.group_id,
       title: row.title.trim(),
       client_company: row.client_company.trim(),
+      device_type: row.device_type.trim(),
       device_snapshot_bucket: row.device_snapshot_bucket,
       device_snapshot_path: row.device_snapshot_path,
       total_hours_required: row.total_hours_required,
@@ -89,6 +93,40 @@ export async function createPartyDemand(row: {
     .single();
   if (error) throw new Error(error.message);
   return data as PartyDemand;
+}
+
+export type PartyDemandUpdatePatch = Partial<{
+  title: string;
+  client_company: string | null;
+  device_type: string | null;
+  requirement_summary: string | null;
+  total_hours_required: number | null;
+  max_hours_per_scene: number;
+  scene_categories: string[];
+  device_snapshot_bucket: string;
+  device_snapshot_path: string;
+}>;
+
+export async function updatePartyDemand(id: string, patch: PartyDemandUpdatePatch): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (patch.title !== undefined) payload.title = patch.title.trim();
+  if (patch.client_company !== undefined) {
+    payload.client_company = patch.client_company === null ? null : patch.client_company.trim() || null;
+  }
+  if (patch.device_type !== undefined) {
+    payload.device_type = patch.device_type === null ? null : patch.device_type.trim() || null;
+  }
+  if (patch.requirement_summary !== undefined) {
+    payload.requirement_summary = patch.requirement_summary === null ? null : patch.requirement_summary.trim() || null;
+  }
+  if (patch.total_hours_required !== undefined) payload.total_hours_required = patch.total_hours_required;
+  if (patch.max_hours_per_scene !== undefined) payload.max_hours_per_scene = patch.max_hours_per_scene;
+  if (patch.scene_categories !== undefined) payload.scene_categories = patch.scene_categories;
+  if (patch.device_snapshot_bucket !== undefined) payload.device_snapshot_bucket = patch.device_snapshot_bucket;
+  if (patch.device_snapshot_path !== undefined) payload.device_snapshot_path = patch.device_snapshot_path;
+  if (Object.keys(payload).length === 0) return;
+  const { error } = await supabase.from(PD).update(payload).eq("id", id);
+  if (error) throw new Error(error.message);
 }
 
 export async function deletePartyDemand(id: string): Promise<void> {

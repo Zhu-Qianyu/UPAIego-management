@@ -4,6 +4,7 @@ import { listSceneTasks, createSceneTask, updateSceneTask, deleteSceneTask, getS
 import { fetchActiveGroupId } from "../api/groups";
 import {
   createPartyDemand,
+  updatePartyDemand,
   createScenarioPosition,
   updateScenarioPosition,
   deletePartyDemand,
@@ -18,6 +19,7 @@ import {
   listAssignmentsForWorkGroup,
   updateAssignmentExecutedHours,
   type PartyDemand,
+  type PartyDemandUpdatePatch,
   type ScenarioPosition,
   type SceneTaskAssignment,
 } from "../api/operations";
@@ -33,6 +35,13 @@ import {
 } from "../utils/sceneCategories";
 
 type Tab = "tasks" | "demands" | "stations";
+
+function normalizeDemandCatTags(arr: string[] | null | undefined): SceneCategoryKey[] {
+  const picked = (arr ?? []).filter((x): x is SceneCategoryKey =>
+    (SCENE_CATEGORY_KEYS as readonly string[]).includes(x)
+  );
+  return picked.length >= 1 ? picked : ["industrial"];
+}
 
 function toDatetimeLocalValue(iso: string | null): string {
   if (!iso) return "";
@@ -61,12 +70,22 @@ function PartyDemandsTab({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [clientCompany, setClientCompany] = useState("");
+  const [deviceType, setDeviceType] = useState("");
   const [summary, setSummary] = useState("");
   const [deviceFile, setDeviceFile] = useState<File | null>(null);
   const [totalUnlimited, setTotalUnlimited] = useState(true);
   const [totalHours, setTotalHours] = useState("");
   const [maxPerScene, setMaxPerScene] = useState("8");
   const [catTags, setCatTags] = useState<SceneCategoryKey[]>(["industrial"]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editCompany, setEditCompany] = useState("");
+  const [editDeviceType, setEditDeviceType] = useState("");
+  const [editSummary, setEditSummary] = useState("");
+  const [editDeviceFile, setEditDeviceFile] = useState<File | null>(null);
+  const [editTotalUnlimited, setEditTotalUnlimited] = useState(true);
+  const [editTotalHours, setEditTotalHours] = useState("");
+  const [editMaxPerScene, setEditMaxPerScene] = useState("8");
+  const [editCatTags, setEditCatTags] = useState<SceneCategoryKey[]>(["industrial"]);
   const loadedOnceRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -96,9 +115,98 @@ function PartyDemandsTab({
     setCatTags((prev) => prev.filter((_, idx) => idx !== i));
   }
 
+  function addEditCatTag(k: SceneCategoryKey) {
+    setEditCatTags((prev) => [...prev, k]);
+  }
+
+  function removeEditCatTag(i: number) {
+    setEditCatTags((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function openEdit(r: PartyDemand) {
+    setEditingId(r.id);
+    setEditCompany((r.client_company || r.title || "").trim());
+    setEditDeviceType((r.device_type ?? "").trim());
+    setEditSummary(r.requirement_summary ?? "");
+    setEditTotalUnlimited(r.total_hours_required == null);
+    setEditTotalHours(r.total_hours_required != null ? String(r.total_hours_required) : "");
+    setEditMaxPerScene(String(r.max_hours_per_scene));
+    setEditCatTags(normalizeDemandCatTags(r.scene_categories));
+    setEditDeviceFile(null);
+    setErr("");
+  }
+
+  function closeEdit() {
+    setEditingId(null);
+    setEditDeviceFile(null);
+  }
+
+  async function onSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingId) return;
+    setErr("");
+    if (!editCompany.trim()) {
+      setErr("请填写甲方公司");
+      return;
+    }
+    if (!editDeviceType.trim()) {
+      setErr("请填写设备类型");
+      return;
+    }
+    const maxH = Number(editMaxPerScene);
+    if (!Number.isFinite(maxH) || maxH <= 0 || !Number.isInteger(maxH)) {
+      setErr("每场景上限小时量须为正整数");
+      return;
+    }
+    let total: number | null = null;
+    if (!editTotalUnlimited) {
+      const t = Number(editTotalHours);
+      if (!Number.isFinite(t) || t < 0 || !Number.isInteger(t)) {
+        setErr("需求总小时量须为非负整数，或勾选「无限」");
+        return;
+      }
+      total = t;
+    }
+    if (editCatTags.length < 1) {
+      setErr("请至少选择一个场景大类（可重复）");
+      return;
+    }
+    try {
+      const company = editCompany.trim();
+      const patch: PartyDemandUpdatePatch = {
+        title: company,
+        client_company: company,
+        device_type: editDeviceType.trim(),
+        requirement_summary: editSummary.trim() || null,
+        total_hours_required: total,
+        max_hours_per_scene: maxH,
+        scene_categories: [...editCatTags],
+      };
+      if (editDeviceFile) {
+        const { path, bucket } = await uploadPartyDeviceSnapshot(groupId, editDeviceFile);
+        patch.device_snapshot_bucket = bucket;
+        patch.device_snapshot_path = path;
+      }
+      await updatePartyDemand(editingId, patch);
+      await syncSceneTaskAssignments(groupId);
+      closeEdit();
+      await load();
+    } catch (err: unknown) {
+      setErr(err instanceof Error ? err.message : "保存失败");
+    }
+  }
+
   async function onAdd(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
+    if (!clientCompany.trim()) {
+      setErr("请填写甲方公司");
+      return;
+    }
+    if (!deviceType.trim()) {
+      setErr("请填写设备类型");
+      return;
+    }
     if (!deviceFile) {
       setErr("请上传设备快照");
       return;
@@ -127,6 +235,7 @@ function PartyDemandsTab({
         group_id: groupId,
         title: clientCompany.trim(),
         client_company: clientCompany.trim(),
+        device_type: deviceType.trim(),
         device_snapshot_bucket: bucket,
         device_snapshot_path: path,
         total_hours_required: total,
@@ -136,6 +245,7 @@ function PartyDemandsTab({
       });
       await syncSceneTaskAssignments(groupId);
       setClientCompany("");
+      setDeviceType("");
       setSummary("");
       setDeviceFile(null);
       setTotalUnlimited(true);
@@ -154,7 +264,7 @@ function PartyDemandsTab({
     <div className="space-y-6">
       <RefreshStrip active={refreshing} />
       <p className="text-sm text-gray-500">
-        <strong>甲方业务</strong>：填写甲方公司、设备快照、小时量与场景大类；发布后由系统按大类匹配到场景岗位并生成子任务。
+        <strong>甲方业务</strong>：填写甲方公司、设备类型、设备快照、小时量与场景大类；发布后由系统按大类匹配到场景岗位并生成子任务。
       </p>
       <form onSubmit={onAdd} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-3">
         <input
@@ -162,6 +272,13 @@ function PartyDemandsTab({
           placeholder="甲方公司（必填）"
           value={clientCompany}
           onChange={(e) => setClientCompany(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <input
+          required
+          placeholder="设备类型（必填），例如：机械臂视觉套件"
+          value={deviceType}
+          onChange={(e) => setDeviceType(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
         <div>
@@ -239,29 +356,150 @@ function PartyDemandsTab({
       </form>
       <ul className="space-y-3">
         {rows.map((r) => (
-          <li key={r.id} className="bg-white rounded-xl border border-gray-200 p-4 flex justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-medium text-gray-900">{r.client_company || r.title}</p>
-              <p className="text-xs text-gray-500 mt-1">
-                大类：{labelSceneCategories(r.scene_categories)} · 每场景上限 {r.max_hours_per_scene}h
-                {r.total_hours_required != null ? ` · 需求总计 ${r.total_hours_required}h` : " · 需求总计：无限"}
-              </p>
-              {r.requirement_summary && (
-                <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{r.requirement_summary}</p>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={async () => {
-                if (!confirm("删除该条甲方业务？关联的自动子任务会同步更新。")) return;
-                await deletePartyDemand(r.id);
-                await syncSceneTaskAssignments(groupId);
-                await load();
-              }}
-              className="text-xs text-red-600 shrink-0 h-fit"
-            >
-              删除
-            </button>
+          <li key={r.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+            {editingId === r.id ? (
+              <form onSubmit={onSaveEdit} className="space-y-3">
+                <p className="text-xs font-medium text-gray-700">编辑甲方业务</p>
+                <input
+                  required
+                  placeholder="甲方公司（必填）"
+                  value={editCompany}
+                  onChange={(e) => setEditCompany(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+                <input
+                  required
+                  placeholder="设备类型（必填）"
+                  value={editDeviceType}
+                  onChange={(e) => setEditDeviceType(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">更换设备快照（可选）</label>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(e) => setEditDeviceFile(e.target.files?.[0] ?? null)}
+                    className="text-sm w-full"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={editTotalUnlimited}
+                      onChange={(e) => setEditTotalUnlimited(e.target.checked)}
+                    />
+                    需求总小时量：无限
+                  </label>
+                  {!editTotalUnlimited && (
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="总小时量（整数）"
+                      value={editTotalHours}
+                      onChange={(e) => setEditTotalHours(e.target.value.replace(/\D/g, ""))}
+                      className="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">每场景上限小时量（正整数）</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    required
+                    value={editMaxPerScene}
+                    onChange={(e) => setEditMaxPerScene(e.target.value.replace(/\D/g, ""))}
+                    className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">场景大类（可重复）</p>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {SCENE_CATEGORY_KEYS.map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => addEditCatTag(k)}
+                        className="px-2 py-1 rounded-lg border border-gray-300 text-xs bg-white hover:bg-gray-50"
+                      >
+                        +{SCENE_CATEGORY_LABELS[k]}
+                      </button>
+                    ))}
+                  </div>
+                  <ul className="flex flex-wrap gap-2 text-xs">
+                    {editCatTags.map((k, i) => (
+                      <li
+                        key={`${k}-${i}`}
+                        className="flex items-center gap-1 bg-indigo-50 text-indigo-900 px-2 py-1 rounded"
+                      >
+                        {SCENE_CATEGORY_LABELS[k]}
+                        <button type="button" className="text-red-600" onClick={() => removeEditCatTag(i)}>
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <textarea
+                  placeholder="其它说明（可选）"
+                  value={editSummary}
+                  onChange={(e) => setEditSummary(e.target.value)}
+                  rows={2}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm">
+                    保存
+                  </button>
+                  <button type="button" onClick={closeEdit} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">
+                    取消
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="flex justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900">{r.client_company || r.title}</p>
+                  <p className="text-sm text-gray-600 mt-1">设备类型：{r.device_type?.trim() || "—"}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    大类：{labelSceneCategories(r.scene_categories)} · 每场景上限 {r.max_hours_per_scene}h
+                    {r.total_hours_required != null ? ` · 需求总计 ${r.total_hours_required}h` : " · 需求总计：无限"}
+                  </p>
+                  {r.requirement_summary && (
+                    <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{r.requirement_summary}</p>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2 shrink-0 items-end">
+                  <button
+                    type="button"
+                    onClick={() => openEdit(r)}
+                    className="text-xs text-indigo-700 font-medium px-2 py-1 rounded border border-indigo-200 hover:bg-indigo-50"
+                  >
+                    编辑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!confirm("删除该条甲方业务？关联的自动子任务会同步更新。")) return;
+                      if (editingId === r.id) closeEdit();
+                      try {
+                        await deletePartyDemand(r.id);
+                        await syncSceneTaskAssignments(groupId);
+                        await load();
+                      } catch (ex: unknown) {
+                        setErr(ex instanceof Error ? ex.message : "删除失败");
+                      }
+                    }}
+                    className="text-xs text-red-600"
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -749,6 +987,8 @@ function AssignmentsInline({
                   <div key={a.id} className="space-y-1.5">
                     <p className="text-sm text-gray-800">
                       甲方：<span className="font-medium">{d?.client_company ?? d?.title ?? "—"}</span>
+                      <span className="text-gray-600"> · 设备 </span>
+                      <span className="font-medium">{d?.device_type?.trim() || "—"}</span>
                       <span className="text-xs text-gray-500 ml-2">
                         （{labelSceneCategories(d?.scene_categories)}）
                       </span>
