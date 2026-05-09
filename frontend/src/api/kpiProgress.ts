@@ -50,7 +50,7 @@ export function formatKpiCurrent(metric: KpiMetricId, value: number): string {
 }
 
 /** 完成进度 0–100，用于进度条（当前值相对目标值，封顶 100%） */
-export function kpiProgressPercent(metric: KpiMetricId, current: number, target: number): number {
+export function kpiProgressPercent(_metric: KpiMetricId, current: number, target: number): number {
   if (!Number.isFinite(target) || target <= 0 || !Number.isFinite(current)) return 0;
   return Math.min(100, Math.max(0, (current / target) * 100));
 }
