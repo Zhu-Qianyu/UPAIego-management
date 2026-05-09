@@ -1,16 +1,13 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
-import Dashboard from "./pages/Dashboard";
-import Register from "./pages/Register";
 import DeviceDetail from "./pages/DeviceDetail";
-import Search from "./pages/Search";
+import DeviceManagePage from "./pages/DeviceManagePage";
 import AuthPage from "./pages/AuthPage";
 import RoleHome from "./pages/RoleHome";
 import AdminConsole from "./pages/AdminConsole";
 import SceneTasksPage from "./pages/SceneTasksPage";
 import ExecutorMapPage from "./pages/ExecutorMapPage";
-import JoinGroupPage from "./pages/JoinGroupPage";
-import TopicsPage from "./pages/TopicsPage";
+import GroupPage from "./pages/GroupPage";
 import AdminGroupPage from "./pages/AdminGroupPage";
 import { useAuth } from "./auth/AuthContext";
 import { supabase } from "./api/supabase";
@@ -18,6 +15,7 @@ import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "./auth/roleLabels";
 import type { UserRole } from "./types/roles";
 import RoleRoute from "./components/RoleRoute";
 import AnnouncementsBanner from "./components/AnnouncementsBanner";
+import KpiBanner from "./components/KpiBanner";
 import GroupStatusBanner from "./components/GroupStatusBanner";
 import AccountDeleteModal from "./components/AccountDeleteModal";
 
@@ -54,31 +52,23 @@ function navForRole(role: UserRole): { to: string; label: string }[] {
   const byRole: Record<UserRole, { to: string; label: string }[]> = {
     admin: [
       { to: "/admin", label: "管理台" },
-      { to: "/admin/group", label: "群组" },
-      { to: "/topics", label: "话题" },
-      { to: "/join", label: "入群" },
-      { to: "/fleet", label: "全量设备" },
-      { to: "/register", label: "注册设备" },
-      { to: "/search", label: "搜索" },
-      { to: "/scene", label: "业务与场景" },
+      { to: "/group", label: "群组" },
+      { to: "/devices/manage", label: "设备管理" },
+      { to: "/scene", label: "场景业务" },
       { to: "/map", label: "数采地图" },
     ],
     device_operator: [
       { to: "/", label: "设备总览" },
-      { to: "/topics", label: "话题" },
-      { to: "/join", label: "入群" },
-      { to: "/register", label: "注册设备" },
-      { to: "/search", label: "搜索" },
+      { to: "/group", label: "群组" },
+      { to: "/devices/manage", label: "设备管理" },
     ],
     scene_operator: [
-      { to: "/scene", label: "业务与场景" },
-      { to: "/topics", label: "话题" },
-      { to: "/join", label: "入群" },
+      { to: "/scene", label: "场景业务" },
+      { to: "/group", label: "群组" },
     ],
     collection_executor: [
       { to: "/map", label: "数采地图" },
-      { to: "/topics", label: "话题" },
-      { to: "/join", label: "入群" },
+      { to: "/group", label: "群组" },
     ],
   };
   return byRole[role];
@@ -309,7 +299,12 @@ export default function App() {
         <nav className="flex-1 overflow-y-auto p-2 space-y-0.5 [scrollbar-width:thin]">
           <ul className="space-y-0.5">
             {navItems.map((link) => {
-              const active = location.pathname === link.to;
+              const active =
+                link.to === "/devices/manage"
+                  ? location.pathname === "/devices/manage" || location.pathname.startsWith("/devices/")
+                  : link.to === "/group"
+                    ? location.pathname === "/group" || location.pathname.startsWith("/group/")
+                    : location.pathname === link.to;
               const abbr = link.label.slice(0, 1);
               return (
                 <li key={link.to}>
@@ -390,6 +385,7 @@ export default function App() {
 
         <main className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-8 flex-1">
         <GroupStatusBanner />
+        <KpiBanner />
         <AnnouncementsBanner />
         <Routes>
           <Route path="/" element={<RoleHome />} />
@@ -401,30 +397,17 @@ export default function App() {
               </RoleRoute>
             }
           />
+          <Route path="/fleet" element={<Navigate to="/devices/manage?tab=fleet" replace />} />
           <Route
-            path="/fleet"
-            element={
-              <RoleRoute allow={["admin"]}>
-                <Dashboard />
-              </RoleRoute>
-            }
-          />
-          <Route
-            path="/register"
+            path="/devices/manage"
             element={
               <RoleRoute allow={["admin", "device_operator"]}>
-                <Register />
+                <DeviceManagePage />
               </RoleRoute>
             }
           />
-          <Route
-            path="/search"
-            element={
-              <RoleRoute allow={["admin", "device_operator"]}>
-                <Search />
-              </RoleRoute>
-            }
-          />
+          <Route path="/register" element={<Navigate to="/devices/manage" replace />} />
+          <Route path="/search" element={<Navigate to="/devices/manage?tab=search" replace />} />
           <Route
             path="/devices/:id"
             element={
@@ -449,16 +432,18 @@ export default function App() {
               </RoleRoute>
             }
           />
-          <Route path="/topics" element={<TopicsPage />} />
-          <Route path="/join" element={<JoinGroupPage />} />
+          <Route path="/group" element={<GroupPage />} />
           <Route
-            path="/admin/group"
+            path="/group/manage"
             element={
               <RoleRoute allow={["admin"]}>
                 <AdminGroupPage />
               </RoleRoute>
             }
           />
+          <Route path="/topics" element={<Navigate to="/group" replace />} />
+          <Route path="/join" element={<Navigate to="/group" replace />} />
+          <Route path="/admin/group" element={<Navigate to="/group/manage" replace />} />
           <Route path="/auth" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

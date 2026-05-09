@@ -1,18 +1,41 @@
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { listDevices, type Device, type DeviceListScope } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
+import RefreshStrip from "../components/RefreshStrip";
 import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
 import { useAuth } from "../auth/AuthContext";
+import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 
 const PAGE_SIZE = 20;
 
-export default function Dashboard() {
-  const { profile } = useAuth();
+type DashboardCacheV1 = {
+  v: 1;
+  devices: Device[];
+  total: number;
+  page: number;
+  statusFilter: string;
+  calFilter: string;
+};
+
+type DashboardProps = { listScopeOverride?: DeviceListScope };
+
+export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
+  const { profile, session } = useAuth();
   const location = useLocation();
   const listScope: DeviceListScope =
-    location.pathname === "/fleet" && profile?.role === "admin" ? "fleet" : "own";
+    listScopeOverride ??
+    (location.pathname === "/fleet" && profile?.role === "admin" ? "fleet" : "own");
+
+  const cacheKey = useMemo(
+    () =>
+      routeViewCacheKey(
+        session?.user?.id,
+        listScopeOverride === "fleet" ? "/devices/manage?tab=fleet" : location.pathname
+      ),
+    [session?.user?.id, location.pathname, listScopeOverride]
+  );
 
   const [devices, setDevices] = useState<Device[]>([]);
   const [total, setTotal] = useState(0);
@@ -20,12 +43,27 @@ export default function Dashboard() {
   const [statusFilter, setStatusFilter] = useState("");
   const [calFilter, setCalFilter] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [sortCol, setSortCol] = useState<keyof Device>("registered_at");
   const [sortAsc, setSortAsc] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
 
+  useLayoutEffect(() => {
+    if (!cacheKey) return;
+    const snap = readRouteViewCache<DashboardCacheV1>(cacheKey);
+    if (!snap || snap.v !== 1) return;
+    setDevices(snap.devices);
+    setTotal(snap.total);
+    setPage(snap.page);
+    setStatusFilter(snap.statusFilter);
+    setCalFilter(snap.calFilter);
+    setLoading(false);
+  }, [cacheKey]);
+
   const load = useCallback(async () => {
-    setLoading(true);
+    const stale = cacheKey ? readRouteViewCache<DashboardCacheV1>(cacheKey) : null;
+    if (stale) setRefreshing(true);
+    else setLoading(true);
     try {
       const res = await listDevices({
         offset: page * PAGE_SIZE,
@@ -36,15 +74,26 @@ export default function Dashboard() {
       });
       setDevices(res.devices);
       setTotal(res.total);
+      if (cacheKey) {
+        writeRouteViewCache(cacheKey, {
+          v: 1,
+          devices: res.devices,
+          total: res.total,
+          page,
+          statusFilter,
+          calFilter,
+        });
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [page, statusFilter, calFilter, listScope]);
+  }, [page, statusFilter, calFilter, listScope, cacheKey]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   useEffect(() => {
@@ -75,6 +124,7 @@ export default function Dashboard() {
 
   return (
     <div>
+      <RefreshStrip active={refreshing} />
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
@@ -114,12 +164,12 @@ export default function Dashboard() {
         </select>
       </div>
 
-      {loading ? (
+      {loading && devices.length === 0 ? (
         <Spinner />
-      ) : devices.length === 0 ? (
+      ) : devices.length === 0 && !loading ? (
         <div className="text-center py-16 text-gray-400">
           <p className="text-lg">暂无设备数据</p>
-          <Link to="/register" className="text-indigo-600 underline text-sm mt-2 inline-block">
+          <Link to="/devices/manage" className="text-indigo-600 underline text-sm mt-2 inline-block">
             去注册第一台设备
           </Link>
         </div>

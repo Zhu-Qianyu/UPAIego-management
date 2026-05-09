@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   createWorkGroup,
   fetchOwnedWorkGroup,
@@ -8,18 +9,43 @@ import {
   type WorkGroup,
 } from "../api/groups";
 import Spinner from "../components/Spinner";
+import RefreshStrip from "../components/RefreshStrip";
+import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
+import { useAuth } from "../auth/AuthContext";
+import GroupTabs from "../components/GroupTabs";
+
+type AdminGroupCacheV1 = { v: 1; owned: WorkGroup | null; pending: GroupMember[] };
 
 export default function AdminGroupPage() {
+  const { session } = useAuth();
+  const location = useLocation();
+  const cacheKey = useMemo(
+    () => routeViewCacheKey(session?.user?.id, location.pathname),
+    [session?.user?.id, location.pathname]
+  );
+
   const [owned, setOwned] = useState<WorkGroup | null | undefined>(undefined);
   const [pending, setPending] = useState<GroupMember[]>([]);
   const [name, setName] = useState("");
   const [customCode, setCustomCode] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  async function refresh() {
-    setLoading(true);
+  useLayoutEffect(() => {
+    if (!cacheKey) return;
+    const snap = readRouteViewCache<AdminGroupCacheV1>(cacheKey);
+    if (!snap || snap.v !== 1) return;
+    setOwned(snap.owned);
+    setPending(snap.pending);
+    setLoading(false);
+  }, [cacheKey]);
+
+  const refresh = useCallback(async () => {
+    const stale = cacheKey ? readRouteViewCache<AdminGroupCacheV1>(cacheKey) : null;
+    if (stale) setRefreshing(true);
+    else setLoading(true);
     setErr("");
     try {
       const g = await fetchOwnedWorkGroup();
@@ -27,20 +53,23 @@ export default function AdminGroupPage() {
       if (g) {
         const p = await listPendingMembers(g.id);
         setPending(p);
+        if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, owned: g, pending: p });
       } else {
         setPending([]);
+        if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, owned: null, pending: [] });
       }
     } catch (e: any) {
       setErr(e.message ?? "加载失败");
       setOwned(null);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }
+  }, [cacheKey]);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -51,7 +80,7 @@ export default function AdminGroupPage() {
       setCustomCode("");
       await refresh();
     } catch (e: any) {
-      setErr(e.message ?? "创建失败：每位管理员仅可创建一个群组。");
+      setErr(e.message ?? "创建失败：每位平台管理员仅可拥有一个作为群主的工作群组。");
     }
   }
 
@@ -68,14 +97,16 @@ export default function AdminGroupPage() {
     }
   }
 
-  if (loading || owned === undefined) return <Spinner />;
+  if (loading && owned === undefined) return <Spinner />;
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
+      <RefreshStrip active={refreshing} />
+      <GroupTabs />
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">群组与入群审批</h1>
+        <h1 className="text-2xl font-bold text-gray-900">群组管理</h1>
         <p className="text-sm text-gray-500 mt-1">
-          群主管理员拥有唯一工作群；向成员分发<strong>入群代码</strong>，对方在「申请入群」页提交后在此审批。
+          仅<strong>平台管理员</strong>可在此<strong>创建一个</strong>工作群组；其他角色只能使用入群代码加入，无法自建。向成员分发<strong>入群代码</strong>，对方在「群组」页提交申请后在此审批。
         </p>
       </div>
 
@@ -83,7 +114,7 @@ export default function AdminGroupPage() {
 
       {!owned ? (
         <form onSubmit={handleCreate} className="bg-white rounded-2xl border border-indigo-100 p-6 space-y-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-800">创建你的群组</h2>
+          <h2 className="text-sm font-semibold text-gray-800">创建工作群组</h2>
           <input
             required
             value={name}

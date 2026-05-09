@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { listDevices, harvestDevice, type Device } from "../api/client";
 import Spinner from "../components/Spinner";
+import RefreshStrip from "../components/RefreshStrip";
+import { useAuth } from "../auth/AuthContext";
+import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 
 L.Icon.Default.mergeOptions({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -18,27 +22,51 @@ function storageRatio(d: Device): number {
   return Math.min(1, Math.max(0, used / cap));
 }
 
+type MapCacheV1 = { v: 1; devices: Device[] };
+
 export default function ExecutorMapPage() {
+  const { session } = useAuth();
+  const location = useLocation();
+  const cacheKey = useMemo(
+    () => routeViewCacheKey(session?.user?.id, location.pathname),
+    [session?.user?.id, location.pathname]
+  );
+
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const markersLayer = useRef<L.LayerGroup | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  const fetchedOnceRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!cacheKey) return;
+    const s = readRouteViewCache<MapCacheV1>(cacheKey);
+    if (!s || s.v !== 1) return;
+    setDevices(s.devices);
+    fetchedOnceRef.current = true;
+    setLoading(false);
+  }, [cacheKey]);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (fetchedOnceRef.current) setRefreshing(true);
+    else setLoading(true);
     setErr("");
     try {
       const res = await listDevices({ scope: "fleet", limit: 500, offset: 0 });
       setDevices(res.devices);
+      fetchedOnceRef.current = true;
+      if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, devices: res.devices });
     } catch (e: any) {
       setErr(e.message ?? "加载设备失败");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     void load();
@@ -102,6 +130,7 @@ export default function ExecutorMapPage() {
 
   return (
     <div>
+      <RefreshStrip active={refreshing} />
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">数采地图</h1>

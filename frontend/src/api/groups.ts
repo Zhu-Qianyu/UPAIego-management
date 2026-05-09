@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { fetchProfile } from "./profiles";
 
 const WG = "work_groups";
 const GM = "group_members";
@@ -57,9 +58,34 @@ export async function fetchActiveGroupId(): Promise<string | null> {
   return active?.group_id ?? null;
 }
 
+/** 当前用户作为成员可读的群详情（含 display_name） */
+export async function fetchWorkGroupById(groupId: string): Promise<WorkGroup | null> {
+  const { data, error } = await supabase.from(WG).select("*").eq("id", groupId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as WorkGroup | null;
+}
+
+/** 群内全部成员行（含 pending / rejected），需 gm_select 策略允许 */
+export async function listAllGroupMembers(groupId: string): Promise<GroupMember[]> {
+  const { data, error } = await supabase
+    .from(GM)
+    .select("*")
+    .eq("group_id", groupId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  const statusOrder = (s: string) => (s === "active" ? 0 : s === "pending" ? 1 : 2);
+  return ([...(data ?? [])] as GroupMember[]).sort(
+    (a, b) => statusOrder(a.membership_status) - statusOrder(b.membership_status) || a.created_at.localeCompare(b.created_at)
+  );
+}
+
 export async function createWorkGroup(displayName: string, inviteCode?: string): Promise<WorkGroup> {
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) throw new Error("未登录");
+  const prof = await fetchProfile(u.id);
+  if (prof?.role !== "admin") {
+    throw new Error("仅平台管理员可创建工作群组；其他角色请使用入群代码加入已有群组。");
+  }
   const payload: Record<string, string> = {
     display_name: displayName.trim(),
     owner_user_id: u.id,
@@ -86,6 +112,21 @@ export async function listPendingMembers(groupId: string): Promise<GroupMember[]
     .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as GroupMember[];
+}
+
+/** 群主或平台管理员将成员移出（标记为已拒绝） */
+export async function kickGroupMember(memberId: string): Promise<void> {
+  const u = (await supabase.auth.getUser()).data.user;
+  if (!u) throw new Error("未登录");
+  const { error } = await supabase
+    .from(GM)
+    .update({
+      membership_status: "rejected",
+      decided_at: new Date().toISOString(),
+      decided_by: u.id,
+    })
+    .eq("id", memberId);
+  if (error) throw new Error(error.message);
 }
 
 export async function setMembershipStatus(

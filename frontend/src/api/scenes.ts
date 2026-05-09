@@ -60,6 +60,11 @@ export async function updateSceneTask(
   if (error) throw new Error(error.message);
 }
 
+export async function deleteSceneTask(id: string): Promise<void> {
+  const { error } = await supabase.from("scene_tasks").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 export async function listRequirementsForTask(sceneTaskId: string): Promise<CollectionRequirement[]> {
   const { data, error } = await supabase
     .from("collection_requirements")

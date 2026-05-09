@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchActiveGroupId, fetchMyMemberships, fetchOwnedWorkGroup } from "../api/groups";
+import { useAuth } from "../auth/AuthContext";
 
 /**
  * 顶部提示：未入群 / 审批中
  */
 export default function GroupStatusBanner() {
+  const { profile } = useAuth();
   const [show, setShow] = useState<"none" | "pending" | "no_group">("none");
 
   useEffect(() => {
@@ -45,12 +47,33 @@ export default function GroupStatusBanner() {
     );
   }
 
+  const isAdmin = profile?.role === "admin";
+
   return (
-    <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 flex flex-wrap items-center gap-2">
-      <span>你尚未加入已激活的工作群组，请先</span>
-      <Link to="/join" className="font-medium text-indigo-600 underline">
-        申请入群
-      </Link>
+    <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 flex flex-wrap items-center gap-x-2 gap-y-1">
+      {isAdmin ? (
+        <>
+          <span>
+            你尚未加入已激活的工作群组。若需<strong>新建</strong>工作群，请先
+          </span>
+          <Link to="/group/manage" className="font-medium text-indigo-600 underline whitespace-nowrap">
+            打开群组管理创建
+          </Link>
+          <span>；若仅需加入他人已建好的群，可到</span>
+          <Link to="/group" className="font-medium text-indigo-600 underline whitespace-nowrap">
+            群组页
+          </Link>
+          <span>使用入群代码申请。</span>
+        </>
+      ) : (
+        <>
+          <span>你尚未加入已激活的工作群组（群组仅可由平台管理员创建）。请先</span>
+          <Link to="/group" className="font-medium text-indigo-600 underline">
+            申请入群
+          </Link>
+          <span>（向管理员索取入群代码）。</span>
+        </>
+      )}
     </div>
   );
 }

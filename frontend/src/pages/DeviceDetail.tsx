@@ -1,20 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getDevice, updateDevice, deleteDevice, type Device, type DeviceListScope } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { generateQrDataUrl, downloadQr } from "../api/qr";
 import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
+import RefreshStrip from "../components/RefreshStrip";
 import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
+import { readRouteViewCache, routeViewCacheKeyExtra, writeRouteViewCache } from "../utils/routeViewCache";
+
+type DeviceDetailCacheV1 = { v: 1; device: Device };
 
 export default function DeviceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
   const deviceScope: DeviceListScope = profile?.role === "admin" ? "fleet" : "own";
+
+  const cacheKey = useMemo(
+    () => routeViewCacheKeyExtra(session?.user?.id, "device-detail", id ?? ""),
+    [session?.user?.id, id]
+  );
+
   const [device, setDevice] = useState<Device | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -25,12 +36,27 @@ export default function DeviceDetail() {
   const [editFw, setEditFw] = useState("");
   const [editNotes, setEditNotes] = useState("");
 
+  useLayoutEffect(() => {
+    if (!cacheKey || !id) return;
+    const snap = readRouteViewCache<DeviceDetailCacheV1>(cacheKey);
+    if (!snap || snap.v !== 1) return;
+    setDevice(snap.device);
+    setEditStatus(snap.device.status);
+    setEditCal(snap.device.calibration_status);
+    setEditFw(snap.device.firmware_version ?? "");
+    setEditNotes(snap.device.notes ?? "");
+    setLoading(false);
+  }, [cacheKey, id]);
+
   useEffect(() => {
     if (!id) return;
-    setLoading(true);
+    const stale = cacheKey ? readRouteViewCache<DeviceDetailCacheV1>(cacheKey) : null;
+    if (stale) setRefreshing(true);
+    else setLoading(true);
     getDevice(id, { scope: deviceScope })
       .then((d) => {
         setDevice(d);
+        if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, device: d });
         setEditStatus(d.status);
         setEditCal(d.calibration_status);
         setEditFw(d.firmware_version ?? "");
@@ -39,8 +65,24 @@ export default function DeviceDetail() {
       })
       .then(setQrDataUrl)
       .catch(() => setError("未找到该设备，或你没有访问权限"))
-      .finally(() => setLoading(false));
-  }, [id, deviceScope]);
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
+  }, [id, deviceScope, cacheKey]);
+
+  useEffect(() => {
+    if (!device || qrDataUrl) return;
+    let cancel = false;
+    generateQrDataUrl(device.device_id, device.readable_name)
+      .then((u) => {
+        if (!cancel) setQrDataUrl(u);
+      })
+      .catch(() => {});
+    return () => {
+      cancel = true;
+    };
+  }, [device, qrDataUrl]);
 
   useEffect(() => {
     if (!id) return;
@@ -96,11 +138,12 @@ export default function DeviceDetail() {
     }
   }
 
-  if (loading) return <Spinner />;
+  if (loading && !device) return <Spinner />;
   if (!device) return <p className="text-center text-gray-500 py-12">{error || "未找到设备"}</p>;
 
   return (
     <div className="max-w-4xl mx-auto">
+      <RefreshStrip active={refreshing} />
       <button onClick={() => navigate("/")} className="text-sm text-indigo-600 hover:underline mb-4 inline-block">
         &larr; 返回设备总览
       </button>

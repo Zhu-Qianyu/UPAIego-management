@@ -6,7 +6,7 @@ import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
 import { getEffectiveDeviceStatus } from "../utils/deviceStatus";
 
-export default function Search() {
+export default function Search({ embedded }: { embedded?: boolean }) {
   const { profile } = useAuth();
   const searchScope: DeviceListScope = profile?.role === "admin" ? "fleet" : "own";
 
@@ -39,7 +39,8 @@ export default function Search() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">搜索设备</h1>
+      {!embedded && <h1 className="text-2xl font-bold text-gray-900 mb-6">搜索设备</h1>}
+      {embedded && <h2 className="sr-only">搜索设备</h2>}
 
       <form onSubmit={handleSearch} className="flex gap-3 mb-6">
         <input

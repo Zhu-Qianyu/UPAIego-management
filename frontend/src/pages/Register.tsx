@@ -5,7 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { generateQrDataUrl, downloadQr } from "../api/qr";
 import Spinner from "../components/Spinner";
 
-export default function Register() {
+export default function Register({ embedded }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const listScope: DeviceListScope = profile?.role === "admin" ? "fleet" : "own";
@@ -43,7 +43,7 @@ export default function Register() {
 
   if (registered) {
     return (
-      <div className="max-w-lg mx-auto">
+      <div className={embedded ? "max-w-lg" : "max-w-lg mx-auto"}>
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
           <div className="text-green-600 text-5xl mb-4">&#10003;</div>
           <h2 className="text-xl font-bold text-gray-900 mb-1">设备注册成功</h2>
@@ -97,8 +97,9 @@ export default function Register() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">注册新设备</h1>
+    <div className={embedded ? "max-w-2xl" : "max-w-2xl mx-auto"}>
+      {!embedded && <h1 className="text-2xl font-bold text-gray-900 mb-6">注册新设备</h1>}
+      {embedded && <h2 className="sr-only">注册新设备</h2>}
 
       <p className="text-sm text-gray-500 mb-4">
         你可以选填设备序列号（CPU Serial），可通过 CLI 获取：&nbsp;

@@ -9,6 +9,17 @@ export interface Profile {
   created_at: string;
 }
 
+/** 批量读取用户资料（需 DB 策略允许，如同群 peer 策略） */
+export async function fetchProfilesByIds(
+  userIds: string[]
+): Promise<Pick<Profile, "id" | "display_name" | "role">[]> {
+  const ids = [...new Set(userIds)].filter(Boolean);
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase.from("profiles").select("id, display_name, role").in("id", ids);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Pick<Profile, "id" | "display_name" | "role">[];
+}
+
 export async function fetchProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
   if (error) {
