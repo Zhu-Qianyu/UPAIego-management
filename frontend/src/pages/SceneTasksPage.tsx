@@ -14,6 +14,7 @@ import { fetchActiveGroupId } from "../api/groups";
 import {
   createPartyDemand,
   createScenarioPosition,
+  updateScenarioPosition,
   deletePartyDemand,
   deleteScenarioPosition,
   getSnapshotPublicUrl,
@@ -291,11 +292,11 @@ function ScenarioRow({ row }: { row: ScenarioPosition }) {
   }, [row.snapshot_path]);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row gap-4">
+    <div className="bg-white p-4 flex flex-col sm:flex-row gap-4">
       {src && (
         <img src={src} alt="" className="w-full sm:w-40 h-32 object-cover rounded-lg border border-gray-100" />
       )}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 pr-24">
         <p className="font-medium text-gray-900">{row.title}</p>
         <p className="text-xs text-gray-500 mt-1">
           大类：{labelSceneCategories(row.scene_categories)} ·{" "}
@@ -309,6 +310,15 @@ function ScenarioRow({ row }: { row: ScenarioPosition }) {
       </div>
     </div>
   );
+}
+
+function scenarioCategoriesToRecord(cats: string[]): Record<SceneCategoryKey, boolean> {
+  const r: Record<SceneCategoryKey, boolean> = { industrial: false, home: false, special: false };
+  for (const k of SCENE_CATEGORY_KEYS) {
+    if (cats.includes(k)) r[k] = true;
+  }
+  if (!cats.length) r.industrial = true;
+  return r;
 }
 
 function ScenarioWorkstationsTab({
@@ -336,6 +346,21 @@ function ScenarioWorkstationsTab({
   const [busy, setBusy] = useState(false);
   const loadedOnceRef = useRef(false);
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [eTitle, setETitle] = useState("");
+  const [eProc, setEProc] = useState("");
+  const [eProvince, setEProvince] = useState("");
+  const [eCity, setECity] = useState("");
+  const [eDistrict, setEDistrict] = useState("");
+  const [eDetail, setEDetail] = useState("");
+  const [eSelCats, setESelCats] = useState<Record<SceneCategoryKey, boolean>>({
+    industrial: true,
+    home: false,
+    special: false,
+  });
+  const [eFile, setEFile] = useState<File | null>(null);
+  const [eBusy, setEBusy] = useState(false);
+
   const load = useCallback(async () => {
     if (loadedOnceRef.current) setRefreshing(true);
     else setLoading(true);
@@ -357,6 +382,63 @@ function ScenarioWorkstationsTab({
 
   function toggleCat(k: SceneCategoryKey) {
     setSelCats((prev) => ({ ...prev, [k]: !prev[k] }));
+  }
+
+  function toggleECat(k: SceneCategoryKey) {
+    setESelCats((prev) => ({ ...prev, [k]: !prev[k] }));
+  }
+
+  function openEdit(r: ScenarioPosition) {
+    setErr("");
+    setEditingId(r.id);
+    setETitle(r.title);
+    setEProc(r.process_description ?? "");
+    setEProvince(r.address_province);
+    setECity(r.address_city);
+    setEDistrict(r.address_district);
+    setEDetail(r.address_detail ?? "");
+    setESelCats(scenarioCategoriesToRecord(r.scene_categories ?? []));
+    setEFile(null);
+  }
+
+  async function onSaveEdit(e: React.FormEvent, rowId: string) {
+    e.preventDefault();
+    setErr("");
+    const cats = SCENE_CATEGORY_KEYS.filter((k) => eSelCats[k]);
+    if (cats.length < 1) {
+      setErr("请至少勾选一个场景大类");
+      return;
+    }
+    if (!eProvince.trim() || !eCity.trim() || !eDistrict.trim()) {
+      setErr("请填写省、市、区（县）");
+      return;
+    }
+    setEBusy(true);
+    try {
+      let snapshotPath: string | undefined;
+      if (eFile) {
+        const { path } = await uploadWorkstationSnapshot(groupId, eFile);
+        snapshotPath = path;
+      }
+      await updateScenarioPosition(rowId, {
+        title: eTitle.trim(),
+        process_description: eProc.trim() || null,
+        scene_categories: cats,
+        address_province: eProvince.trim(),
+        address_city: eCity.trim(),
+        address_district: eDistrict.trim(),
+        address_detail: eDetail.trim() || null,
+        ...(snapshotPath ? { snapshot_path: snapshotPath } : {}),
+      });
+      await syncSceneTaskAssignments(groupId);
+      setEditingId(null);
+      setEFile(null);
+      await load();
+    } catch (err: unknown) {
+      setErr(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setEBusy(false);
+    }
   }
 
   async function onAdd(e: React.FormEvent) {
@@ -486,20 +568,119 @@ function ScenarioWorkstationsTab({
       </form>
       <div className="space-y-4">
         {rows.map((r) => (
-          <div key={r.id} className="relative">
+          <div key={r.id} className="relative rounded-xl border border-gray-200 overflow-hidden">
             <ScenarioRow row={r} />
-            <button
-              type="button"
-              onClick={async () => {
-                if (!confirm("删除该场景岗位？关联的自动子任务会同步更新。")) return;
-                await deleteScenarioPosition(r.id);
-                await syncSceneTaskAssignments(groupId);
-                await load();
-              }}
-              className="absolute top-2 right-2 text-xs text-red-600 bg-white/90 px-2 py-1 rounded"
-            >
-              删除
-            </button>
+            <div className="absolute top-2 right-2 flex gap-1">
+              <button
+                type="button"
+                onClick={() => openEdit(r)}
+                className="text-xs text-violet-700 bg-white/95 px-2 py-1 rounded border border-violet-200 shadow-sm"
+              >
+                编辑
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!confirm("删除该场景岗位？关联的自动子任务会同步更新。")) return;
+                  if (editingId === r.id) setEditingId(null);
+                  await deleteScenarioPosition(r.id);
+                  await syncSceneTaskAssignments(groupId);
+                  await load();
+                }}
+                className="text-xs text-red-600 bg-white/95 px-2 py-1 rounded border border-red-100 shadow-sm"
+              >
+                删除
+              </button>
+            </div>
+            {editingId === r.id && (
+              <form
+                onSubmit={(ev) => void onSaveEdit(ev, r.id)}
+                className="border-t border-indigo-100 bg-indigo-50/40 p-4 space-y-2"
+              >
+                <p className="text-xs font-medium text-indigo-900">编辑场景岗位</p>
+                <div className="flex flex-wrap gap-3">
+                  {SCENE_CATEGORY_KEYS.map((k) => (
+                    <label key={k} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={eSelCats[k]} onChange={() => toggleECat(k)} />
+                      {SCENE_CATEGORY_LABELS[k]}
+                    </label>
+                  ))}
+                </div>
+                <input
+                  required
+                  placeholder="工序 / 岗位"
+                  value={eTitle}
+                  onChange={(e) => setETitle(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                />
+                <textarea
+                  placeholder="具体描述"
+                  value={eProc}
+                  onChange={(e) => setEProc(e.target.value)}
+                  rows={2}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <input
+                    required
+                    placeholder="省"
+                    value={eProvince}
+                    onChange={(e) => setEProvince(e.target.value)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                  />
+                  <input
+                    required
+                    placeholder="市"
+                    value={eCity}
+                    onChange={(e) => setECity(e.target.value)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                  />
+                  <input
+                    required
+                    placeholder="区/县"
+                    value={eDistrict}
+                    onChange={(e) => setEDistrict(e.target.value)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                  />
+                </div>
+                <input
+                  placeholder="详细地址（可选）"
+                  value={eDetail}
+                  onChange={(e) => setEDetail(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                />
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">更换现场快照（可选，不选则保留原图）</label>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(e) => setEFile(e.target.files?.[0] ?? null)}
+                    className="text-sm w-full"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={eBusy}
+                    className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm disabled:opacity-50"
+                  >
+                    {eBusy ? "保存中…" : "保存"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={eBusy}
+                    onClick={() => {
+                      setEditingId(null);
+                      setEFile(null);
+                      setErr("");
+                    }}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                  >
+                    取消
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         ))}
       </div>

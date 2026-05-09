@@ -179,6 +179,40 @@ export async function createScenarioPosition(row: {
   return data as ScenarioPosition;
 }
 
+export async function updateScenarioPosition(
+  id: string,
+  patch: {
+    title?: string;
+    process_description?: string | null;
+    scene_categories?: SceneCategoryKey[];
+    address_province?: string;
+    address_city?: string;
+    address_district?: string;
+    address_detail?: string | null;
+    snapshot_path?: string;
+  }
+): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (patch.title !== undefined) payload.title = patch.title.trim();
+  if (patch.process_description !== undefined) {
+    payload.process_description = patch.process_description === null ? null : patch.process_description.trim() || null;
+  }
+  if (patch.scene_categories !== undefined) payload.scene_categories = patch.scene_categories;
+  if (patch.address_province !== undefined) payload.address_province = patch.address_province.trim();
+  if (patch.address_city !== undefined) payload.address_city = patch.address_city.trim();
+  if (patch.address_district !== undefined) payload.address_district = patch.address_district.trim();
+  if (patch.address_detail !== undefined) {
+    payload.address_detail = patch.address_detail === null ? null : patch.address_detail.trim() || null;
+  }
+  if (patch.snapshot_path !== undefined) {
+    payload.snapshot_path = patch.snapshot_path;
+    payload.snapshot_bucket = SNAPSHOT_BUCKET;
+  }
+  if (Object.keys(payload).length === 0) return;
+  const { error } = await supabase.from(SP).update(payload).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 export async function deleteScenarioPosition(id: string): Promise<void> {
   const { error } = await supabase.from(SP).delete().eq("id", id);
   if (error) throw new Error(error.message);
