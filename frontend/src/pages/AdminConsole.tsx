@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   listKpis,
   upsertKpi,
@@ -80,25 +79,9 @@ export default function AdminConsole() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">管理员工作台</h1>
-        <div className="flex gap-2 text-sm">
-          <Link to="/fleet" className="text-indigo-600 hover:underline">
-            全量设备
-          </Link>
-          <span className="text-gray-300">|</span>
-          <Link to="/register" className="text-indigo-600 hover:underline">
-            注册设备
-          </Link>
-          <span className="text-gray-300">|</span>
-          <Link to="/search" className="text-indigo-600 hover:underline">
-            搜索
-          </Link>
-          <span className="text-gray-300">|</span>
-          <Link to="/map" className="text-indigo-600 hover:underline">
-            数采地图
-          </Link>
-        </div>
+        <p className="text-sm text-gray-500 mt-1">左侧菜单可打开其它功能页；全量设备、搜索等在侧栏中。</p>
       </div>
 
       {err && (

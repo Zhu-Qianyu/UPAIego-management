@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Register from "./pages/Register";
@@ -20,6 +20,8 @@ import RoleRoute from "./components/RoleRoute";
 import AnnouncementsBanner from "./components/AnnouncementsBanner";
 import GroupStatusBanner from "./components/GroupStatusBanner";
 import AccountDeleteModal from "./components/AccountDeleteModal";
+
+const SIDEBAR_COLLAPSED_KEY = "upai:sidebar-collapsed";
 
 function AccountNavActions({
   onOpenDelete,
@@ -206,31 +208,28 @@ export default function App() {
   }
 
   const navItems = navForRole(profile.role);
-  const [navMenuOpen, setNavMenuOpen] = useState(false);
-  const navShellRef = useRef<HTMLNavElement | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  });
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
-    setNavMenuOpen(false);
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? "1" : "0");
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    setMobileSidebarOpen(false);
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!navMenuOpen) return;
-    function onPointerDown(e: PointerEvent) {
-      const el = navShellRef.current;
-      if (el && !el.contains(e.target as Node)) setNavMenuOpen(false);
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [navMenuOpen]);
-
-  useEffect(() => {
-    if (!navMenuOpen) return;
+    if (!mobileSidebarOpen) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setNavMenuOpen(false);
+      if (e.key === "Escape") setMobileSidebarOpen(false);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [navMenuOpen]);
+  }, [mobileSidebarOpen]);
 
   const homeTo =
     profile.role === "admin"
@@ -242,110 +241,140 @@ export default function App() {
           : "/";
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-indigo-50 via-slate-50 to-gray-50">
-      <nav
-        ref={navShellRef}
-        className="bg-white/90 backdrop-blur border-b border-indigo-100 shadow-sm sticky top-0 z-20"
+    <div className="min-h-screen flex bg-gradient-to-b from-indigo-50 via-slate-50 to-gray-50">
+      {mobileSidebarOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[1px] md:hidden"
+          aria-label="关闭菜单"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      <aside
+        className={[
+          "fixed md:sticky md:top-0 md:self-start z-50 md:z-30",
+          "flex flex-col min-h-0 h-screen max-h-[100dvh]",
+          "w-56 shrink-0 border-r border-indigo-100 bg-white/95 shadow-sm md:shadow-none",
+          "transition-[transform,width] duration-200 ease-out",
+          sidebarCollapsed ? "md:w-[4.25rem]" : "",
+          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+        ].join(" ")}
+        aria-label="功能导航"
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 gap-3">
-            <Link
-              to={homeTo}
-              className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent shrink-0"
+        <div
+          className={`flex items-center gap-2 shrink-0 border-b border-indigo-100/90 p-3 ${sidebarCollapsed ? "md:flex-col" : ""}`}
+        >
+          <Link
+            to={homeTo}
+            onClick={() => setMobileSidebarOpen(false)}
+            className={`font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent truncate min-w-0 ${
+              sidebarCollapsed ? "md:text-center md:text-sm flex-1" : "text-lg flex-1"
+            }`}
+            title="UPAIego"
+          >
+            <span className="md:hidden">UPAIego</span>
+            <span className="hidden md:inline">{sidebarCollapsed ? "U" : "UPAIego"}</span>
+          </Link>
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed((c) => !c)}
+            className="hidden md:flex items-center justify-center rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+            aria-expanded={!sidebarCollapsed}
+            title={sidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+          >
+            <svg
+              className={`w-5 h-5 transition-transform ${sidebarCollapsed ? "" : "rotate-180"}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
             >
-              UPAIego
-            </Link>
-            <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
-              <div
-                className="hidden md:flex items-center gap-2 shrink-0 mr-1 border-r border-gray-200/90 pr-3"
-                title={`${ROLE_LABELS[profile.role]} — ${ROLE_DESCRIPTIONS[profile.role]}`}
-              >
-                <span className="truncate text-xs text-gray-600 max-w-[180px] lg:max-w-[240px]">
-                  {session?.user?.email}
-                </span>
-                <span
-                  className="shrink-0 rounded-md bg-indigo-100 text-indigo-800 px-2 py-0.5 text-xs font-semibold tracking-tight ring-1 ring-indigo-200/80"
-                  aria-label={`当前角色：${ROLE_LABELS[profile.role]}`}
-                >
-                  {ROLE_LABELS[profile.role]}
-                </span>
-              </div>
-              <div
-                className="flex md:hidden items-center gap-2 shrink-0 border-r border-gray-200/90 pr-2"
-                title={`${ROLE_LABELS[profile.role]} — ${session?.user?.email ?? ""}`}
-              >
-                <span
-                  className="shrink-0 rounded-md bg-indigo-100 text-indigo-800 px-2 py-0.5 text-[11px] font-semibold ring-1 ring-indigo-200/80"
-                  aria-label={`当前角色：${ROLE_LABELS[profile.role]}`}
-                >
-                  {ROLE_LABELS[profile.role]}
-                </span>
-              </div>
-              <button
-                type="button"
-                aria-expanded={navMenuOpen}
-                aria-controls="app-nav-menu"
-                id="app-nav-menu-trigger"
-                onClick={() => setNavMenuOpen((o) => !o)}
-                className="flex items-center gap-1.5 shrink-0 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium text-indigo-800 bg-indigo-50 ring-1 ring-indigo-200/80 hover:bg-indigo-100 transition-colors"
-              >
-                功能菜单
-                <svg
-                  className={`w-4 h-4 text-indigo-600 transition-transform ${navMenuOpen ? "rotate-180" : ""}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              <AccountNavActions
-                onOpenDelete={() => setAccountDeleteOpen(true)}
-                onLogout={handleLogout}
-              />
-            </div>
-          </div>
-
-          {navMenuOpen && (
-            <div
-              id="app-nav-menu"
-              role="region"
-              aria-labelledby="app-nav-menu-trigger"
-              className="border-t border-indigo-100/90 pb-3 pt-1 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 bg-white/95"
-            >
-              <ul className="flex flex-col gap-0.5 max-h-[min(70vh,28rem)] overflow-y-auto">
-                {navItems.map((link) => {
-                  const active = location.pathname === link.to;
-                  return (
-                    <li key={link.to}>
-                      <Link
-                        to={link.to}
-                        onClick={() => setNavMenuOpen(false)}
-                        className={`block rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                          active
-                            ? "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200/80"
-                            : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
-                        }`}
-                      >
-                        {link.label}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+          </button>
         </div>
-      </nav>
 
-      <AccountDeleteModal
-        open={accountDeleteOpen}
-        onClose={() => setAccountDeleteOpen(false)}
-        email={session?.user?.email}
-      />
+        <nav className="flex-1 overflow-y-auto p-2 space-y-0.5 [scrollbar-width:thin]">
+          <ul className="space-y-0.5">
+            {navItems.map((link) => {
+              const active = location.pathname === link.to;
+              const abbr = link.label.slice(0, 1);
+              return (
+                <li key={link.to}>
+                  <Link
+                    to={link.to}
+                    onClick={() => setMobileSidebarOpen(false)}
+                    title={sidebarCollapsed ? link.label : undefined}
+                    className={`
+                      flex items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm font-medium transition-colors
+                      ${
+                        active
+                          ? "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200/80"
+                          : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                      }
+                      ${sidebarCollapsed ? "justify-center px-1" : ""}
+                    `}
+                  >
+                    <span
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold ${
+                        active ? "bg-white/80 text-indigo-800" : "bg-indigo-50 text-indigo-700"
+                      }`}
+                      aria-hidden
+                    >
+                      {abbr}
+                    </span>
+                    <span className={sidebarCollapsed ? "truncate md:hidden" : "truncate"}>
+                      {link.label}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      </aside>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-indigo-100 bg-white/90 px-3 sm:px-4 backdrop-blur">
+          <button
+            type="button"
+            className="inline-flex md:hidden items-center justify-center rounded-lg p-2 text-gray-600 hover:bg-gray-100"
+            onClick={() => setMobileSidebarOpen(true)}
+            aria-label="打开功能菜单"
+          >
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <div className="hidden sm:block min-w-0 flex-1" />
+          <div
+            className="flex min-w-0 flex-1 sm:flex-initial items-center justify-end gap-2"
+            title={`${ROLE_LABELS[profile.role]} — ${ROLE_DESCRIPTIONS[profile.role]}`}
+          >
+            <span className="hidden sm:inline truncate text-xs text-gray-600 max-w-[140px] md:max-w-[220px]">
+              {session?.user?.email}
+            </span>
+            <span
+              className="shrink-0 rounded-md bg-indigo-100 px-2 py-0.5 text-[11px] sm:text-xs font-semibold text-indigo-800 ring-1 ring-indigo-200/80"
+              aria-label={`当前角色：${ROLE_LABELS[profile.role]}`}
+            >
+              {ROLE_LABELS[profile.role]}
+            </span>
+          </div>
+          <AccountNavActions
+            onOpenDelete={() => setAccountDeleteOpen(true)}
+            onLogout={handleLogout}
+          />
+        </header>
+
+        <AccountDeleteModal
+          open={accountDeleteOpen}
+          onClose={() => setAccountDeleteOpen(false)}
+          email={session?.user?.email}
+        />
+
+        <main className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-8 flex-1">
         <GroupStatusBanner />
         <AnnouncementsBanner />
         <Routes>
@@ -419,7 +448,8 @@ export default function App() {
           <Route path="/auth" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

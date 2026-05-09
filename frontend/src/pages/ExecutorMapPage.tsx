@@ -106,7 +106,8 @@ export default function ExecutorMapPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">数采地图</h1>
           <p className="text-sm text-gray-500 mt-1">
-            存储条满后点击「回收数据」清空计数。设备需在库中有经纬度（map_lat / map_lng）；存储由板端上报或手工维护。
+            仅展示当前工作群内成员名下设备。存储条满后点击「回收数据」清空计数。设备需在库中有经纬度（map_lat /
+            map_lng）；存储由板端上报或手工维护。
           </p>
         </div>
         <button

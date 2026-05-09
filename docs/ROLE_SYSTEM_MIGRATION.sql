@@ -303,6 +303,9 @@ CREATE POLICY "collection_req_delete_scene_or_admin"
 -- ---------------------------------------------------------------------------
 -- 7. Replace devices RLS (drop legacy policy names from DEPLOYMENT.md)
 -- ---------------------------------------------------------------------------
+-- 默认 admin / collection_executor 可查全表；若已跑群组迁移，请再执行
+-- docs/GROUP_TOPICS_BUSINESS_MIGRATION.sql（含 section 9）或 docs/DEVICES_GROUP_SCOPE_RLS.sql，
+-- 将全量设备限制为「仅本工作群成员名下设备」。
 ALTER TABLE public.devices ENABLE ROW LEVEL SECURITY;
 
 SELECT public._role_migration_drop_policies('devices');

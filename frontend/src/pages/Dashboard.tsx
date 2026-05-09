@@ -75,11 +75,18 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">
-          {listScope === "fleet" ? "全平台设备总览" : "设备总览"}
-        </h1>
-        <span className="text-sm text-gray-500">共 {total} 台设备</span>
+      <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {listScope === "fleet" ? "全平台设备总览" : "设备总览"}
+          </h1>
+          {listScope === "fleet" && (
+            <p className="text-xs text-gray-500 mt-1 max-w-xl">
+              仅展示当前工作群内成员名下的设备（与入群、群主范围一致）；未入群或群外用户设备不会出现在此列表。
+            </p>
+          )}
+        </div>
+        <span className="text-sm text-gray-500 shrink-0">共 {total} 台设备</span>
       </div>
 
       {/* Filters */}
