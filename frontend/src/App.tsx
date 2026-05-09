@@ -241,7 +241,10 @@ export default function App() {
           : "/";
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-b from-indigo-50 via-slate-50 to-gray-50">
+    <div
+      className="min-h-screen flex bg-gradient-to-b from-indigo-50 via-slate-50 to-gray-50"
+      data-app-shell="sidebar-v2"
+    >
       {mobileSidebarOpen && (
         <button
           type="button"
@@ -337,16 +340,19 @@ export default function App() {
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-indigo-100 bg-white/90 px-3 sm:px-4 backdrop-blur">
-          <button
-            type="button"
-            className="inline-flex md:hidden items-center justify-center rounded-lg p-2 text-gray-600 hover:bg-gray-100"
-            onClick={() => setMobileSidebarOpen(true)}
-            aria-label="打开功能菜单"
-          >
-            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1 md:hidden">
+            <button
+              type="button"
+              className="inline-flex items-center justify-center rounded-lg p-2 text-gray-600 hover:bg-gray-100"
+              onClick={() => setMobileSidebarOpen(true)}
+              aria-label="打开功能菜单"
+            >
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <span className="text-xs text-gray-500 whitespace-nowrap">菜单</span>
+          </div>
           <div className="hidden sm:block min-w-0 flex-1" />
           <div
             className="flex min-w-0 flex-1 sm:flex-initial items-center justify-end gap-2"
