@@ -75,7 +75,7 @@ export default function KpiBanner() {
         const label = mid ? labelForMetricId(mid) : k.title;
         const target = k.target_value != null && Number.isFinite(Number(k.target_value)) ? Number(k.target_value) : 0;
         const current = mid ? (currentById[k.id] ?? 0) : 0;
-        const pct = mid && target > 0 ? kpiProgressPercent(mid, current, target) : 0;
+        const pct = mid && target > 0 ? kpiProgressPercent(current, target) : 0;
         const unit = (k.unit ?? "").trim();
 
         return (
