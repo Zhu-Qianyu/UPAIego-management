@@ -2,7 +2,7 @@ import { useState } from "react";
 import { supabase } from "../api/supabase";
 import type { UserRole } from "../types/roles";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "../auth/roleLabels";
-import { SITE_DISPLAY_NAME, SITE_SUBTITLE } from "../branding";
+import { COMPANY_NAME, SITE_DISPLAY_NAME, SITE_SUBTITLE } from "../branding";
 
 type Mode = "login" | "register";
 
@@ -51,14 +51,16 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="auth-root flex items-center justify-center px-4 py-10">
+    <div className="auth-root flex min-h-screen flex-col">
       <div className="auth-mesh" aria-hidden />
       <div className="auth-blob auth-blob--a" aria-hidden />
       <div className="auth-blob auth-blob--b" aria-hidden />
       <div className="auth-blob auth-blob--c" aria-hidden />
 
-      <div className="relative z-10 w-full max-w-md">
-        <div className="auth-card w-full bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-white/60 ring-1 ring-indigo-100/80 p-6">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-1 items-center justify-center px-4 py-10">
+          <div className="w-full max-w-md">
+            <div className="auth-card w-full bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-white/60 ring-1 ring-indigo-100/80 p-6">
           <h1 className="auth-brand-title">
             {SITE_DISPLAY_NAME}
             <span className="auth-sparkle" aria-hidden>
@@ -156,7 +158,12 @@ export default function AuthPage() {
               {loading ? "请稍候..." : mode === "login" ? "登录" : "创建账号"}
             </button>
           </form>
+            </div>
+          </div>
         </div>
+        <footer className="relative z-10 shrink-0 px-4 pb-6 pt-2 text-center text-xs text-gray-600/90">
+          © {new Date().getFullYear()} {COMPANY_NAME}
+        </footer>
       </div>
     </div>
   );

@@ -19,7 +19,7 @@ import AnnouncementsBanner from "./components/AnnouncementsBanner";
 import KpiBanner from "./components/KpiBanner";
 import GroupStatusBanner from "./components/GroupStatusBanner";
 import AccountDeleteModal from "./components/AccountDeleteModal";
-import { SITE_DISPLAY_NAME } from "./branding";
+import { COMPANY_NAME, SITE_DISPLAY_NAME } from "./branding";
 
 const SIDEBAR_COLLAPSED_KEY = "upai:sidebar-collapsed";
 
@@ -98,8 +98,9 @@ function MigrationNotice({
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-amber-50/50">
-      <div className="max-w-lg rounded-2xl border border-amber-200 bg-white p-6 text-sm text-amber-950 shadow-sm space-y-4">
+    <div className="min-h-screen flex flex-col bg-amber-50/50">
+      <div className="flex flex-1 items-center justify-center p-6">
+        <div className="max-w-lg rounded-2xl border border-amber-200 bg-white p-6 text-sm text-amber-950 shadow-sm space-y-4">
         <p className="font-semibold text-base">未检测到账号角色（profiles）</p>
         <p className="text-amber-900/90">
           任选一种方式修复后，点击下方「同步并重试」即可，无需改代码。
@@ -160,13 +161,15 @@ function MigrationNotice({
             注销账号
           </button>
         </div>
-      </div>
+        </div>
 
-      <AccountDeleteModal
-        open={accountDeleteOpen}
-        onClose={() => setAccountDeleteOpen(false)}
-        email={session?.user?.email}
-      />
+        <AccountDeleteModal
+          open={accountDeleteOpen}
+          onClose={() => setAccountDeleteOpen(false)}
+          email={session?.user?.email}
+        />
+      </div>
+      <p className="shrink-0 pb-4 text-center text-xs text-gray-500">{COMPANY_NAME}</p>
     </div>
   );
 }
@@ -342,6 +345,28 @@ export default function App() {
             })}
           </ul>
         </nav>
+
+        <div
+          className={`shrink-0 border-t border-indigo-100/80 px-2 py-2.5 ${
+            sidebarCollapsed ? "md:px-1 md:py-2" : ""
+          }`}
+        >
+          <p
+            className={`text-center text-[11px] leading-snug text-gray-500 ${
+              sidebarCollapsed ? "md:hidden" : ""
+            }`}
+          >
+            © {new Date().getFullYear()} {COMPANY_NAME}
+          </p>
+          {sidebarCollapsed ? (
+            <p
+              className="hidden md:block text-center text-[10px] leading-tight text-gray-500 px-0.5"
+              title={COMPANY_NAME}
+            >
+              宇湃
+            </p>
+          ) : null}
+        </div>
       </aside>
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
