@@ -233,6 +233,17 @@ export async function listAssignmentsForSceneTask(sceneTaskId: string): Promise<
   return (data ?? []) as SceneTaskAssignment[];
 }
 
+/** 当前工作群下所有场景任务的子任务（一次查询，供任务列表卡片展示读条） */
+export async function listAssignmentsForWorkGroup(groupId: string): Promise<SceneTaskAssignment[]> {
+  const { data: tasks, error: e1 } = await supabase.from("scene_tasks").select("id").eq("group_id", groupId);
+  if (e1) throw new Error(e1.message);
+  const ids = (tasks ?? []).map((t: { id: string }) => t.id);
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase.from(STA).select("*").in("scene_task_id", ids).order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as SceneTaskAssignment[];
+}
+
 export async function updateAssignmentExecutedHours(id: string, executedHours: number): Promise<void> {
   const { error } = await supabase.from(STA).update({ executed_hours: executedHours }).eq("id", id);
   if (error) throw new Error(error.message);

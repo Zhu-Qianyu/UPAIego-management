@@ -1,15 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import {
-  listSceneTasks,
-  createSceneTask,
-  updateSceneTask,
-  deleteSceneTask,
-  getSceneTask,
-  listRequirementsForTask,
-  type SceneTask,
-  type CollectionRequirement,
-} from "../api/scenes";
+import { listSceneTasks, createSceneTask, updateSceneTask, deleteSceneTask, getSceneTask, type SceneTask } from "../api/scenes";
 import { fetchActiveGroupId } from "../api/groups";
 import {
   createPartyDemand,
@@ -23,7 +14,7 @@ import {
   uploadWorkstationSnapshot,
   uploadPartyDeviceSnapshot,
   syncSceneTaskAssignments,
-  listAssignmentsForSceneTask,
+  listAssignmentsForWorkGroup,
   updateAssignmentExecutedHours,
   type PartyDemand,
   type ScenarioPosition,
@@ -693,41 +684,27 @@ function progressPct(executed: number, cap: number): number {
   return Math.min(100, Math.max(0, (executed / cap) * 100));
 }
 
-function AssignmentsBlock({
-  taskId,
+function AssignmentsInline({
+  rows,
   positions,
   demands,
   isExecutor,
   setErr,
+  onHoursSaved,
 }: {
-  taskId: string;
+  rows: SceneTaskAssignment[];
   positions: Map<string, ScenarioPosition>;
   demands: Map<string, PartyDemand>;
   isExecutor: boolean;
   setErr: (s: string) => void;
+  onHoursSaved: () => void | Promise<void>;
 }) {
-  const [rows, setRows] = useState<SceneTaskAssignment[]>([]);
   const [localHours, setLocalHours] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const a = await listAssignmentsForSceneTask(taskId);
-      setRows(a);
-      const next: Record<string, string> = {};
-      for (const x of a) next[x.id] = String(x.executed_hours);
-      setLocalHours(next);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "加载子任务失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [taskId, setErr]);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    const next: Record<string, string> = {};
+    for (const x of rows) next[x.id] = String(x.executed_hours);
+    setLocalHours(next);
+  }, [rows]);
 
   const byPosition = useMemo(() => {
     const m = new Map<string, SceneTaskAssignment[]>();
@@ -739,37 +716,36 @@ function AssignmentsBlock({
     return m;
   }, [rows]);
 
-  if (loading) return <p className="text-sm text-gray-500">加载自动分配子任务…</p>;
   if (rows.length === 0) {
     return (
-      <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3">
-        暂无子任务。请将本任务设为「已发布」，并确保甲方业务与场景岗位的大类存在交集；系统会自动生成。
+      <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+        暂无自动子任务。请将任务设为「已发布」，并保证甲方业务与本岗位大类有交集。
       </p>
     );
   }
 
   return (
-    <div className="space-y-6 mt-4">
-      <h3 className="text-sm font-semibold text-gray-800">系统自动分配的执行进度</h3>
+    <div className="space-y-4 mt-3 border-t border-gray-100 pt-3">
+      <p className="text-xs font-semibold text-gray-800">业务进度</p>
       {[...byPosition.entries()].map(([posId, assigns]) => {
         const pos = positions.get(posId);
         return (
-          <div key={posId} className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 space-y-3">
+          <div key={posId} className="rounded-lg border border-gray-200 bg-gray-50/90 p-3 space-y-3">
             <div>
-              <p className="font-medium text-gray-900">{pos?.title ?? "场景岗位"}</p>
+              <p className="text-sm font-medium text-gray-900">{pos?.title ?? "场景岗位"}</p>
               {pos && (
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 mt-0.5">
                   {labelSceneCategories(pos.scene_categories)} ·{" "}
                   {[pos.address_province, pos.address_city, pos.address_district].join(" ")}
                 </p>
               )}
             </div>
-            <div className="space-y-4 pl-2 border-l-2 border-indigo-200">
+            <div className="space-y-3 pl-2 border-l-2 border-indigo-200">
               {assigns.map((a) => {
                 const d = demands.get(a.party_demand_id);
                 const pct = progressPct(Number(a.executed_hours), Number(a.max_hours_cap));
                 return (
-                  <div key={a.id} className="space-y-2">
+                  <div key={a.id} className="space-y-1.5">
                     <p className="text-sm text-gray-800">
                       甲方：<span className="font-medium">{d?.client_company ?? d?.title ?? "—"}</span>
                       <span className="text-xs text-gray-500 ml-2">
@@ -788,7 +764,7 @@ function AssignmentsBlock({
                         <input
                           type="text"
                           inputMode="decimal"
-                          className="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
+                          className="w-24 rounded border border-gray-300 px-2 py-1 text-sm bg-white"
                           value={localHours[a.id] ?? ""}
                           onChange={(e) =>
                             setLocalHours((prev) => ({
@@ -809,7 +785,7 @@ function AssignmentsBlock({
                             }
                             try {
                               await updateAssignmentExecutedHours(a.id, v);
-                              await load();
+                              await onHoursSaved();
                             } catch (e: unknown) {
                               setErr(e instanceof Error ? e.message : "保存失败");
                             }
@@ -830,7 +806,7 @@ function AssignmentsBlock({
   );
 }
 
-type SceneTasksInnerCacheV1 = { v: 1; tasks: SceneTask[]; selectedId: string | null };
+type SceneTasksInnerCacheV1 = { v: 3; tasks: SceneTask[] };
 
 function SceneTasksInner({
   groupId,
@@ -841,15 +817,14 @@ function SceneTasksInner({
 }) {
   const { profile, session } = useAuth();
   const innerCacheKey = useMemo(
-    () => routeViewCacheKeyExtra(session?.user?.id, "scene-tasks-inner", "v2"),
+    () => routeViewCacheKeyExtra(session?.user?.id, "scene-tasks-inner", "v3"),
     [session?.user?.id]
   );
 
   const isAdmin = profile?.role === "admin";
 
   const [tasks, setTasks] = useState<SceneTask[]>([]);
-  const [selected, setSelected] = useState<SceneTask | null>(null);
-  const [reqs, setReqs] = useState<CollectionRequirement[]>([]);
+  const [allAssignments, setAllAssignments] = useState<SceneTaskAssignment[]>([]);
   const [positions, setPositions] = useState<Map<string, ScenarioPosition>>(new Map());
   const [demands, setDemands] = useState<Map<string, PartyDemand>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -857,21 +832,37 @@ function SceneTasksInner({
   const [err, setErr] = useState("");
 
   const [positionIdForCreate, setPositionIdForCreate] = useState("");
-  const [dueLocal, setDueLocal] = useState("");
+  const [dueByTaskId, setDueByTaskId] = useState<Record<string, string>>({});
   const fetchedOnceRef = useRef(false);
+
+  const assignmentsByTaskId = useMemo(() => {
+    const m = new Map<string, SceneTaskAssignment[]>();
+    for (const a of allAssignments) {
+      const list = m.get(a.scene_task_id) ?? [];
+      list.push(a);
+      m.set(a.scene_task_id, list);
+    }
+    return m;
+  }, [allAssignments]);
+
+  const loadAssignments = useCallback(async () => {
+    try {
+      const a = await listAssignmentsForWorkGroup(groupId);
+      setAllAssignments(a);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "加载子任务失败");
+    }
+  }, [groupId]);
 
   useLayoutEffect(() => {
     if (!innerCacheKey) return;
     const snap = readRouteViewCache<SceneTasksInnerCacheV1>(innerCacheKey);
-    if (!snap || snap.v !== 1) return;
+    if (!snap || snap.v !== 3) return;
     setTasks(snap.tasks);
     fetchedOnceRef.current = true;
-    if (snap.selectedId) {
-      const sel = snap.tasks.find((x) => x.id === snap.selectedId);
-      setSelected(sel ?? null);
-    } else {
-      setSelected(null);
-    }
+    const due: Record<string, string> = {};
+    for (const t of snap.tasks) due[t.id] = toDatetimeLocalValue(t.due_at);
+    setDueByTaskId(due);
     setLoading(false);
   }, [innerCacheKey]);
 
@@ -882,19 +873,22 @@ function SceneTasksInner({
       const t = await listSceneTasks({ groupId, isAdmin });
       const visible = isExecutorView ? t.filter((x) => x.status === "published") : t;
       setTasks(visible);
-      setSelected((prev) => {
-        if (!prev) return null;
-        const still = visible.find((x) => x.id === prev.id);
-        return still ?? null;
+      setDueByTaskId((prev) => {
+        const next = { ...prev };
+        for (const x of visible) {
+          next[x.id] = toDatetimeLocalValue(x.due_at);
+        }
+        return next;
       });
       fetchedOnceRef.current = true;
+      await loadAssignments();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "加载失败");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [groupId, isAdmin, isExecutorView]);
+  }, [groupId, isAdmin, isExecutorView, loadAssignments]);
 
   useEffect(() => {
     if (!innerCacheKey) return;
@@ -903,8 +897,8 @@ function SceneTasksInner({
 
   useEffect(() => {
     if (!innerCacheKey || loading) return;
-    writeRouteViewCache(innerCacheKey, { v: 1, tasks, selectedId: selected?.id ?? null });
-  }, [innerCacheKey, tasks, selected, loading]);
+    writeRouteViewCache(innerCacheKey, { v: 3, tasks });
+  }, [innerCacheKey, tasks, loading]);
 
   useEffect(() => {
     if (!groupId) return;
@@ -918,21 +912,6 @@ function SceneTasksInner({
       }
     })();
   }, [groupId]);
-
-  async function loadReqs(taskId: string) {
-    const r = await listRequirementsForTask(taskId);
-    setReqs(r);
-  }
-
-  useEffect(() => {
-    if (!selected) {
-      setReqs([]);
-      setDueLocal("");
-      return;
-    }
-    setDueLocal(toDatetimeLocalValue(selected.due_at));
-    void loadReqs(selected.id);
-  }, [selected?.id, selected?.due_at]);
 
   function buildSceneTaskFromPosition(p: ScenarioPosition): { title: string; description: string } {
     const title = `【${p.title}】场景采集任务`;
@@ -970,17 +949,15 @@ function SceneTasksInner({
       });
       setPositionIdForCreate("");
       await loadTasks();
-      await syncSceneTaskAssignments(groupId);
     } catch (err: unknown) {
       setErr(err instanceof Error ? err.message : "创建失败");
     }
   }
 
-  async function saveDueAt() {
-    if (!selected) return;
+  async function saveDueAtForTask(taskId: string) {
     setErr("");
-    const nextIso = fromDatetimeLocalValue(dueLocal);
-    const cur = await getSceneTask(selected.id);
+    const nextIso = fromDatetimeLocalValue(dueByTaskId[taskId] ?? "");
+    const cur = await getSceneTask(taskId);
     if (!cur) {
       setErr("任务不存在");
       return;
@@ -992,12 +969,17 @@ function SceneTasksInner({
       }
     }
     try {
-      await updateSceneTask(selected.id, { due_at: nextIso });
+      await updateSceneTask(taskId, { due_at: nextIso });
       await loadTasks();
-      setSelected((prev) => (prev && prev.id === cur.id ? { ...prev, due_at: nextIso } : prev));
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "保存失败");
     }
+  }
+
+  async function setTaskStatus(taskId: string, st: SceneTask["status"]) {
+    await updateSceneTask(taskId, { status: st });
+    if (st === "published") await syncSceneTaskAssignments(groupId);
+    await loadTasks();
   }
 
   function canDeleteDraft(t: SceneTask): boolean {
@@ -1010,210 +992,180 @@ function SceneTasksInner({
   return (
     <>
       <RefreshStrip active={refreshing} />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 space-y-4">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div>
           <h2 className="text-lg font-bold text-gray-900">场景任务</h2>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 mt-1">
             {isExecutorView
-              ? "查看已发布任务及采集进度；已执行小时由你填报。"
+              ? "列表布局与场景岗位一致（无现场快照）；请在下方的业务读条中填报已执行小时。"
               : isAdmin
-                ? "由管理员选择本群已有场景岗位并「业务强制」生成草稿；发布后仅在该岗位下与甲方大类匹配子任务。业务员可发布与维护截止时间与进度。"
-                : "场景任务由管理员基于岗位创建；你可发布任务、设置截止时间并查看进度。"}
+                ? "由管理员选择岗位生成草稿；列表为岗位式卡片（无快照），已发布后展示业务读条。业务员可发布、维护截止时间。"
+                : "任务由管理员创建；你可发布并维护截止时间。每条任务展示绑定岗位信息与业务读条。"}
           </p>
-          {err && <p className="text-sm text-red-600">{err}</p>}
-          {!isExecutorView && isAdmin && (
-            <form onSubmit={handleCreateTask} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-2">
-              <label className="block text-xs font-medium text-gray-700">选择现有场景岗位（必填）</label>
-              <select
-                required
-                value={positionIdForCreate}
-                onChange={(e) => setPositionIdForCreate(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">请选择岗位…</option>
-                {[...positions.values()]
-                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.title} · {[p.address_province, p.address_city].filter(Boolean).join("")}
-                    </option>
-                  ))}
-              </select>
-              {positions.size === 0 && (
-                <p className="text-xs text-amber-700">
-                  当前工作群尚无场景岗位，请先到「场景岗位 / 快照」页添加后再创建任务。
-                </p>
-              )}
-              <button
-                type="submit"
-                disabled={positions.size === 0}
-                className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
-              >
-                基于所选岗位创建草稿（业务强制）
-              </button>
-            </form>
-          )}
-          <ul className="space-y-2">
-            {tasks.map((t) => (
-              <li key={t.id} className="flex gap-2 items-stretch">
-                <button
-                  type="button"
-                  onClick={() => setSelected(t)}
-                  className={`flex-1 min-w-0 text-left rounded-xl border px-4 py-3 text-sm transition-colors ${
-                    selected?.id === t.id ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white hover:border-gray-300"
-                  }`}
-                >
-                  <span className="font-medium text-gray-900">{t.title}</span>
-                  <span className="block text-xs text-gray-500 mt-1">
-                    {t.status === "draft" && "草稿"}
-                    {t.status === "published" && "已发布"}
-                    {t.status === "closed" && "已关闭"}
-                    {t.scenario_position_id && positions.get(t.scenario_position_id) && (
-                      <span className="block text-[11px] text-gray-400 mt-0.5">
-                        岗位：{positions.get(t.scenario_position_id)!.title}
-                      </span>
-                    )}
-                  </span>
-                </button>
-                {!isExecutorView && canDeleteDraft(t) && (
-                  <button
-                    type="button"
-                    title="删除草稿"
-                    onClick={async (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (!confirm("删除该草稿？其下采集需求会一并删除。")) return;
-                      setErr("");
-                      try {
-                        await deleteSceneTask(t.id);
-                        await loadTasks();
-                        setSelected((prev) => (prev?.id === t.id ? null : prev));
-                      } catch (ex: unknown) {
-                        const msg = ex instanceof Error ? ex.message : "删除失败";
-                        setErr(msg);
-                      }
-                    }}
-                    className="shrink-0 self-center px-2.5 py-2 rounded-xl border border-red-200 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100"
-                  >
-                    删除
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
         </div>
-        <div className="lg:col-span-2">
-          {!selected ? (
-            <p className="text-gray-400 text-sm">请选择一个任务查看详情。</p>
-          ) : (
-            <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6">
-              <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">{selected.title}</h2>
-                  {selected.description && (
-                    <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{selected.description}</p>
-                  )}
-                  {selected.scenario_position_id && positions.get(selected.scenario_position_id) && (
-                    <p className="text-sm text-indigo-900 mt-2">
-                      绑定场景岗位：
-                      <span className="font-medium">
-                        {positions.get(selected.scenario_position_id)!.title}
+        {err && <p className="text-sm text-red-600">{err}</p>}
+        {!isExecutorView && isAdmin && (
+          <form onSubmit={handleCreateTask} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-2">
+            <label className="block text-xs font-medium text-gray-700">选择现有场景岗位（必填）</label>
+            <select
+              required
+              value={positionIdForCreate}
+              onChange={(e) => setPositionIdForCreate(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value="">请选择岗位…</option>
+              {[...positions.values()]
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title} · {[p.address_province, p.address_city].filter(Boolean).join("")}
+                  </option>
+                ))}
+            </select>
+            {positions.size === 0 && (
+              <p className="text-xs text-amber-700">
+                当前工作群尚无场景岗位，请先到「场景岗位 / 快照」页添加后再创建任务。
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={positions.size === 0}
+              className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+            >
+              基于所选岗位创建草稿（业务强制）
+            </button>
+          </form>
+        )}
+
+        {tasks.length === 0 && !loading && (
+          <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">
+            暂无场景任务。
+          </p>
+        )}
+
+        <div className="space-y-4">
+          {tasks.map((t) => {
+            const pos = t.scenario_position_id ? positions.get(t.scenario_position_id) : undefined;
+            const assigns = assignmentsByTaskId.get(t.id) ?? [];
+            return (
+              <div
+                key={t.id}
+                className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm"
+              >
+                <div className="p-4 flex flex-col sm:flex-row gap-3 sm:items-start sm:justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 gap-y-1">
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
+                          t.status === "published"
+                            ? "bg-emerald-50 text-emerald-800 border border-emerald-100"
+                            : t.status === "closed"
+                              ? "bg-gray-100 text-gray-600 border border-gray-200"
+                              : "bg-amber-50 text-amber-900 border border-amber-100"
+                        }`}
+                      >
+                        {t.status === "draft" && "草稿"}
+                        {t.status === "published" && "已发布"}
+                        {t.status === "closed" && "已关闭"}
                       </span>
-                    </p>
-                  )}
-                  {selected.due_at && (
-                    <p className="text-sm text-amber-800 mt-2">
-                      截止时间：<span className="font-medium">{new Date(selected.due_at).toLocaleString()}</span>
-                    </p>
+                      <h3 className="text-base font-semibold text-gray-900">{t.title}</h3>
+                    </div>
+                    {pos && (
+                      <p className="text-xs text-gray-500 mt-1.5">
+                        {labelSceneCategories(pos.scene_categories)} ·{" "}
+                        {[pos.address_province, pos.address_city, pos.address_district].join(" ")}
+                        {pos.address_detail ? ` ${pos.address_detail}` : ""}
+                      </p>
+                    )}
+                    {t.description && (
+                      <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{t.description}</p>
+                    )}
+                    {t.due_at && (
+                      <p className="text-sm text-amber-900 mt-2">
+                        截止：{new Date(t.due_at).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                  {!isExecutorView && (
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {canDeleteDraft(t) && (
+                        <button
+                          type="button"
+                          title="删除草稿"
+                          onClick={async () => {
+                            if (!confirm("删除该草稿？其下采集需求会一并删除。")) return;
+                            setErr("");
+                            try {
+                              await deleteSceneTask(t.id);
+                              await loadTasks();
+                            } catch (ex: unknown) {
+                              setErr(ex instanceof Error ? ex.message : "删除失败");
+                            }
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg border border-red-200 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100"
+                        >
+                          删除
+                        </button>
+                      )}
+                      <select
+                        value={t.status}
+                        onChange={(e) =>
+                          void setTaskStatus(t.id, e.target.value as SceneTask["status"]).catch((ex: unknown) =>
+                            setErr(ex instanceof Error ? ex.message : "更新失败")
+                          )
+                        }
+                        className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                      >
+                        <option value="draft">草稿</option>
+                        <option value="published">已发布</option>
+                        <option value="closed">已关闭</option>
+                      </select>
+                    </div>
                   )}
                 </div>
+
                 {!isExecutorView && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {canDeleteDraft(selected) && (
+                  <div className="px-4 pb-3 border-t border-gray-100 bg-slate-50/70 pt-3">
+                    <p className="text-xs text-gray-600 mb-1.5">截止时间（可选，仅可延后）</p>
+                    <div className="flex flex-wrap gap-2 items-end">
+                      <input
+                        type="datetime-local"
+                        value={dueByTaskId[t.id] ?? ""}
+                        onChange={(e) =>
+                          setDueByTaskId((prev) => ({ ...prev, [t.id]: e.target.value }))
+                        }
+                        className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm bg-white"
+                      />
                       <button
                         type="button"
-                        onClick={async () => {
-                          if (!confirm("删除该草稿？其下采集需求会一并删除。")) return;
-                          setErr("");
-                          try {
-                            await deleteSceneTask(selected.id);
-                            await loadTasks();
-                            setSelected(null);
-                          } catch (ex: unknown) {
-                            const msg = ex instanceof Error ? ex.message : "删除失败";
-                            setErr(msg);
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded-lg border border-red-200 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100"
+                        onClick={() => void saveDueAtForTask(t.id)}
+                        className="px-3 py-1.5 rounded-lg bg-gray-800 text-white text-sm"
                       >
-                        删除草稿
+                        保存截止
                       </button>
-                    )}
-                    <select
-                      value={selected.status}
-                      onChange={async (e) => {
-                        const st = e.target.value as SceneTask["status"];
-                        await updateSceneTask(selected.id, { status: st });
-                        if (st === "published") await syncSceneTaskAssignments(groupId);
-                        await loadTasks();
-                        setSelected((prev) => (prev ? { ...prev, status: st } : null));
-                      }}
-                      className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                    >
-                      <option value="draft">草稿</option>
-                      <option value="published">已发布</option>
-                      <option value="closed">已关闭</option>
-                    </select>
+                    </div>
+                  </div>
+                )}
+
+                {t.status === "published" ? (
+                  <div className="px-4 pb-4">
+                    <AssignmentsInline
+                      rows={assigns}
+                      positions={positions}
+                      demands={demands}
+                      isExecutor={isExecutorView}
+                      setErr={setErr}
+                      onHoursSaved={() => void loadAssignments()}
+                    />
+                  </div>
+                ) : (
+                  <div className="px-4 pb-3 text-xs text-gray-400 border-t border-gray-50 bg-white">
+                    发布后将按甲方业务与岗位大类自动计算并展示业务读条。
                   </div>
                 )}
               </div>
-
-              {!isExecutorView && (
-                <div className="mb-6 rounded-xl border border-gray-200 bg-slate-50 p-4 space-y-2">
-                  <p className="text-xs font-medium text-gray-700">业务员设置截止时间（可选）</p>
-                  <p className="text-xs text-gray-500">仅可延后，不可早于当前已保存的截止时间；不设置则界面不显示截止信息。</p>
-                  <div className="flex flex-wrap items-end gap-2">
-                    <input
-                      type="datetime-local"
-                      value={dueLocal}
-                      onChange={(e) => setDueLocal(e.target.value)}
-                      className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void saveDueAt()}
-                      className="px-3 py-1.5 rounded-lg bg-gray-800 text-white text-sm"
-                    >
-                      保存截止时间
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {selected.status === "published" && (
-                <AssignmentsBlock
-                  taskId={selected.id}
-                  positions={positions}
-                  demands={demands}
-                  isExecutor={isExecutorView}
-                  setErr={setErr}
-                />
-              )}
-
-              {!isExecutorView && reqs.length > 0 && (
-                <div className="mt-8 border-t border-gray-100 pt-4">
-                  <h3 className="text-sm font-semibold text-gray-500 mb-2">历史采集需求（旧数据）</h3>
-                  <ul className="divide-y divide-gray-100">
-                    {reqs.map((r) => (
-                      <li key={r.id} className="py-2 text-sm text-gray-700">
-                        {r.title}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
+            );
+          })}
         </div>
       </div>
     </>
