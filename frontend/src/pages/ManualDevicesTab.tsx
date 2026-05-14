@@ -15,6 +15,7 @@ import {
 import { fetchActiveGroupId } from "../api/groups";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
+import { downloadManualDevicesPdf, openManualDevicesPrint, pdfDateStamp } from "../utils/manualDevicesExport";
 
 function stickerLandingUrl(publicCode: string): string {
   const base = `${window.location.origin}${import.meta.env.BASE_URL}`.replace(/\/+$/, "");
@@ -142,6 +143,7 @@ export default function ManualDevicesTab() {
   const [partyId, setPartyId] = useState("");
   const [shortLabel, setShortLabel] = useState("");
   const [adding, setAdding] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
 
   const load = useCallback(async () => {
     const gid = await fetchActiveGroupId();
@@ -270,11 +272,58 @@ export default function ManualDevicesTab() {
         </button>
       </form>
 
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-gray-800">本群已登记</h2>
-        <button type="button" onClick={() => void refresh()} className="text-xs text-indigo-700 hover:underline">
-          刷新
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-gray-500 max-sm:w-full">含二维码与贴签链接，可打印贴签或归档：</span>
+          <button
+            type="button"
+            disabled={exportBusy}
+            onClick={() => {
+              void (async () => {
+                if (!groupId) return;
+                setErr("");
+                try {
+                  await openManualDevicesPrint("外部设备贴签列表", `工作群 ${groupId}`, rows);
+                } catch (e: unknown) {
+                  setErr(e instanceof Error ? e.message : "无法打开打印窗口");
+                }
+              })();
+            }}
+            className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            打印列表
+          </button>
+          <button
+            type="button"
+            disabled={exportBusy}
+            onClick={() => {
+              void (async () => {
+                if (!groupId) return;
+                setErr("");
+                setExportBusy(true);
+                try {
+                  await downloadManualDevicesPdf(
+                    `外部设备贴签列表_${pdfDateStamp()}`,
+                    "外部设备贴签列表",
+                    `工作群 ${groupId}`,
+                    rows
+                  );
+                } catch (e: unknown) {
+                  setErr(e instanceof Error ? e.message : "导出 PDF 失败");
+                } finally {
+                  setExportBusy(false);
+                }
+              })();
+            }}
+            className="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-xs font-medium hover:bg-slate-900 disabled:opacity-50"
+          >
+            {exportBusy ? "生成 PDF…" : "导出 PDF"}
+          </button>
+          <button type="button" onClick={() => void refresh()} className="text-xs text-indigo-700 hover:underline">
+            刷新
+          </button>
+        </div>
       </div>
       {rows.length === 0 ? (
         <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">暂无外部设备</p>
