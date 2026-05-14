@@ -1,5 +1,19 @@
 import type { PartyDemand, ScenarioPosition } from "../api/operations";
+import type { SceneTask } from "../api/scenes";
 import { labelSceneCategories } from "./sceneCategories";
+
+function sceneTaskStatusLabel(s: SceneTask["status"]): string {
+  switch (s) {
+    case "draft":
+      return "草稿";
+    case "published":
+      return "已发布";
+    case "closed":
+      return "已关闭";
+    default:
+      return String(s);
+  }
+}
 
 export function escapeHtml(s: string | null | undefined): string {
   if (s == null || s === "") return "";
@@ -144,6 +158,75 @@ export function buildScenarioPositionsExportFragment(docTitle: string, subtitle:
 </div>`;
 }
 
+export function buildSceneTasksExportFragment(
+  docTitle: string,
+  subtitle: string,
+  tasks: SceneTask[],
+  positions: Map<string, ScenarioPosition>,
+  assignmentCountByTaskId: ReadonlyMap<string, number>
+): string {
+  const when = fmtZhDateTime(new Date().toISOString());
+  const tbody =
+    tasks.length === 0
+      ? `<tr><td colspan="9" style="text-align:center">暂无数据</td></tr>`
+      : tasks
+          .map((t, i) => {
+            const pos = t.scenario_position_id ? positions.get(t.scenario_position_id) : undefined;
+            const posTitle = pos?.title?.trim() || "—";
+            const catAddr = pos
+              ? `${labelSceneCategories(pos.scene_categories)} · ${[pos.address_province, pos.address_city, pos.address_district].filter(Boolean).join("")}${pos.address_detail?.trim() ? ` ${pos.address_detail.trim()}` : ""}`
+              : "—";
+            const nSub = assignmentCountByTaskId.get(t.id) ?? 0;
+            return `<tr>
+        <td style="text-align:center">${i + 1}</td>
+        <td>${escapeHtml(sceneTaskStatusLabel(t.status))}</td>
+        <td>${escapeHtml(t.title.trim() || "—")}</td>
+        <td>${escapeHtml(posTitle)}</td>
+        <td>${escapeHtml(catAddr)}</td>
+        <td style="text-align:right">${nSub}</td>
+        <td>${escapeHtml(t.description?.trim() || "—")}</td>
+        <td>${escapeHtml(fmtZhDateTime(t.due_at))}</td>
+        <td>${escapeHtml(fmtZhDateTime(t.created_at))}</td>
+      </tr>`;
+          })
+          .join("");
+  return `
+<style>
+  .scene-export-wrap { font-family: system-ui, "Microsoft YaHei", "PingFang SC", sans-serif; color: #111; }
+  .scene-export-wrap h1 { font-size: 18px; margin: 0 0 6px; }
+  .scene-export-wrap .sub { font-size: 12px; color: #555; margin-bottom: 12px; }
+  .scene-export-wrap table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .scene-export-wrap th, .scene-export-wrap td { border: 1px solid #333; padding: 5px 6px; vertical-align: top; word-break: break-word; }
+  .scene-export-wrap th { background: #eee; text-align: left; }
+  @media print {
+    @page { size: A4 landscape; margin: 12mm; }
+    .scene-export-wrap { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; }
+  }
+</style>
+<div class="scene-export-wrap">
+  <h1>${escapeHtml(docTitle)}</h1>
+  <div class="sub">${escapeHtml(subtitle)} · 导出时间 ${escapeHtml(when)} · 共 ${tasks.length} 条</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:36px">序号</th>
+        <th style="width:52px">状态</th>
+        <th>任务标题</th>
+        <th>绑定岗位</th>
+        <th>大类 / 地址</th>
+        <th style="width:44px">子任务数</th>
+        <th>任务说明</th>
+        <th style="width:96px">截止时间</th>
+        <th style="width:96px">创建时间</th>
+      </tr>
+    </thead>
+    <tbody>${tbody}</tbody>
+  </table>
+</div>`;
+}
+
 export function openSceneListPrint(fragmentHtml: string): void {
   const w = window.open("", "_blank");
   if (!w) throw new Error("浏览器阻止了弹窗，请允许本站打开新窗口后重试");
@@ -159,11 +242,28 @@ export function openSceneListPrint(fragmentHtml: string): void {
 export async function downloadSceneListPdf(filenameBase: string, fragmentHtml: string): Promise<void> {
   const { default: html2pdf } = await import("html2pdf.js");
   const host = document.createElement("div");
-  host.style.cssText =
-    "position:fixed;left:0;top:0;width:1120px;padding:20px;background:#fff;z-index:2147483646;opacity:0;pointer-events:none;overflow:visible;";
+  host.setAttribute("aria-hidden", "true");
+  // 勿用 opacity:0：html2canvas 会按透明度绘制，PDF 常为空白。移出视口即可避免闪屏。
+  host.style.cssText = [
+    "position:fixed",
+    "left:-12000px",
+    "top:0",
+    "width:1120px",
+    "box-sizing:border-box",
+    "padding:20px",
+    "background:#fff",
+    "color:#111",
+    "pointer-events:none",
+    "overflow:visible",
+  ].join(";");
   host.innerHTML = fragmentHtml;
   document.body.appendChild(host);
   try {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
     await html2pdf()
       .set({
         margin: [8, 8, 8, 8],

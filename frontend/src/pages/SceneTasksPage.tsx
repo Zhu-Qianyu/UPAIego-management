@@ -36,6 +36,7 @@ import {
 import {
   buildPartyDemandsExportFragment,
   buildScenarioPositionsExportFragment,
+  buildSceneTasksExportFragment,
   downloadSceneListPdf,
   openSceneListPrint,
   pdfDateStamp,
@@ -1239,6 +1240,7 @@ function SceneTasksInner({
   const [positionIdForCreate, setPositionIdForCreate] = useState("");
   const [dueByTaskId, setDueByTaskId] = useState<Record<string, string>>({});
   const [batchBusy, setBatchBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const fetchedOnceRef = useRef(false);
 
   const assignmentsByTaskId = useMemo(() => {
@@ -1250,6 +1252,12 @@ function SceneTasksInner({
     }
     return m;
   }, [allAssignments]);
+
+  const assignmentCountByTaskId = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of tasks) m.set(t.id, (assignmentsByTaskId.get(t.id) ?? []).length);
+    return m;
+  }, [tasks, assignmentsByTaskId]);
 
   const loadAssignments = useCallback(async () => {
     try {
@@ -1408,6 +1416,63 @@ function SceneTasksInner({
                 ? "可由后台一键为全部场景岗位补齐草稿，或逐个选择岗位创建；已发布后展示业务读条。业务员可发布、维护截止时间。"
                 : "任务由管理员创建；你可发布并维护截止时间。每条任务展示绑定岗位信息与业务读条。"}
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-gray-500">
+            列表输出（不含各业务读条与执行小时明细，便于归档与打印）：
+          </span>
+          <button
+            type="button"
+            disabled={pdfBusy}
+            onClick={() => {
+              setErr("");
+              try {
+                openSceneListPrint(
+                  buildSceneTasksExportFragment(
+                    "场景任务列表",
+                    `工作群 ${groupId}`,
+                    tasks,
+                    positions,
+                    assignmentCountByTaskId
+                  )
+                );
+              } catch (e: unknown) {
+                setErr(e instanceof Error ? e.message : "无法打开打印窗口");
+              }
+            }}
+            className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            打印列表
+          </button>
+          <button
+            type="button"
+            disabled={pdfBusy}
+            onClick={() => {
+              void (async () => {
+                setErr("");
+                setPdfBusy(true);
+                try {
+                  await downloadSceneListPdf(
+                    `场景任务列表_${pdfDateStamp()}`,
+                    buildSceneTasksExportFragment(
+                      "场景任务列表",
+                      `工作群 ${groupId}`,
+                      tasks,
+                      positions,
+                      assignmentCountByTaskId
+                    )
+                  );
+                } catch (e: unknown) {
+                  setErr(e instanceof Error ? e.message : "导出 PDF 失败");
+                } finally {
+                  setPdfBusy(false);
+                }
+              })();
+            }}
+            className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {pdfBusy ? "生成 PDF…" : "导出 PDF"}
+          </button>
         </div>
         {err && <p className="text-sm text-red-600">{err}</p>}
         {!isExecutorView && isAdmin && (
