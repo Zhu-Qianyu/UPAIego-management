@@ -62,9 +62,7 @@ export default function DeviceDetail() {
         setEditCal(d.calibration_status);
         setEditFw(d.firmware_version ?? "");
         setEditNotes(d.notes ?? "");
-        return generateQrDataUrl(d.device_id, d.readable_name);
       })
-      .then(setQrDataUrl)
       .catch(() => setError("未找到该设备，或你没有访问权限"))
       .finally(() => {
         setLoading(false);
@@ -73,17 +71,18 @@ export default function DeviceDetail() {
   }, [id, deviceScope, cacheKey]);
 
   useEffect(() => {
-    if (!device || qrDataUrl) return;
+    if (!device) {
+      setQrDataUrl(null);
+      return;
+    }
     let cancel = false;
-    generateQrDataUrl(device.device_id, device.readable_name)
-      .then((u) => {
-        if (!cancel) setQrDataUrl(u);
-      })
-      .catch(() => {});
+    void generateQrDataUrl(device.device_id, device.readable_name, device.serial_id).then((u) => {
+      if (!cancel) setQrDataUrl(u);
+    });
     return () => {
       cancel = true;
     };
-  }, [device, qrDataUrl]);
+  }, [device?.device_id, device?.readable_name, device?.serial_id]);
 
   useEffect(() => {
     if (!id) return;
@@ -309,13 +308,13 @@ export default function DeviceDetail() {
             </div>
           )}
           <button
-            onClick={() => downloadQr(device.device_id, device.readable_name)}
+            onClick={() => downloadQr(device.device_id, device.readable_name, device.serial_id)}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
           >
             下载二维码
           </button>
           <p className="text-xs text-gray-400 mt-3 text-center">
-            扫码即可快速识别设备信息
+            扫码显示设备名称、设备ID与序列号等纯文本（非网址）
           </p>
         </div>
       </div>

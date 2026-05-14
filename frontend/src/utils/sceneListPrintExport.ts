@@ -31,16 +31,6 @@ function fmtZhDateTime(iso: string | null | undefined): string {
   return d.toLocaleString("zh-CN", { hour12: false });
 }
 
-export function pdfDateStamp(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-function safeFileSegment(s: string): string {
-  return s.replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, "_").slice(0, 120);
-}
-
 function wrapPrintHtml(bodyFragment: string): string {
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"/><title>列表</title></head><body style="margin:16px;">${bodyFragment}</body></html>`;
 }
@@ -237,44 +227,4 @@ export function openSceneListPrint(fragmentHtml: string): void {
     w.print();
   };
   setTimeout(runPrint, 200);
-}
-
-export async function downloadSceneListPdf(filenameBase: string, fragmentHtml: string): Promise<void> {
-  const { default: html2pdf } = await import("html2pdf.js");
-  const host = document.createElement("div");
-  host.setAttribute("aria-hidden", "true");
-  // 勿用 opacity:0：html2canvas 会按透明度绘制，PDF 常为空白。移出视口即可避免闪屏。
-  host.style.cssText = [
-    "position:fixed",
-    "left:-12000px",
-    "top:0",
-    "width:1120px",
-    "box-sizing:border-box",
-    "padding:20px",
-    "background:#fff",
-    "color:#111",
-    "pointer-events:none",
-    "overflow:visible",
-  ].join(";");
-  host.innerHTML = fragmentHtml;
-  document.body.appendChild(host);
-  try {
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => resolve());
-      });
-    });
-    await html2pdf()
-      .set({
-        margin: [8, 8, 8, 8],
-        filename: `${safeFileSegment(filenameBase)}.pdf`,
-        image: { type: "jpeg", quality: 0.92 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
-      })
-      .from(host)
-      .save();
-  } finally {
-    document.body.removeChild(host);
-  }
 }

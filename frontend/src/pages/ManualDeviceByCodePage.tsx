@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import QRCode from "qrcode";
 import {
@@ -10,11 +10,7 @@ import {
   type ManualTrackedDevice,
 } from "../api/operations";
 import Spinner from "../components/Spinner";
-
-function stickerLandingUrl(publicCode: string): string {
-  const base = `${window.location.origin}${import.meta.env.BASE_URL}`.replace(/\/+$/, "");
-  return `${base}/devices/manual/${encodeURIComponent(publicCode)}`;
-}
+import { buildManualTrackedDeviceQrText } from "../utils/manualDeviceQrPayload";
 
 export default function ManualDeviceByCodePage() {
   const { code } = useParams<{ code: string }>();
@@ -26,8 +22,6 @@ export default function ManualDeviceByCodePage() {
   const [localStatus, setLocalStatus] = useState<ExternalDeviceStatus>("normal");
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusErr, setStatusErr] = useState("");
-
-  const url = useMemo(() => (normalized ? stickerLandingUrl(normalized) : ""), [normalized]);
 
   useEffect(() => {
     let cancel = false;
@@ -53,12 +47,13 @@ export default function ManualDeviceByCodePage() {
   }, [normalized, codeInvalid]);
 
   useEffect(() => {
-    if (!url || !row) {
+    if (!row) {
       setQr(null);
       return;
     }
+    const payload = buildManualTrackedDeviceQrText(row);
     let cancel = false;
-    QRCode.toDataURL(url, { width: 200, margin: 1, errorCorrectionLevel: "M" })
+    QRCode.toDataURL(payload, { width: 200, margin: 1, errorCorrectionLevel: "M" })
       .then((d) => {
         if (!cancel) setQr(d);
       })
@@ -68,7 +63,7 @@ export default function ManualDeviceByCodePage() {
     return () => {
       cancel = true;
     };
-  }, [url, row]);
+  }, [row]);
 
   useEffect(() => {
     if (row) setLocalStatus(normalizeExternalDeviceStatus(row.external_status));
@@ -168,7 +163,7 @@ export default function ManualDeviceByCodePage() {
         {qr && (
           <div className="flex flex-col items-center gap-2 pt-2 border-t border-gray-100">
             <img src={qr} alt="" className="w-48 h-48 object-contain" />
-            <p className="text-xs text-gray-500 text-center">与外部设备贴签相同的链接二维码</p>
+            <p className="text-xs text-gray-500 text-center">与贴签一致：扫码显示登记编号与设备信息（纯文本，非网址）</p>
           </div>
         )}
       </div>

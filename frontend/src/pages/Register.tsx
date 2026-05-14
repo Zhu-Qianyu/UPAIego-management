@@ -20,10 +20,7 @@ export default function Register({ embedded }: { embedded?: boolean }) {
 
   useEffect(() => {
     if (!registered) return;
-    generateQrDataUrl(
-      registered.device_id,
-      registered.readable_name
-    ).then(setQrDataUrl);
+    generateQrDataUrl(registered.device_id, registered.readable_name, registered.serial_id).then(setQrDataUrl);
   }, [registered]);
 
   async function handleRegister() {
@@ -61,15 +58,12 @@ export default function Register({ embedded }: { embedded?: boolean }) {
             />
           )}
           <p className="text-xs text-gray-400 mb-6">
-            请下载并打印该二维码，贴到设备上。
+            二维码为纯文本：扫码可显示设备名称、设备ID与序列号（非网址）。请下载并打印后贴到设备上。
           </p>
           <div className="flex gap-3 justify-center">
             <button
               onClick={() =>
-                downloadQr(
-                  registered.device_id,
-                  registered.readable_name
-                )
+                downloadQr(registered.device_id, registered.readable_name, registered.serial_id)
               }
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
             >

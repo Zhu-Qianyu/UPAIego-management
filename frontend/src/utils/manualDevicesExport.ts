@@ -4,20 +4,16 @@ import {
   labelExternalDeviceStatus,
   type ManualTrackedDevice,
 } from "../api/operations";
-import { downloadSceneListPdf, escapeHtml, openSceneListPrint } from "./sceneListPrintExport";
+import { escapeHtml, openSceneListPrint } from "./sceneListPrintExport";
+import { buildManualTrackedDeviceQrText, manualDeviceAdminPageUrl } from "./manualDeviceQrPayload";
 
-export { pdfDateStamp } from "./sceneListPrintExport";
-
-function manualDeviceStickerUrl(publicCode: string): string {
-  const base = `${window.location.origin}${import.meta.env.BASE_URL}`.replace(/\/+$/, "");
-  return `${base}/devices/manual/${encodeURIComponent(publicCode)}`;
-}
-
-function fmtZhDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return String(iso);
-  return d.toLocaleString("zh-CN", { hour12: false });
+async function qrDataUrlForRow(row: ManualTrackedDevice, width: number): Promise<string | null> {
+  const text = buildManualTrackedDeviceQrText(row);
+  try {
+    return await QRCode.toDataURL(text, { width, margin: 1, errorCorrectionLevel: "M" });
+  } catch {
+    return null;
+  }
 }
 
 function partyDeviceType(d: ManualTrackedDevice): string {
@@ -26,13 +22,11 @@ function partyDeviceType(d: ManualTrackedDevice): string {
   return (p?.device_type ?? "").trim() || "—";
 }
 
-async function qrDataUrl(publicCode: string, width: number): Promise<string | null> {
-  const url = manualDeviceStickerUrl(publicCode);
-  try {
-    return await QRCode.toDataURL(url, { width, margin: 1, errorCorrectionLevel: "M" });
-  } catch {
-    return null;
-  }
+function fmtZhDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString("zh-CN", { hour12: false });
 }
 
 export async function buildManualDevicesExportHtml(
@@ -61,9 +55,9 @@ export async function buildManualDevicesExportHtml(
 
   const bodyRows = await Promise.all(
     rows.map(async (r, i) => {
-      const dataUrl = await qrDataUrl(r.public_code, qrPixelWidth);
+      const dataUrl = await qrDataUrlForRow(r, qrPixelWidth);
       const label = formatManualTrackedDeviceLabel(r);
-      const url = manualDeviceStickerUrl(r.public_code);
+      const adminUrl = manualDeviceAdminPageUrl(r.public_code);
       const img = dataUrl
         ? `<img src="${dataUrl}" alt="" width="${qrPixelWidth}" height="${qrPixelWidth}" style="display:block;margin:0 auto;" />`
         : `<span style="color:#999;font-size:11px">二维码生成失败</span>`;
@@ -75,7 +69,7 @@ export async function buildManualDevicesExportHtml(
         <td style="font-family:ui-monospace,monospace;font-size:11px">${escapeHtml(r.public_code)}</td>
         <td style="font-family:ui-monospace,monospace;font-size:9px;word-break:break-all">${escapeHtml(r.id)}</td>
         <td>${escapeHtml(labelExternalDeviceStatus(r.external_status))}</td>
-        <td style="font-size:9px;word-break:break-all">${escapeHtml(url)}</td>
+        <td style="font-size:9px;word-break:break-all">${escapeHtml(adminUrl)}</td>
         <td style="white-space:nowrap;font-size:10px">${escapeHtml(fmtZhDateTime(r.created_at))}</td>
       </tr>`;
     })
@@ -98,7 +92,7 @@ export async function buildManualDevicesExportHtml(
 </style>
 <div class="scene-export-wrap">
   <h1>${escapeHtml(docTitle)}</h1>
-  <div class="sub">${escapeHtml(subtitle)} · 导出时间 ${escapeHtml(when)} · 共 ${rows.length} 条（含贴签二维码与访问链接）</div>
+  <div class="sub">${escapeHtml(subtitle)} · 导出时间 ${escapeHtml(when)} · 共 ${rows.length} 条（二维码为纯文本；表内含备查网页链接）</div>
   <table>
     <thead>
       <tr>
@@ -109,7 +103,7 @@ export async function buildManualDevicesExportHtml(
         <th style="width:88px">登记编号</th>
         <th style="width:120px">内部 ID</th>
         <th style="width:56px">运行状态</th>
-        <th>贴签访问链接</th>
+        <th>备查网页链接</th>
         <th style="width:96px">登记时间</th>
       </tr>
     </thead>
@@ -125,14 +119,4 @@ export async function openManualDevicesPrint(
 ): Promise<void> {
   const html = await buildManualDevicesExportHtml(docTitle, subtitle, rows);
   openSceneListPrint(html);
-}
-
-export async function downloadManualDevicesPdf(
-  filenameBase: string,
-  docTitle: string,
-  subtitle: string,
-  rows: ManualTrackedDevice[]
-): Promise<void> {
-  const html = await buildManualDevicesExportHtml(docTitle, subtitle, rows);
-  await downloadSceneListPdf(filenameBase, html);
 }

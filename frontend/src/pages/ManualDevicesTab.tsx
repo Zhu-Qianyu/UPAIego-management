@@ -15,12 +15,8 @@ import {
 import { fetchActiveGroupId } from "../api/groups";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
-import { downloadManualDevicesPdf, openManualDevicesPrint, pdfDateStamp } from "../utils/manualDevicesExport";
-
-function stickerLandingUrl(publicCode: string): string {
-  const base = `${window.location.origin}${import.meta.env.BASE_URL}`.replace(/\/+$/, "");
-  return `${base}/devices/manual/${encodeURIComponent(publicCode)}`;
-}
+import { openManualDevicesPrint } from "../utils/manualDevicesExport";
+import { buildManualTrackedDeviceQrText } from "../utils/manualDeviceQrPayload";
 
 function ManualTrackedDeviceRow({
   row,
@@ -34,7 +30,7 @@ function ManualTrackedDeviceRow({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
-  const url = useMemo(() => stickerLandingUrl(row.public_code), [row.public_code]);
+  const qrPayload = useMemo(() => buildManualTrackedDeviceQrText(row), [row]);
 
   useEffect(() => {
     setLocalStatus(normalizeExternalDeviceStatus(row.external_status));
@@ -42,7 +38,7 @@ function ManualTrackedDeviceRow({
 
   useEffect(() => {
     let cancel = false;
-    QRCode.toDataURL(url, { width: 168, margin: 1, errorCorrectionLevel: "M" })
+    QRCode.toDataURL(qrPayload, { width: 168, margin: 1, errorCorrectionLevel: "M" })
       .then((dataUrl) => {
         if (!cancel) setQr(dataUrl);
       })
@@ -52,7 +48,7 @@ function ManualTrackedDeviceRow({
     return () => {
       cancel = true;
     };
-  }, [url]);
+  }, [qrPayload]);
 
   const dirty = normalizeExternalDeviceStatus(localStatus) !== normalizeExternalDeviceStatus(row.external_status);
 
@@ -79,7 +75,7 @@ function ManualTrackedDeviceRow({
             二维码生成中…
           </div>
         )}
-        <p className="text-[10px] text-gray-400 text-center max-w-[10rem] break-all">扫码打开外部设备详情</p>
+        <p className="text-[10px] text-gray-400 text-center max-w-[10rem] break-all">扫码显示登记编号与设备信息（纯文本）</p>
       </div>
       <div className="flex-1 min-w-0 space-y-2">
         <p className="font-medium text-gray-900">{formatManualTrackedDeviceLabel(row)}</p>
@@ -143,7 +139,6 @@ export default function ManualDevicesTab() {
   const [partyId, setPartyId] = useState("");
   const [shortLabel, setShortLabel] = useState("");
   const [adding, setAdding] = useState(false);
-  const [exportBusy, setExportBusy] = useState(false);
 
   const load = useCallback(async () => {
     const gid = await fetchActiveGroupId();
@@ -275,10 +270,9 @@ export default function ManualDevicesTab() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-gray-800">本群已登记</h2>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-gray-500 max-sm:w-full">含二维码与贴签链接，可打印贴签或归档：</span>
+            <span className="text-xs text-gray-500 max-sm:w-full">含二维码（纯文本）与备查网页链接，可打印贴签或归档：</span>
           <button
             type="button"
-            disabled={exportBusy}
             onClick={() => {
               void (async () => {
                 if (!groupId) return;
@@ -290,35 +284,9 @@ export default function ManualDevicesTab() {
                 }
               })();
             }}
-            className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs bg-white hover:bg-gray-50 disabled:opacity-50"
+            className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs bg-white hover:bg-gray-50"
           >
             打印列表
-          </button>
-          <button
-            type="button"
-            disabled={exportBusy}
-            onClick={() => {
-              void (async () => {
-                if (!groupId) return;
-                setErr("");
-                setExportBusy(true);
-                try {
-                  await downloadManualDevicesPdf(
-                    `外部设备贴签列表_${pdfDateStamp()}`,
-                    "外部设备贴签列表",
-                    `工作群 ${groupId}`,
-                    rows
-                  );
-                } catch (e: unknown) {
-                  setErr(e instanceof Error ? e.message : "导出 PDF 失败");
-                } finally {
-                  setExportBusy(false);
-                }
-              })();
-            }}
-            className="px-3 py-1.5 rounded-lg bg-slate-800 text-white text-xs font-medium hover:bg-slate-900 disabled:opacity-50"
-          >
-            {exportBusy ? "生成 PDF…" : "导出 PDF"}
           </button>
           <button type="button" onClick={() => void refresh()} className="text-xs text-indigo-700 hover:underline">
             刷新
