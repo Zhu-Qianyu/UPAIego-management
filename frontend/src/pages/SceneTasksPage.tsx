@@ -34,9 +34,9 @@ import {
   type SceneCategoryKey,
 } from "../utils/sceneCategories";
 import {
-  buildPartyDemandsExportFragment,
-  buildScenarioPositionsExportFragment,
-  buildSceneTasksExportFragment,
+  buildPartyDemandsPrintHtml,
+  buildScenarioPositionsPrintHtml,
+  buildSceneTasksPrintHtml,
   openSceneListPrint,
 } from "../utils/sceneListPrintExport";
 
@@ -270,18 +270,19 @@ function PartyDemandsTab({
     <div className="space-y-6">
       <RefreshStrip active={refreshing} />
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-gray-500">列表打印（表格不含设备图，便于归档）：</span>
+        <span className="text-xs text-gray-500">列表打印（含设备快照图，打印前会等待图片加载）：</span>
         <button
           type="button"
           onClick={() => {
-            setErr("");
-            try {
-              openSceneListPrint(
-                buildPartyDemandsExportFragment("甲方业务列表", `工作群 ${groupId}`, rows)
-              );
-            } catch (e: unknown) {
-              setErr(e instanceof Error ? e.message : "无法打开打印窗口");
-            }
+            void (async () => {
+              setErr("");
+              try {
+                const html = await buildPartyDemandsPrintHtml("甲方业务列表", `工作群 ${groupId}`, rows);
+                openSceneListPrint(html);
+              } catch (e: unknown) {
+                setErr(e instanceof Error ? e.message : "无法打开打印窗口");
+              }
+            })();
           }}
           className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm bg-white hover:bg-gray-50"
         >
@@ -818,18 +819,19 @@ function ScenarioWorkstationsTab({
     <div className="space-y-6">
       <RefreshStrip active={refreshing} />
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-gray-500">列表打印（表格不含现场照片，便于归档）：</span>
+        <span className="text-xs text-gray-500">列表打印（含工位现场快照图，打印前会等待图片加载）：</span>
         <button
           type="button"
           onClick={() => {
-            setErr("");
-            try {
-              openSceneListPrint(
-                buildScenarioPositionsExportFragment("场景岗位列表", `工作群 ${groupId}`, rows)
-              );
-            } catch (e: unknown) {
-              setErr(e instanceof Error ? e.message : "无法打开打印窗口");
-            }
+            void (async () => {
+              setErr("");
+              try {
+                const html = await buildScenarioPositionsPrintHtml("场景岗位列表", `工作群 ${groupId}`, rows);
+                openSceneListPrint(html);
+              } catch (e: unknown) {
+                setErr(e instanceof Error ? e.message : "无法打开打印窗口");
+              }
+            })();
           }}
           className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm bg-white hover:bg-gray-50"
         >
@@ -1366,25 +1368,28 @@ function SceneTasksInner({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-gray-500">
-            列表打印（不含各业务读条与执行小时明细，便于归档）：
+            列表打印（含绑定岗位现场图；主表下方含各任务业务读条与已执行/上限小时；打印前会等待图片加载）：
           </span>
           <button
             type="button"
             onClick={() => {
-              setErr("");
-              try {
-                openSceneListPrint(
-                  buildSceneTasksExportFragment(
+              void (async () => {
+                setErr("");
+                try {
+                  const html = await buildSceneTasksPrintHtml(
                     "场景任务列表",
                     `工作群 ${groupId}`,
                     tasks,
                     positions,
-                    assignmentCountByTaskId
-                  )
-                );
-              } catch (e: unknown) {
-                setErr(e instanceof Error ? e.message : "无法打开打印窗口");
-              }
+                    assignmentCountByTaskId,
+                    assignmentsByTaskId,
+                    demands
+                  );
+                  openSceneListPrint(html);
+                } catch (e: unknown) {
+                  setErr(e instanceof Error ? e.message : "无法打开打印窗口");
+                }
+              })();
             }}
             className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm bg-white hover:bg-gray-50"
           >
