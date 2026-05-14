@@ -33,6 +33,13 @@ import {
   labelSceneCategories,
   type SceneCategoryKey,
 } from "../utils/sceneCategories";
+import {
+  buildPartyDemandsExportFragment,
+  buildScenarioPositionsExportFragment,
+  downloadSceneListPdf,
+  openSceneListPrint,
+  pdfDateStamp,
+} from "../utils/sceneListPrintExport";
 
 type Tab = "tasks" | "demands" | "stations";
 
@@ -86,6 +93,7 @@ function PartyDemandsTab({
   const [editTotalHours, setEditTotalHours] = useState("");
   const [editMaxPerScene, setEditMaxPerScene] = useState("8");
   const [editCatTags, setEditCatTags] = useState<SceneCategoryKey[]>(["industrial"]);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const loadedOnceRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -263,6 +271,49 @@ function PartyDemandsTab({
   return (
     <div className="space-y-6">
       <RefreshStrip active={refreshing} />
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-gray-500">列表输出（表格不含设备图，便于归档与打印）：</span>
+        <button
+          type="button"
+          disabled={pdfBusy}
+          onClick={() => {
+            setErr("");
+            try {
+              openSceneListPrint(
+                buildPartyDemandsExportFragment("甲方业务列表", `工作群 ${groupId}`, rows)
+              );
+            } catch (e: unknown) {
+              setErr(e instanceof Error ? e.message : "无法打开打印窗口");
+            }
+          }}
+          className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm bg-white hover:bg-gray-50 disabled:opacity-50"
+        >
+          打印列表
+        </button>
+        <button
+          type="button"
+          disabled={pdfBusy}
+          onClick={() => {
+            void (async () => {
+              setErr("");
+              setPdfBusy(true);
+              try {
+                await downloadSceneListPdf(
+                  `甲方业务列表_${pdfDateStamp()}`,
+                  buildPartyDemandsExportFragment("甲方业务列表", `工作群 ${groupId}`, rows)
+                );
+              } catch (e: unknown) {
+                setErr(e instanceof Error ? e.message : "导出 PDF 失败");
+              } finally {
+                setPdfBusy(false);
+              }
+            })();
+          }}
+          className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50"
+        >
+          {pdfBusy ? "生成 PDF…" : "导出 PDF"}
+        </button>
+      </div>
       <p className="text-sm text-gray-500">
         <strong>甲方业务</strong>：填写甲方公司、设备类型、设备快照、小时量与场景大类；下方列表可预览设备快照。发布后由系统按大类匹配到场景岗位并生成子任务。
       </p>
@@ -659,6 +710,7 @@ function ScenarioWorkstationsTab({
   });
   const [eFile, setEFile] = useState<File | null>(null);
   const [eBusy, setEBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (loadedOnceRef.current) setRefreshing(true);
@@ -792,6 +844,49 @@ function ScenarioWorkstationsTab({
   return (
     <div className="space-y-6">
       <RefreshStrip active={refreshing} />
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-gray-500">列表输出（表格不含现场照片，便于归档与打印）：</span>
+        <button
+          type="button"
+          disabled={pdfBusy}
+          onClick={() => {
+            setErr("");
+            try {
+              openSceneListPrint(
+                buildScenarioPositionsExportFragment("场景岗位列表", `工作群 ${groupId}`, rows)
+              );
+            } catch (e: unknown) {
+              setErr(e instanceof Error ? e.message : "无法打开打印窗口");
+            }
+          }}
+          className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm bg-white hover:bg-gray-50 disabled:opacity-50"
+        >
+          打印列表
+        </button>
+        <button
+          type="button"
+          disabled={pdfBusy}
+          onClick={() => {
+            void (async () => {
+              setErr("");
+              setPdfBusy(true);
+              try {
+                await downloadSceneListPdf(
+                  `场景岗位列表_${pdfDateStamp()}`,
+                  buildScenarioPositionsExportFragment("场景岗位列表", `工作群 ${groupId}`, rows)
+                );
+              } catch (e: unknown) {
+                setErr(e instanceof Error ? e.message : "导出 PDF 失败");
+              } finally {
+                setPdfBusy(false);
+              }
+            })();
+          }}
+          className="px-3 py-1.5 rounded-lg bg-violet-600 text-white text-sm hover:bg-violet-700 disabled:opacity-50"
+        >
+          {pdfBusy ? "生成 PDF…" : "导出 PDF"}
+        </button>
+      </div>
       <p className="text-sm text-gray-500">
         <strong>场景岗位 / 快照</strong>：工序与现场说明、厂区省市区（必填）、场景大类（三类中可多选、互不重复）、现场照片。
       </p>

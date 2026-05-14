@@ -1,149 +1,152 @@
 # UPAIego Fleet Management
 
-Hardware fleet management system for Rockchip dev boards. Detects boards over USB-serial, registers them with auto-generated names and UUIDs, stores metadata in a database (local SQLite or cloud Supabase PostgreSQL), generates QR codes, and provides both a CLI and web UI for browsing and querying devices.
+Hardware fleet and **cloud data-collection operations** for Rockchip-based boards. The system detects boards over USB-serial, registers them with auto-generated names and UUIDs, stores metadata in **Supabase (PostgreSQL)** or local **SQLite** (optional backend), generates QR codes, and ships a **React (Vite) web app** that talks to Supabase with row-level security (RLS). Optional pieces: **Python CLI / FastAPI** for provisioning, and **ROS 2 Web Bridge** on the board for heartbeat-style updates.
 
-## Quick Start (Local Development)
+## What’s in this repo
 
-### Backend + CLI
+| Area | Description |
+|------|-------------|
+| **Web UI** (`frontend/`) | Role-based SPA: device registry & search, work groups, scene tasks / party demands / workstations, executor map (Leaflet), admin KPIs and announcements. Uses `@supabase/supabase-js` and the anon key plus user JWT. |
+| **Backend / CLI** (`backend/`) | Optional FastAPI server and `cli.py` for detect / register / provision / QR; uses `DATABASE_URL` (Postgres pooler or SQLite for dev). |
+| **Board** (`board/ros2_web_bridge/`) | Optional ROS 2 node to PATCH device fields over HTTPS; must align with Supabase keys and RLS (see `docs/DATABASE_SPECIFICATION.md`). |
+| **On-device stack** (`upaiego/`) | Separate ROS 2 package; see that tree for runtime nodes. |
 
-```bash
-cd backend
-pip install -r requirements.txt
+## Documentation
 
-# Run tests (no hardware needed)
-python -m pytest tests/ -v
+| Doc | Language | Purpose |
+|-----|----------|---------|
+| [DEPLOYMENT.md](DEPLOYMENT.md) | English | Short Supabase setup: base `devices` table, RLS snippet, env vars. |
+| [docs/从零搭建说明书.md](docs/从零搭建说明书.md) | 中文 | **Recommended** full bring-up: Supabase Auth, ordered SQL migrations, first admin, frontend env, optional CLI. |
+| [docs/DATABASE_SPECIFICATION.md](docs/DATABASE_SPECIFICATION.md) | 中文 | Tables, columns, RLS intent, drift notes vs minimal DDL. |
+| [docs/网页使用手册.md](docs/网页使用手册.md) | 中文 | End-user flows by role and page. |
+| [board/README.md](board/README.md) | English | Web bridge modes (`supabase` vs `backend`) and parameters. |
 
-# One-shot provisioning (with board connected via USB serial):
-python cli.py provision --port /dev/ttyUSB0     # detect + generate IDs + write to board + QR + register
+Production schema and policies are defined by the SQL files under **`docs/`** (run in the order listed in **从零搭建说明书** §5). The single-table summary in `DEPLOYMENT.md` is the minimal legacy path; the web app expects the full migration set.
 
-# Or step-by-step:
-python cli.py generate                          # generate a device_id / readable_name pair
-python cli.py register --serial-id abc123       # register with a known CPU serial
-python cli.py list
-python cli.py qr <device_id>
+## Roles (web app)
 
-# Or start the API server
-uvicorn app.main:app --reload --port 8000
-```
+Roles are stored in **`public.profiles.role`** (must match signup metadata where used). Four values, enforced in SQL and `frontend/src/types/roles.ts`:
 
-### Frontend (local dev with Supabase)
+| Value | UI label (zh) | Typical access |
+|-------|----------------|----------------|
+| `admin` | 管理员 | Admin console, create work group, fleet device tab, scene tasks (incl. batch draft), executor map, group moderation. |
+| `device_operator` | 设备运维员 | Own devices, device management (register + external devices + search), work group. |
+| `scene_operator` | 场景业务员 | Scene business (tasks, party demands, workstations), work group. |
+| `collection_executor` | 数采执行员 | Executor map, scene collection view (published tasks + hours), work group. |
+
+Route guards live in `frontend/src/App.tsx` (`RoleRoute`). KPI copy targets the three non-admin roles (`frontend/src/api/kpiMetrics.ts`).
+
+## Quick start (web + Supabase)
+
+1. Create a Supabase project and run migrations from **`docs/`** in order — see [docs/从零搭建说明书.md](docs/从零搭建说明书.md) §4–§5 (or [DEPLOYMENT.md](DEPLOYMENT.md) for a minimal device-only start, then add migrations).
+2. Promote the first user to `admin` in `profiles` (see 从零搭建说明书 §6).
+3. Frontend:
 
 ```bash
 cd frontend
 npm install
 cp .env.example .env
-# Edit .env with your Supabase URL + anon key
+# Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
 npm run dev
 ```
 
-Opens at `http://localhost:5173`.
+App defaults to `http://localhost:5173`. Do **not** put the `service_role` key in the frontend `.env`.
 
-## Cloud Deployment (Supabase, no server)
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for full instructions. Summary:
-
-1. Create a free Supabase project, run the CREATE TABLE SQL
-2. Give each hardware manager the `backend/` folder + a `.env` with `DATABASE_URL`
-3. Optionally deploy the web UI to Vercel/Netlify (free)
-
-No servers to run -- the CLI connects directly to Supabase PostgreSQL, and the web UI uses the Supabase REST API.
-
-## CLI Reference
-
-```
-python cli.py detect    [--port /dev/ttyUSB0]          # probe board, print serial ID (CPU serial)
-python cli.py generate                                  # generate a new device_id + readable_name pair
-python cli.py register  [--port ... | --serial-id ...]  # register a device + save QR
-python cli.py provision [--port /dev/ttyUSB0]           # one-shot: detect + IDs + write to board + QR + register
-python cli.py list      [--status active] [--limit 20]  # list devices
-python cli.py search    <query>                         # full-text search
-python cli.py get       <device_id>                     # show single device
-python cli.py update    <device_id> --status ...        # update fields
-python cli.py delete    <device_id>                     # soft-delete (retire)
-python cli.py qr        <device_id> [-o file.png]       # generate and save QR code
-```
-
-### `provision` — One-Shot Device Setup
-
-The `provision` command does everything in a single step:
-
-1. Connects to the board via USB-serial and reads the CPU serial ID
-2. Generates a new `device_id` (UUID) and `readable_name` (incrementing number)
-3. Writes `{"device_id": "...", "readable_name": "...", "serial_id": "..."}` to the board at `/etc/UPAIego/device_id.json`
-4. Generates a QR code PNG and saves it locally
-5. Registers the device in the database
+## Quick start (backend + CLI, optional)
 
 ```bash
+cd backend
+pip install -r requirements.txt
+cp .env.example .env
+# Set DATABASE_URL (Supabase pooler URI recommended for Postgres)
+
+python -m pytest tests/ -v
+
+# Example: one-shot provision (board on USB serial)
 python cli.py provision --port /dev/ttyUSB0
+
+# Or API server
+uvicorn app.main:app --reload --port 8000
 ```
 
-## API Reference (FastAPI server, optional)
+On Windows, replace `/dev/ttyUSB0` with the appropriate COM port.
+
+## Cloud deployment (Supabase-first)
+
+- Static hosting (Vercel, Netlify, S3+CloudFront, etc.) for `frontend` build output; inject the same `VITE_*` variables.
+- No Node server required for the SPA; data goes through Supabase PostgREST.
+- Full checklist and SQL order: [docs/从零搭建说明书.md](docs/从零搭建说明书.md).
+
+## CLI reference
+
+```
+python cli.py detect    [--port /dev/ttyUSB0]          # probe board, print CPU serial
+python cli.py generate                                  # new device_id + readable_name
+python cli.py register  [--port ... | --serial-id ...]  # register + QR
+python cli.py provision [--port ...]                    # detect + IDs + write board + register
+python cli.py list      [--status active] [--limit 20]
+python cli.py search    <query>
+python cli.py get       <device_id>
+python cli.py update    <device_id> --status ...
+python cli.py delete    <device_id>                   # soft-delete → retired
+python cli.py qr        <device_id> [-o file.png]
+```
+
+### `provision` — one-shot device setup
+
+1. USB-serial: read CPU serial  
+2. Generate `device_id` (UUID) and `readable_name` (incrementing number)  
+3. Write JSON to the board under `/etc/UPAIego/device_id.json`  
+4. Save QR PNG locally  
+5. Insert row in the database  
+
+## API reference (FastAPI, optional)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/devices/detect` | Detect connected board, returns `serial_id` |
-| POST | `/api/devices/generate` | Generate a new `device_id` / `readable_name` pair |
-| POST | `/api/devices/register` | Register a new device (auto-detect via port, or provide `serial_id`) |
-| POST | `/api/devices/provision` | One-shot: detect + generate IDs + write to board + register |
-| GET | `/api/devices` | List devices (query: `offset`, `limit`, `status`, `calibration_status`) |
-| GET | `/api/devices/search?q=` | Full-text search across device_id, name, serial_id, notes |
-| GET | `/api/devices/{id}` | Get single device |
-| PUT | `/api/devices/{id}` | Update device fields |
-| DELETE | `/api/devices/{id}` | Soft-delete (set status to retired) |
-| GET | `/api/devices/{id}/qr` | Download QR code PNG |
+| POST | `/api/devices/detect` | Detect board → `serial_id` |
+| POST | `/api/devices/generate` | New `device_id` / `readable_name` |
+| POST | `/api/devices/register` | Register (port or `serial_id`) |
+| POST | `/api/devices/provision` | Full provision pipeline |
+| GET | `/api/devices` | List (`offset`, `limit`, `status`, `calibration_status`) |
+| GET | `/api/devices/search?q=` | Search id / name / serial / notes |
+| GET | `/api/devices/{id}` | One device |
+| PUT | `/api/devices/{id}` | Update fields |
+| DELETE | `/api/devices/{id}` | Soft-delete → `retired` |
+| GET | `/api/devices/{id}/qr` | QR PNG |
 
-## Database Schema
+## Database (summary)
 
-Single `devices` table:
+The canonical model for production is **PostgreSQL on Supabase**: `devices`, `profiles`, work-group and scene-business tables, `scene_task_assignments`, `manual_tracked_devices`, `admin_kpis`, `admin_messages`, plus `auth.users` and optional **Storage** buckets (see migrations). Column list for `devices` and RLS discussion: **[docs/DATABASE_SPECIFICATION.md](docs/DATABASE_SPECIFICATION.md)**.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| device_id | TEXT PK | Auto-generated UUID |
-| user_id | UUID FK auth.users(id) | Owning user account |
-| readable_name | TEXT UNIQUE | Auto-generated incrementing number (1, 2, 3, ...) |
-| serial_id | TEXT | CPU serial from /proc/cpuinfo |
-| registered_at | TIMESTAMPTZ | Registration timestamp |
-| last_seen | TIMESTAMPTZ | Last interaction |
-| calibration_status | TEXT | pending / calibrated / needs_recalibration |
-| calibration_date | TIMESTAMPTZ | Last calibration time |
-| status | TEXT | active / inactive / maintenance / retired |
-| firmware_version | TEXT | Firmware version |
-| notes | TEXT | Free-form notes |
-| calibration | JSON | Calibration data |
+Local **SQLite** via SQLAlchemy may lag the cloud schema; treat Supabase as source of truth for the web app.
 
-## QR Code Format
+## QR code format
 
-Each QR code encodes a JSON payload:
+QR encodes JSON:
 
 ```json
 {"readable_name": "1", "device_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"}
 ```
 
-## Project Structure
+## Project structure
 
 ```
-backend/
-  cli.py                # Fleet management CLI
-  app/
-    main.py             # FastAPI application (optional server mode)
-    database.py         # SQLAlchemy setup (reads DATABASE_URL from .env)
-    models.py           # Device ORM model
-    schemas.py          # Pydantic schemas
-    routes/devices.py   # API endpoints
-    services/
-      board_connector.py  # Hardware detection wrapper
-      device_service.py   # Business logic & CRUD
-      qr_service.py       # QR code generation
-  rk_board_config.py    # Serial console driver
-  tests/                # 25 pytest tests (mocked hardware, in-memory DB)
-frontend/
+backend/                 # FastAPI + CLI (optional)
+  cli.py
+  app/                   # main, database, models, routes, services
+  tests/                 # pytest, mocked hardware / in-memory SQLite
+board/
+  ros2_web_bridge/       # Optional ROS 2 HTTPS bridge to Supabase
+docs/                    # SQL migrations + zh-CN operational docs
+frontend/                # React 19 + Vite + Tailwind
   src/
-    api/
-      supabase.ts       # Supabase client init
-      client.ts         # Typed API functions (Supabase queries)
-      qr.ts             # Client-side QR generation
-    pages/              # Dashboard, Register, DeviceDetail, Search
-    components/         # StatusBadge, Spinner
+    api/                 # supabase, client, groups, scenes, operations, …
+    auth/                # AuthContext, role labels
+    pages/               # Dashboard, devices, scene, map, admin, group, …
+    components/
+DEPLOYMENT.md            # English minimal deploy
+upaiego/                 # On-device ROS 2 package (separate from web bridge)
 ```
 
 ## Tests
@@ -153,4 +156,4 @@ cd backend
 python -m pytest tests/ -v
 ```
 
-25 tests covering: full workflow, provision workflow, CRUD edge cases, name generation, QR generation. All use mocked hardware and in-memory SQLite.
+Tests use mocked hardware and an in-memory SQLite database where applicable.

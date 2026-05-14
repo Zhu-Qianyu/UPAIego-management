@@ -13,6 +13,8 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32, String
 
+from .gyro_recorder import GyroRecorder
+
 
 class WebBridgeNode(Node):
     """Bridge ROS2 runtime state with website device API."""
@@ -40,6 +42,9 @@ class WebBridgeNode(Node):
         self.declare_parameter("frame_upload_interval_sec", 60)
         self.declare_parameter("frame_max_width", 640)
         self.declare_parameter("frame_jpeg_quality", 6)
+        self.declare_parameter("gyro_enable", True)
+        self.declare_parameter("gyro_i2c_bus", 7)
+        self.declare_parameter("gyro_sample_interval_sec", 0.01)
 
         self.mode = str(self.get_parameter("mode").value).lower().strip()
         self.base_url = self.get_parameter("base_url").value.rstrip("/")
@@ -63,6 +68,11 @@ class WebBridgeNode(Node):
         )
         self.frame_max_width = int(self.get_parameter("frame_max_width").value)
         self.frame_jpeg_quality = int(self.get_parameter("frame_jpeg_quality").value)
+        self.gyro_enable = bool(self.get_parameter("gyro_enable").value)
+        self.gyro_i2c_bus = int(self.get_parameter("gyro_i2c_bus").value)
+        self.gyro_sample_interval_sec = float(
+            self.get_parameter("gyro_sample_interval_sec").value
+        )
 
         if not self.device_id:
             raise ValueError("ROS parameter 'device_id' is required.")
@@ -92,6 +102,7 @@ class WebBridgeNode(Node):
         self._last_frame_uploaded_at: float = 0.0
         self._latest_frame_b64: Optional[str] = None
         self._latest_frame_at: Optional[str] = None
+        self._gyro: Optional[GyroRecorder] = None
 
         self.get_logger().info(
             f"web_bridge started: mode={self.mode}, device_id={self.device_id}"
@@ -232,11 +243,23 @@ class WebBridgeNode(Node):
         usage = (1.0 - (idle_delta / total_delta)) * 100.0
         return max(0.0, min(100.0, usage))
 
+    def _stop_gyro_recorder(self) -> None:
+        if self._gyro is not None:
+            self._gyro.stop()
+            self._gyro = None
+
     def _ensure_recording(self) -> None:
         if not self.record_on_startup:
             return
         if self._is_recording():
             return
+
+        # 上一路 ffmpeg 已退出时，先停陀螺仪再启新会话
+        if self._ffmpeg_process is not None and self._ffmpeg_process.poll() is not None:
+            self._stop_gyro_recorder()
+            self._ffmpeg_process = None
+            self._recording_started_at = None
+            self._recording_output_path = None
 
         try:
             os.makedirs(self.recording_dir, exist_ok=True)
@@ -282,6 +305,21 @@ class WebBridgeNode(Node):
                 "recording started: "
                 + " ".join(shlex.quote(part) for part in cmd)
             )
+            # 板端：与本次 mp4 同 stem 的陀螺仪 CSV（野火 MPU6050 / I2C）
+            if self.gyro_enable:
+                stem, _ = os.path.splitext(output_path)
+                gyro_csv = f"{stem}_gyro.csv"
+                self._stop_gyro_recorder()
+                self._gyro = GyroRecorder(
+                    gyro_csv,
+                    i2c_bus=self.gyro_i2c_bus,
+                    interval_sec=self.gyro_sample_interval_sec,
+                )
+                self._gyro.set_logger(self.get_logger())
+                if self._gyro.start():
+                    self.get_logger().info(f"gyro logging started: {gyro_csv}")
+                else:
+                    self._gyro = None
         except OSError as exc:
             self._ffmpeg_process = None
             self._recording_started_at = None
@@ -355,6 +393,7 @@ class WebBridgeNode(Node):
         return result.stdout
 
     def destroy_node(self) -> bool:
+        self._stop_gyro_recorder()
         if self._ffmpeg_process is not None and self._ffmpeg_process.poll() is None:
             self.get_logger().info("stopping ffmpeg recorder process")
             self._ffmpeg_process.terminate()

@@ -8,6 +8,7 @@
 - 按设备 `device_id` 拉取网站侧最新设备信息
 - 支持两种模式：`supabase` 直连（默认）和 `backend` API 模式
 - 启动节点后自动调用 `ffmpeg` 录制视频到 `/home/cat/videos`
+- **可选**：与每段 MP4 同步记录 **MPU6050 陀螺仪** CSV（`board/ros2_web_bridge` 内 `gyro_recorder.py`，默认 I²C 总线 7）；详见仓库根目录 `docs/陀螺仪与录制同步记录手册.md`
 - 实时上报运行状态：是否开机、是否录制中、累计录制时长、CPU 占用率
 
 ## 目录结构
@@ -23,6 +24,8 @@
 ```bash
 sudo apt update
 sudo apt install -y python3-requests
+# 陀螺仪：需 I²C 权限；Python 依赖 smbus2（colcon 安装包时会拉取，也可 pip install smbus2）
+sudo usermod -aG i2c "$USER"   # 重新登录后生效
 ```
 
 2. 编译 ROS2 工程
@@ -52,6 +55,10 @@ source install/setup.bash
   - `recording_fps`：默认 `60`
   - `recording_bitrate`：默认 `5000k`
   - `ffmpeg_codec`：默认 `h264_rkmpp`
+- 陀螺仪（LubanCat MPU6050，野火手册 §18.8）：
+  - `gyro_enable`：默认 `true`；无传感器时设 `false`
+  - `gyro_i2c_bus`：默认 `7`（`/dev/i2c-7`）
+  - `gyro_sample_interval_sec`：默认 `0.01`
 
 4. 运行
 

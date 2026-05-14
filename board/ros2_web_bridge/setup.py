@@ -12,7 +12,7 @@ setup(
         (f"share/{package_name}/launch", ["launch/web_bridge.launch.py"]),
         (f"share/{package_name}/config", ["config/bridge_params.yaml"]),
     ],
-    install_requires=["setuptools", "requests"],
+    install_requires=["setuptools", "requests", "smbus2"],
     zip_safe=True,
     maintainer="fleet-dev",
     maintainer_email="dev@example.com",
