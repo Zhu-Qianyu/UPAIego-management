@@ -2,7 +2,7 @@ import { useState } from "react";
 import { supabase } from "../api/supabase";
 import type { UserRole } from "../types/roles";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "../auth/roleLabels";
-import { COMPANY_NAME, SITE_DISPLAY_NAME, SITE_SUBTITLE } from "../branding";
+import { SITE_DISPLAY_NAME, SITE_SUBTITLE } from "../branding";
 
 type Mode = "login" | "register";
 
@@ -161,9 +161,6 @@ export default function AuthPage() {
             </div>
           </div>
         </div>
-        <footer className="relative z-10 shrink-0 px-4 pb-6 pt-2 text-center text-xs text-gray-600/90">
-          © {new Date().getFullYear()} {COMPANY_NAME}
-        </footer>
       </div>
     </div>
   );
