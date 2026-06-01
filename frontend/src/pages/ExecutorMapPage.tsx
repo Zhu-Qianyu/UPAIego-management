@@ -25,7 +25,23 @@ function markerPopupHtml(d: Device): string {
 
 type MapCacheV1 = { v: 1; devices: Device[] };
 
-export default function ExecutorMapPage() {
+function mapFeatureEnabled(): boolean {
+  return import.meta.env.VITE_MAP_FEATURE_ENABLED === "true";
+}
+
+function MapComingSoon() {
+  return (
+    <div className="max-w-lg mx-auto py-16 px-4 text-center">
+      <h1 className="text-2xl font-bold text-gray-900">数采地图</h1>
+      <p className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 px-6 py-10 text-base text-gray-600">
+        地图功能暂未上线
+      </p>
+      <p className="mt-3 text-sm text-gray-400">敬请期待</p>
+    </div>
+  );
+}
+
+function ExecutorMapPageLive() {
   const { session } = useAuth();
   const location = useLocation();
   const cacheKey = useMemo(
@@ -77,13 +93,14 @@ export default function ExecutorMapPage() {
   }, [cacheKey]);
 
   useEffect(() => {
+    if (!mapFeatureEnabled()) return;
     void load();
     const t = window.setInterval(() => void load(), 30000);
     return () => window.clearInterval(t);
   }, [load]);
 
   useEffect(() => {
-    if (!amapConfigured() || !containerRef.current) return;
+    if (!mapFeatureEnabled() || !amapConfigured() || !containerRef.current) return;
     let cancelled = false;
 
     void (async () => {
@@ -263,4 +280,9 @@ export default function ExecutorMapPage() {
       </div>
     </div>
   );
+}
+
+export default function ExecutorMapPage() {
+  if (!mapFeatureEnabled()) return <MapComingSoon />;
+  return <ExecutorMapPageLive />;
 }
