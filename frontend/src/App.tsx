@@ -8,6 +8,7 @@ import RoleHome from "./pages/RoleHome";
 import AdminConsole from "./pages/AdminConsole";
 import SceneTasksPage from "./pages/SceneTasksPage";
 import ExecutorMapPage from "./pages/ExecutorMapPage";
+import BountyPage from "./pages/BountyPage";
 import GroupPage from "./pages/GroupPage";
 import AdminGroupPage from "./pages/AdminGroupPage";
 import { useAuth } from "./auth/AuthContext";
@@ -57,6 +58,7 @@ function navForRole(role: UserRole): { to: string; label: string }[] {
       { to: "/group", label: "群组" },
       { to: "/devices/manage", label: "设备管理" },
       { to: "/scene", label: "场景业务" },
+      { to: "/bounties", label: "悬赏令" },
       { to: "/map", label: "数采地图" },
     ],
     device_operator: [
@@ -70,6 +72,7 @@ function navForRole(role: UserRole): { to: string; label: string }[] {
     ],
     collection_executor: [
       { to: "/map", label: "数采地图" },
+      { to: "/bounties", label: "悬赏令" },
       { to: "/scene", label: "场景采集" },
       { to: "/group", label: "群组" },
     ],
@@ -443,6 +446,14 @@ export default function App() {
             element={
               <RoleRoute allow={["admin", "collection_executor"]}>
                 <ExecutorMapPage />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/bounties"
+            element={
+              <RoleRoute allow={["admin", "collection_executor"]}>
+                <BountyPage />
               </RoleRoute>
             }
           />
