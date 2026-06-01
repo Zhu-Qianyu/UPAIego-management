@@ -32,12 +32,22 @@ const MAP_PAGE_LIVE = false;
 
 function MapComingSoon() {
   return (
-    <div className="max-w-lg mx-auto py-16 px-4 text-center">
-      <h1 className="text-2xl font-bold text-gray-900">数采地图</h1>
-      <p className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 px-6 py-10 text-base text-gray-600">
-        地图功能暂未上线
-      </p>
-      <p className="mt-3 text-sm text-gray-400">敬请期待</p>
+    <div className="page-shell max-w-2xl mx-auto px-4 py-12 sm:py-16 text-center">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-sky-500 via-indigo-600 to-violet-700 p-10 sm:p-14 text-white shadow-2xl shadow-indigo-300/40">
+        <div className="pointer-events-none absolute -right-6 -top-6 h-32 w-32 rounded-full bg-white/20 blur-2xl" aria-hidden />
+        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-white/20 ring-1 ring-white/30 backdrop-blur-sm">
+          <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+        </div>
+        <h1 className="mt-6 text-2xl sm:text-3xl font-bold tracking-tight">数采地图</h1>
+        <p className="mt-4 text-lg text-white/90">地图功能暂未上线</p>
+        <p className="mt-2 text-sm text-white/70">高德地图 · 设备点位 · 一键采集</p>
+        <div className="mt-8 inline-flex items-center gap-2 rounded-full bg-white/15 px-5 py-2 text-sm font-medium ring-1 ring-white/25">
+          <span className="h-2 w-2 rounded-full bg-emerald-300 animate-pulse" aria-hidden />
+          敬请期待
+        </div>
+      </div>
     </div>
   );
 }

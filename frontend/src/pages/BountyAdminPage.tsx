@@ -14,6 +14,18 @@ import {
 } from "../api/bounties";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
+import {
+  Alert,
+  IconSparkles,
+  PageHero,
+  PageShell,
+  Panel,
+  StatGrid,
+  uiInput,
+  uiLabel,
+  uiSelect,
+  UiButton,
+} from "../components/ui/PageLayout";
 
 export default function BountyAdminPage() {
   const [groupId, setGroupId] = useState<string | null>(null);
@@ -177,72 +189,72 @@ export default function BountyAdminPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <PageShell>
       <RefreshStrip active={refreshing} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">悬赏令管理</h1>
-          <p className="text-sm text-gray-500 mt-1">发布工时池，执行员按小时领取；与场景业务完全独立。</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => { setRefreshing(true); void load(); }}
-          className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50"
-        >
-          刷新
-        </button>
-      </div>
+      <PageHero
+        eyebrow="平台管理"
+        title="悬赏令管理"
+        description="发布工时池，执行员按小时领取；由设备运维员审核完成。"
+        accent="amber"
+        icon={<IconSparkles />}
+        onRefresh={() => { setRefreshing(true); void load(); }}
+        refreshing={refreshing}
+        footer={
+          <StatGrid
+            items={[
+              { label: "悬赏总数", value: bounties.length },
+              { label: "开放中", value: openCount, tone: "ok" },
+              { label: "运维员", value: deviceOperators.length, hint: "可指定" },
+            ]}
+          />
+        }
+      />
 
       {!groupId && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          未检测到已加入的工作群。请先在「群组」加入或创建工作群后再发布悬赏令。
-        </div>
+        <Alert variant="warn">未检测到工作群。请先在「群组」加入或创建工作群后再发布悬赏令。</Alert>
       )}
+      {err && <Alert variant="error">{err}</Alert>}
 
-      {err && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{err}</div>
-      )}
-
-      <form onSubmit={onPublish} className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4 shadow-sm">
-        <h2 className="font-medium text-gray-900">发布悬赏令</h2>
+      <Panel title="发布悬赏令" description="指定群内设备运维员作为执行员联系人" icon={<IconSparkles />}>
+      <form onSubmit={onPublish} className="space-y-4">
         <div className="grid sm:grid-cols-2 gap-4">
-          <label className="block text-sm">
-            <span className="text-gray-600">标题</span>
+          <label className="block">
+            <span className={uiLabel}>标题</span>
             <input
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+              className={uiInput}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="例如：本周数据采集"
             />
           </label>
-          <label className="block text-sm">
-            <span className="text-gray-600">总工时（小时）</span>
+          <label className="block">
+            <span className={uiLabel}>总工时（小时）</span>
             <input
               type="number"
               min={1}
               step={1}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+              className={uiInput}
               value={totalHours}
               onChange={(e) => setTotalHours(e.target.value)}
               required
             />
           </label>
-          <label className="block text-sm">
-            <span className="text-gray-600">单价（元/小时）</span>
+          <label className="block">
+            <span className={uiLabel}>单价（元/小时）</span>
             <input
               type="number"
               min={0}
               step={0.01}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+              className={uiInput}
               value={hourlyRate}
               onChange={(e) => setHourlyRate(e.target.value)}
               required
             />
           </label>
-          <label className="block text-sm">
-            <span className="text-gray-600">完成期限（接单后）</span>
+          <label className="block">
+            <span className={uiLabel}>完成期限（接单后）</span>
             <select
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+              className={uiSelect}
               value={completionDays}
               onChange={(e) => setCompletionDays(e.target.value as "1" | "2" | "3")}
             >
@@ -251,10 +263,10 @@ export default function BountyAdminPage() {
               <option value="3">3 天内</option>
             </select>
           </label>
-          <label className="block text-sm sm:col-span-2">
-            <span className="text-gray-600">指定设备运维员（执行员联系人）</span>
+          <label className="block sm:col-span-2">
+            <span className={uiLabel}>指定设备运维员（执行员联系人）</span>
             <select
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+              className={uiSelect}
               value={assignedOperatorId}
               onChange={(e) => setAssignedOperatorId(e.target.value)}
               required
@@ -272,26 +284,23 @@ export default function BountyAdminPage() {
             </select>
           </label>
         </div>
-        <label className="block text-sm">
-          <span className="text-gray-600">说明（可选）</span>
+        <label className="block">
+          <span className={uiLabel}>说明（可选）</span>
           <textarea
-            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 min-h-[72px]"
+            className={`${uiInput} min-h-[72px]`}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
         </label>
-        <button
-          type="submit"
-          disabled={!groupId || publishBusy}
-          className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-        >
+        <UiButton type="submit" disabled={!groupId || publishBusy}>
           {publishBusy ? "发布中…" : "发布悬赏令"}
-        </button>
+        </UiButton>
       </form>
+      </Panel>
 
-      <section className="space-y-3">
-        <h2 className="font-medium text-gray-900">
-          悬赏列表 <span className="text-gray-400 font-normal text-sm">（开放 {openCount}）</span>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold text-slate-900">
+          悬赏列表 <span className="text-slate-400 font-normal text-sm">（开放 {openCount}）</span>
         </h2>
         {bounties.length === 0 ? (
           <p className="text-sm text-gray-500 py-8 text-center border border-dashed rounded-xl">暂无悬赏令</p>
@@ -302,7 +311,7 @@ export default function BountyAdminPage() {
               const expanded = expandedId === b.id;
               const claimedHours = b.total_hours - b.remaining_hours;
               return (
-                <li key={b.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                <li key={b.id} className="glass-panel overflow-hidden rounded-2xl">
                   <div className="p-4 flex flex-wrap gap-3 items-start justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -402,6 +411,6 @@ export default function BountyAdminPage() {
           </ul>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }

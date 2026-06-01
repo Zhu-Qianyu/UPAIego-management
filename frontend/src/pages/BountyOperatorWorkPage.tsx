@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchActiveGroupId, listGroupProfilesByRole } from "../api/groups";
 import { listDevices, type Device } from "../api/client";
 import { fetchProfilesByIds, profileDisplayName, type ProfileContact } from "../api/profiles";
@@ -20,6 +20,23 @@ import {
 } from "../api/bounties";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
+import {
+  Alert,
+  EmptyState,
+  IconClipboard,
+  IconClock,
+  IconDevices,
+  IconWrench,
+  PageHero,
+  PageShell,
+  Panel,
+  SegmentedTabs,
+  StatGrid,
+  UiButton,
+  uiInput,
+  uiLabel,
+  uiSelect,
+} from "../components/ui/PageLayout";
 
 type Tab = "assign" | "hours" | "audit";
 
@@ -203,283 +220,223 @@ export default function BountyOperatorWorkPage() {
     }
   }
 
+  const stats = useMemo(
+    () => [
+      { label: "待审核", value: claims.length, hint: "进行中接单", tone: claims.length ? ("warn" as const) : ("default" as const) },
+      { label: "设备分发", value: assignments.length, hint: "活跃绑定" },
+      { label: "我的设备", value: devices.length, hint: "可管理" },
+      { label: "执行员", value: executors.length, hint: "群内" },
+    ],
+    [claims.length, assignments.length, devices.length, executors.length]
+  );
+
   if (loading) {
     return (
-      <div className="py-16 flex justify-center">
+      <div className="py-24 flex justify-center">
         <Spinner />
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <PageShell>
       <RefreshStrip active={refreshing} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">运维工作台</h1>
-          <p className="text-sm text-gray-500 mt-1">设备分发 · 数采小时登记 · 悬赏接单审核（与场景业务独立）</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setRefreshing(true);
-            void load();
-          }}
-          className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50"
-        >
-          刷新
-        </button>
-      </div>
+      <PageHero
+        eyebrow="设备运维"
+        title="运维工作台"
+        description="设备分发给执行员、登记数采小时、审核悬赏接单。与场景业务模块独立运行。"
+        accent="violet"
+        icon={<IconWrench />}
+        onRefresh={() => {
+          setRefreshing(true);
+          void load();
+        }}
+        refreshing={refreshing}
+      />
 
-      {!groupId && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          请先加入工作群后再使用运维功能。
-        </div>
-      )}
+      <StatGrid items={stats} />
 
-      {err && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{err}</div>
-      )}
+      {!groupId && <Alert variant="warn">请先加入工作群后再使用运维功能。</Alert>}
+      {err && <Alert variant="error">{err}</Alert>}
 
-      <div className="flex gap-2 border-b border-gray-200 pb-px flex-wrap">
-        {(
-          [
-            ["audit", "悬赏审核"],
-            ["assign", "设备分发"],
-            ["hours", "数采登记"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 -mb-px ${
-              tab === id
-                ? "border-indigo-600 text-indigo-700 bg-white"
-                : "border-transparent text-gray-500 hover:text-gray-800"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: "audit", label: "悬赏审核", icon: <IconClipboard />, badge: claims.length },
+          { id: "assign", label: "设备分发", icon: <IconDevices /> },
+          { id: "hours", label: "数采登记", icon: <IconClock /> },
+        ]}
+      />
 
       {tab === "assign" && (
         <section className="space-y-4">
-          <form onSubmit={onAssign} className="rounded-xl border border-gray-200 bg-white p-4 space-y-3 shadow-sm">
-            <h2 className="font-medium text-gray-900">分发设备给执行员</h2>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <label className="text-sm block">
-                <span className="text-gray-600">设备</span>
-                <select
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={assignDeviceId}
-                  onChange={(e) => setAssignDeviceId(e.target.value)}
-                  required
-                >
-                  <option value="">选择设备</option>
-                  {devices.map((d) => (
-                    <option key={d.device_id} value={d.device_id}>
-                      {d.readable_name || d.device_id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm block">
-                <span className="text-gray-600">执行员</span>
-                <select
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={assignExecutorId}
-                  onChange={(e) => setAssignExecutorId(e.target.value)}
-                  required
-                >
-                  <option value="">选择执行员</option>
-                  {executors.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {profileDisplayName(p)}
-                      {p.phone ? ` · ${p.phone}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <button
-              type="submit"
-              disabled={busyId === "assign"}
-              className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {busyId === "assign" ? "提交中…" : "确认分发"}
-            </button>
-          </form>
+          <Panel title="分发设备给执行员" description="同一设备新分发将自动撤销旧绑定" icon={<IconDevices />}>
+            <form onSubmit={onAssign} className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <label className="block">
+                  <span className={uiLabel}>设备</span>
+                  <select className={uiSelect} value={assignDeviceId} onChange={(e) => setAssignDeviceId(e.target.value)} required>
+                    <option value="">选择设备</option>
+                    {devices.map((d) => (
+                      <option key={d.device_id} value={d.device_id}>
+                        {d.readable_name || d.device_id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className={uiLabel}>执行员</span>
+                  <select className={uiSelect} value={assignExecutorId} onChange={(e) => setAssignExecutorId(e.target.value)} required>
+                    <option value="">选择执行员</option>
+                    {executors.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {profileDisplayName(p)}
+                        {p.phone ? ` · ${p.phone}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <UiButton type="submit" disabled={busyId === "assign"}>
+                {busyId === "assign" ? "提交中…" : "确认分发"}
+              </UiButton>
+            </form>
+          </Panel>
 
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-2">当前绑定</h3>
+          <Panel title="当前绑定" icon={<IconClipboard />}>
             {assignments.length === 0 ? (
-              <p className="text-sm text-gray-500 border border-dashed rounded-xl py-8 text-center">暂无活跃分发</p>
+              <EmptyState title="暂无活跃分发" description="选择设备与执行员后点击确认分发" icon={<IconDevices />} />
             ) : (
               <ul className="space-y-2">
                 {assignments.map((a) => (
                   <li
                     key={a.id}
-                    className="flex flex-wrap justify-between gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50/80 ring-1 ring-slate-200/80 px-4 py-3 text-sm"
                   >
-                    <span>
-                      设备 <strong>{a.device_id}</strong> → 执行员{" "}
-                      <strong>{executorNames[a.executor_id] ?? a.executor_id.slice(0, 8)}</strong>
+                    <span className="text-slate-700">
+                      <span className="font-semibold text-slate-900">{a.device_id}</span>
+                      <span className="mx-2 text-slate-300">→</span>
+                      {executorNames[a.executor_id] ?? a.executor_id.slice(0, 8)}
                     </span>
-                    <button
-                      type="button"
-                      disabled={busyId === a.id}
-                      onClick={() => void onRevoke(a.id)}
-                      className="text-red-700 hover:underline disabled:opacity-50"
-                    >
+                    <UiButton variant="ghost" size="sm" className="!text-red-600" disabled={busyId === a.id} onClick={() => void onRevoke(a.id)}>
                       撤销
-                    </button>
+                    </UiButton>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </Panel>
         </section>
       )}
 
       {tab === "hours" && (
         <section className="space-y-4">
-          <form onSubmit={onRegisterHours} className="rounded-xl border border-gray-200 bg-white p-4 space-y-3 shadow-sm">
-            <h2 className="font-medium text-gray-900">登记设备数采小时</h2>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <label className="text-sm block">
-                <span className="text-gray-600">设备</span>
-                <select
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={hourDeviceId}
-                  onChange={(e) => setHourDeviceId(e.target.value)}
-                  required
-                >
-                  <option value="">选择设备</option>
-                  {devices.map((d) => (
-                    <option key={d.device_id} value={d.device_id}>
-                      {d.readable_name || d.device_id}
-                    </option>
-                  ))}
-                </select>
+          <Panel title="登记设备数采小时" description="可关联悬赏接单 ID，供审核时参考" icon={<IconClock />}>
+            <form onSubmit={onRegisterHours} className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <label className="block">
+                  <span className={uiLabel}>设备</span>
+                  <select className={uiSelect} value={hourDeviceId} onChange={(e) => setHourDeviceId(e.target.value)} required>
+                    <option value="">选择设备</option>
+                    {devices.map((d) => (
+                      <option key={d.device_id} value={d.device_id}>
+                        {d.readable_name || d.device_id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className={uiLabel}>小时数</span>
+                  <input type="number" min={0.01} step={0.01} className={uiInput} value={hourAmount} onChange={(e) => setHourAmount(e.target.value)} required />
+                </label>
+                <label className="block sm:col-span-2">
+                  <span className={uiLabel}>关联悬赏接单 ID（可选）</span>
+                  <input className={`${uiInput} font-mono text-xs`} value={hourClaimId} onChange={(e) => setHourClaimId(e.target.value)} placeholder="uuid" />
+                </label>
+              </div>
+              <label className="block">
+                <span className={uiLabel}>备注</span>
+                <input className={uiInput} value={hourNote} onChange={(e) => setHourNote(e.target.value)} />
               </label>
-              <label className="text-sm block">
-                <span className="text-gray-600">小时数</span>
-                <input
-                  type="number"
-                  min={0.01}
-                  step={0.01}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                  value={hourAmount}
-                  onChange={(e) => setHourAmount(e.target.value)}
-                  required
-                />
-              </label>
-              <label className="text-sm block sm:col-span-2">
-                <span className="text-gray-600">关联悬赏接单 ID（可选）</span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
-                  value={hourClaimId}
-                  onChange={(e) => setHourClaimId(e.target.value)}
-                  placeholder="uuid"
-                />
-              </label>
-            </div>
-            <label className="text-sm block">
-              <span className="text-gray-600">备注</span>
-              <input
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-                value={hourNote}
-                onChange={(e) => setHourNote(e.target.value)}
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={busyId === "hours"}
-              className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {busyId === "hours" ? "提交中…" : "登记"}
-            </button>
-          </form>
+              <UiButton type="submit" disabled={busyId === "hours"}>
+                {busyId === "hours" ? "提交中…" : "登记"}
+              </UiButton>
+            </form>
+          </Panel>
 
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-2">最近登记</h3>
+          <Panel title="最近登记" icon={<IconClock />}>
             {hourLogs.length === 0 ? (
-              <p className="text-sm text-gray-500 border border-dashed rounded-xl py-8 text-center">暂无记录</p>
+              <EmptyState title="暂无登记记录" icon={<IconClock />} />
             ) : (
-              <ul className="space-y-2 text-sm">
+              <ul className="space-y-2">
                 {hourLogs.map((log) => (
-                  <li key={log.id} className="rounded-lg border border-gray-200 bg-white px-4 py-2">
-                    {log.device_id} · {log.registered_hours} h
+                  <li key={log.id} className="rounded-xl bg-slate-50/90 ring-1 ring-slate-200/80 px-4 py-3 text-sm">
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <span className="font-medium text-slate-900">
+                        {log.device_id} · <span className="text-indigo-600">{log.registered_hours} h</span>
+                      </span>
+                      <span className="text-xs text-slate-400">{new Date(log.created_at).toLocaleString()}</span>
+                    </div>
                     {log.bounty_claim_id && (
-                      <span className="text-gray-500"> · 接单 {log.bounty_claim_id.slice(0, 8)}…</span>
+                      <p className="mt-1 text-xs text-slate-500 font-mono">接单 {log.bounty_claim_id.slice(0, 8)}…</p>
                     )}
-                    <span className="text-gray-400 text-xs block">{new Date(log.created_at).toLocaleString()}</span>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </Panel>
         </section>
       )}
 
       {tab === "audit" && (
-        <section className="space-y-3">
-          <p className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-            审核通过时执行小时 = min(领取小时, 您确认的小时)；积分按执行小时 × 悬赏积分系数发放。驳回将按现有规则扣分并退回未执行工时。
-          </p>
+        <section className="space-y-4">
+          <Alert variant="info">
+            审核通过：执行小时 = min(领取小时, 您确认的小时)；积分按执行小时 × 系数发放。驳回将扣分并退回未执行工时。
+          </Alert>
           {claims.length === 0 ? (
-            <p className="text-sm text-gray-500 py-10 text-center border border-dashed rounded-xl">暂无待审核接单</p>
+            <EmptyState title="暂无待审核接单" description="执行员接单后会出现在这里" icon={<IconClipboard />} />
           ) : (
-            <ul className="space-y-3">
+            <ul className="space-y-4">
               {claims.map((c) => {
                 const title = c.bounties?.title ?? "悬赏单";
                 const reg = registeredByClaim[c.id] ?? 0;
                 return (
-                  <li key={c.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
-                    <div className="flex flex-wrap justify-between gap-2">
+                  <li key={c.id} className="glass-panel rounded-2xl p-5 space-y-4">
+                    <div className="flex flex-wrap justify-between gap-3">
                       <div>
-                        <h3 className="font-medium text-gray-900">{title}</h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                          执行员 {executorNames[c.executor_id] ?? c.executor_id.slice(0, 8)} · 领取{" "}
-                          {c.claimed_hours} h · {claimStatusLabel(c.status)}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          已登记数采 {reg} h（参考） · {formatDueCountdown(c.due_at)}
+                        <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+                        <p className="text-sm text-slate-600 mt-1">
+                          {executorNames[c.executor_id] ?? c.executor_id.slice(0, 8)} · 领取{" "}
+                          <span className="font-semibold text-indigo-600">{c.claimed_hours} h</span>
                         </p>
                       </div>
+                      <span className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+                        {claimStatusLabel(c.status)}
+                      </span>
                     </div>
-                    <div className="flex flex-wrap items-end gap-3">
-                      <label className="text-sm">
-                        <span className="text-gray-600">确认执行（小时）</span>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600">数采登记 {reg} h</span>
+                      <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-indigo-700">{formatDueCountdown(c.due_at)}</span>
+                    </div>
+                    <div className="flex flex-wrap items-end gap-3 pt-1 border-t border-slate-100">
+                      <label className="block">
+                        <span className={uiLabel}>确认执行（小时）</span>
                         <input
                           type="number"
                           min={1}
                           max={c.claimed_hours}
-                          className="mt-1 block w-28 rounded-lg border border-gray-300 px-3 py-2"
+                          className={`${uiInput} !w-28`}
                           value={confirmHours[c.id] ?? String(c.claimed_hours)}
-                          onChange={(e) =>
-                            setConfirmHours((prev) => ({ ...prev, [c.id]: e.target.value }))
-                          }
+                          onChange={(e) => setConfirmHours((prev) => ({ ...prev, [c.id]: e.target.value }))}
                         />
                       </label>
-                      <button
-                        type="button"
-                        disabled={busyId === c.id}
-                        onClick={() => void onApprove(c)}
-                        className="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                      >
+                      <UiButton variant="success" disabled={busyId === c.id} onClick={() => void onApprove(c)}>
                         通过
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyId === c.id}
-                        onClick={() => void onReject(c)}
-                        className="px-3 py-1.5 text-sm rounded-lg border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
-                      >
+                      </UiButton>
+                      <UiButton variant="secondary" className="!text-red-600 !ring-red-100" disabled={busyId === c.id} onClick={() => void onReject(c)}>
                         驳回
-                      </button>
+                      </UiButton>
                     </div>
                   </li>
                 );
@@ -488,6 +445,6 @@ export default function BountyOperatorWorkPage() {
           )}
         </section>
       )}
-    </div>
+    </PageShell>
   );
 }

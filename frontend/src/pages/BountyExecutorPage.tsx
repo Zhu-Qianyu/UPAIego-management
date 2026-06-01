@@ -21,6 +21,19 @@ import {
 } from "../api/bounties";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
+import {
+  Alert,
+  EmptyState,
+  IconClipboard,
+  IconSparkles,
+  PageHero,
+  PageShell,
+  SegmentedTabs,
+  StatGrid,
+  UiButton,
+  uiInput,
+  uiLabel,
+} from "../components/ui/PageLayout";
 
 type Tab = "open" | "mine" | "tier";
 
@@ -165,77 +178,53 @@ export default function BountyExecutorPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <PageShell>
       <RefreshStrip active={refreshing} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">悬赏令</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            按小时领取工时池 · 完成得积分升段 · 进行中 {activeCount}/{tierLimit} 台 · 今日已领{" "}
-            {claimedToday}/{dailyLimit} h（每台每天 8h）
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => { setRefreshing(true); void load(); }}
-          className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-50"
-        >
-          刷新
-        </button>
-      </div>
+      <PageHero
+        eyebrow="数采执行"
+        title="悬赏令"
+        description="按小时领取工时池，由运维审核计分并升段。"
+        accent="indigo"
+        icon={<IconSparkles />}
+        onRefresh={() => { setRefreshing(true); void load(); }}
+        refreshing={refreshing}
+        footer={
+          <StatGrid
+            items={[
+              { label: "进行中", value: `${activeCount}/${tierLimit}`, hint: "并发（台）" },
+              { label: "今日已领", value: `${claimedToday}/${dailyLimit}`, hint: "小时", tone: remainingToday <= 0 ? "warn" : "ok" },
+              { label: "可接单", value: openBounties.length, hint: "开放悬赏" },
+              { label: "段位", value: profile?.tier.name ?? "—", hint: `${profile?.stats.points_balance ?? 0} 积分` },
+            ]}
+          />
+        }
+      />
 
-      {!groupId && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          请先加入工作群后再接单。
-        </div>
-      )}
-
-      {err && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{err}</div>
-      )}
-
+      {!groupId && <Alert variant="warn">请先加入工作群后再接单。</Alert>}
+      {err && <Alert variant="error">{err}</Alert>}
       {!canClaimConcurrent && tab === "open" && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          已达当前段位并发上限（{tierLimit} 台）。请完成或处理进行中的接单后再领新单；已有单可继续做完。
-        </div>
+        <Alert variant="warn">已达并发上限（{tierLimit} 台）。请先处理进行中的接单。</Alert>
       )}
       {canClaimConcurrent && remainingToday <= 0 && tab === "open" && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          今日领取已达上限（{dailyLimit} h = {tierLimit} 台 × 8h/台）。明日 0 点（北京时间）后可继续领取。
-        </div>
+        <Alert variant="warn">今日领取已达上限（{dailyLimit} h）。明日 0 点（北京时间）后可继续。</Alert>
       )}
 
-      <div className="flex gap-2 border-b border-gray-200 pb-px">
-        {(
-          [
-            ["open", "可接单"],
-            ["mine", "我的接单"],
-            ["tier", "我的段位"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 -mb-px ${
-              tab === id
-                ? "border-indigo-600 text-indigo-700 bg-white"
-                : "border-transparent text-gray-500 hover:text-gray-800"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: "open", label: "可接单", icon: <IconSparkles />, badge: openBounties.length },
+          { id: "mine", label: "我的接单", icon: <IconClipboard />, badge: activeClaims.length },
+          { id: "tier", label: "我的段位" },
+        ]}
+      />
 
       {tab === "open" && (
         <section className="space-y-3">
           {openBounties.length === 0 ? (
-            <p className="text-sm text-gray-500 py-10 text-center border border-dashed rounded-xl">
-              暂无可接悬赏单
-            </p>
+            <EmptyState title="暂无可接悬赏单" description="等待管理员发布新的工时池" icon={<IconSparkles />} />
           ) : (
-            <ul className="space-y-3">
+            <ul className="space-y-4">
               {openBounties.map((b) => {
                 const penalty = estimatePenaltyPoints(1, b.points_per_hour);
                 const claimH = parseInt(claimHours[b.id] ?? "1", 10);
@@ -244,7 +233,7 @@ export default function BountyExecutorPage() {
                     ? (claimH * Number(b.hourly_rate)).toFixed(2)
                     : null;
                 return (
-                  <li key={b.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+                  <li key={b.id} className="glass-panel rounded-2xl p-5 space-y-4">
                     <div className="flex flex-wrap justify-between gap-2">
                       <div>
                         <h3 className="font-medium text-gray-900">{b.title}</h3>
@@ -259,18 +248,18 @@ export default function BountyExecutorPage() {
                         </div>
                       </div>
                     </div>
-                    <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
-                      未完成将按未完成小时 × {b.points_per_hour} 积分扣分（例：1h ≈ {penalty} 分），可能导致掉段；超时未执行部分退回悬赏池。
+                    <p className="text-xs text-amber-900 bg-amber-50/90 rounded-xl px-3 py-2 ring-1 ring-amber-100">
+                      未完成将按未完成小时 × {b.points_per_hour} 积分扣分（例：1h ≈ {penalty} 分）；超时未执行部分退回悬赏池。
                     </p>
                     <div className="flex flex-wrap items-end gap-3">
-                      <label className="text-sm">
-                        <span className="text-gray-600">本次领取（小时）</span>
+                      <label className="block">
+                        <span className={uiLabel}>本次领取（小时）</span>
                         <input
                           type="number"
                           min={1}
                           max={Math.min(b.remaining_hours, remainingToday)}
                           step={1}
-                          className="mt-1 block w-28 rounded-lg border border-gray-300 px-3 py-2"
+                          className={`${uiInput} !w-28`}
                           value={claimHours[b.id] ?? "1"}
                           onChange={(e) => setClaimHours((prev) => ({ ...prev, [b.id]: e.target.value }))}
                         />
@@ -280,14 +269,9 @@ export default function BountyExecutorPage() {
                           </span>
                         )}
                       </label>
-                      <button
-                        type="button"
-                        disabled={!groupId || !canClaimMore || busyId === b.id}
-                        onClick={() => void onClaim(b)}
-                        className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-                      >
+                      <UiButton disabled={!groupId || !canClaimMore || busyId === b.id} onClick={() => void onClaim(b)}>
                         {busyId === b.id ? "提交中…" : "接单"}
-                      </button>
+                      </UiButton>
                     </div>
                   </li>
                 );
@@ -300,15 +284,15 @@ export default function BountyExecutorPage() {
       {tab === "mine" && (
         <section className="space-y-3">
           {myClaims.length === 0 ? (
-            <p className="text-sm text-gray-500 py-10 text-center border border-dashed rounded-xl">尚无接单记录</p>
+            <EmptyState title="尚无接单记录" description="在「可接单」页领取悬赏工时" icon={<IconClipboard />} />
           ) : (
-            <ul className="space-y-3">
+            <ul className="space-y-4">
               {myClaims.map((c) => {
                 const title = c.bounties?.title ?? "悬赏单";
                 const rate = c.bounties?.points_per_hour ?? 1;
                 const uncompleted = Math.max(c.claimed_hours - c.executed_hours, 0);
                 return (
-                  <li key={c.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                  <li key={c.id} className="glass-panel rounded-2xl p-5">
                     <div className="flex flex-wrap justify-between gap-2">
                       <div>
                         <h3 className="font-medium text-gray-900">{title}</h3>
@@ -337,14 +321,9 @@ export default function BountyExecutorPage() {
                           <p className="text-xs text-gray-600">
                             完成后由设备运维员审核计分，请勿自行标记完成；超时未审核部分仍可能按规则扣分。
                           </p>
-                          <button
-                            type="button"
-                            disabled={busyId === c.id}
-                            onClick={() => void onAbandon(c)}
-                            className="px-3 py-1.5 text-sm rounded-lg border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
-                          >
+                          <UiButton variant="secondary" className="!text-red-600" disabled={busyId === c.id} onClick={() => void onAbandon(c)}>
                             放弃（约扣 {estimatePenaltyPoints(uncompleted, rate)} 分）
-                          </button>
+                          </UiButton>
                         </div>
                       );
                     })()}
@@ -361,29 +340,29 @@ export default function BountyExecutorPage() {
 
       {tab === "tier" && profile && (
         <section className="space-y-4">
-          <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm">
-            <p className="text-sm text-indigo-600">当前段位</p>
-            <p className="text-2xl font-semibold text-gray-900 mt-1">{profile.tier.name}</p>
-            <dl className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+          <div className="rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700 p-6 sm:p-8 text-white shadow-xl shadow-indigo-200/50">
+            <p className="text-sm text-white/75">当前段位</p>
+            <p className="text-3xl font-bold mt-1">{profile.tier.name}</p>
+            <dl className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
               <div>
-                <dt className="text-gray-500">积分</dt>
-                <dd className="text-lg font-semibold text-gray-900">{profile.stats.points_balance}</dd>
+                <dt className="text-white/70">积分</dt>
+                <dd className="text-xl font-bold">{profile.stats.points_balance}</dd>
               </div>
               <div>
-                <dt className="text-gray-500">进行中</dt>
-                <dd className="text-lg font-semibold text-gray-900">
+                <dt className="text-white/70">进行中</dt>
+                <dd className="text-xl font-bold">
                   {profile.stats.active_claim_count} / {profile.tier.max_concurrent_claims} 台
                 </dd>
               </div>
               <div>
-                <dt className="text-gray-500">今日已领</dt>
-                <dd className="text-lg font-semibold text-gray-900">
+                <dt className="text-white/70">今日已领</dt>
+                <dd className="text-xl font-bold">
                   {claimedToday} / {dailyLimit} h
                 </dd>
               </div>
               <div className="col-span-2 sm:col-span-4">
-                <dt className="text-gray-500">距下一档</dt>
-                <dd className="font-medium text-gray-800">
+                <dt className="text-white/70">距下一档</dt>
+                <dd className="font-medium text-white/95">
                   {profile.nextTier
                     ? `「${profile.nextTier.name}」还需 ${profile.pointsToNext} 积分（≥${profile.nextTier.min_points}）`
                     : "已达最高档"}
@@ -394,7 +373,7 @@ export default function BountyExecutorPage() {
 
           <div>
             <h3 className="text-sm font-medium text-gray-700 mb-2">段位说明</h3>
-            <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <div className="overflow-x-auto glass-panel rounded-2xl">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-gray-500 text-xs">
                   <tr>
@@ -426,7 +405,7 @@ export default function BountyExecutorPage() {
             {profile.ledger.length === 0 ? (
               <p className="text-sm text-gray-500 py-6 text-center border border-dashed rounded-xl">暂无流水</p>
             ) : (
-              <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
+              <ul className="divide-y divide-slate-100 glass-panel rounded-2xl overflow-hidden">
                 {profile.ledger.map((row) => (
                   <li key={row.id} className="px-4 py-3 flex flex-wrap justify-between gap-2 text-sm">
                     <div>
@@ -447,6 +426,6 @@ export default function BountyExecutorPage() {
           </div>
         </section>
       )}
-    </div>
+    </PageShell>
   );
 }
