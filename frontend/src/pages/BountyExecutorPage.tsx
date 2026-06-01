@@ -112,12 +112,7 @@ export default function BountyExecutorPage() {
       await load();
       setTab("mine");
     } catch (e: any) {
-      const msg = e.message ?? "接单失败";
-      setErr(
-        msg.includes("daily claim limit")
-          ? `超过今日领取上限（${claimedToday}/${dailyLimit} h，${tierLimit} 台×8h/台）`
-          : msg
-      );
+      setErr(e.message ?? "接单失败");
     } finally {
       setBusyId(null);
     }

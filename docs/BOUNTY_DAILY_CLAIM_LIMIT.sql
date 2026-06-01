@@ -100,7 +100,7 @@ BEGIN
   v_stats := public._ensure_executor_stats(auth.uid());
   SELECT t.* INTO v_tier FROM public.executor_tiers t WHERE t.tier_id = v_stats.tier_id;
   IF v_stats.active_claim_count >= v_tier.max_concurrent_claims THEN
-    RAISE EXCEPTION 'concurrent claim limit reached (%)', v_tier.max_concurrent_claims;
+    RAISE EXCEPTION '已达进行中接单上限（% 台），请先完成或处理现有订单', v_tier.max_concurrent_claims;
   END IF;
   v_per_slot := public.bounty_hours_per_slot_per_day();
   v_today := (now() AT TIME ZONE 'Asia/Shanghai')::date;
@@ -108,7 +108,7 @@ BEGIN
   v_daily_cap := v_tier.max_concurrent_claims * v_per_slot;
   IF v_claimed_today + p_hours > v_daily_cap THEN
     RAISE EXCEPTION
-      'daily claim limit exceeded: claimed % h today, requesting % h, limit % h (% slots x % h/day per slot)',
+      '超过今日领取上限：今日已领 % 小时，本次领取 % 小时，上限 % 小时（% 台 × 每台每天 % 小时）',
       v_claimed_today, p_hours, v_daily_cap, v_tier.max_concurrent_claims, v_per_slot;
   END IF;
   v_due := now() + (v_bounty.completion_days || ' days')::interval;
