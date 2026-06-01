@@ -3,6 +3,8 @@ import { supabase } from "../api/supabase";
 import type { UserRole } from "../types/roles";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "../auth/roleLabels";
 import { SITE_DISPLAY_NAME, SITE_SUBTITLE } from "../branding";
+import { ensureProfileRow } from "../api/profiles";
+import { formatAuthError } from "../utils/authErrors";
 
 type Mode = "login" | "register";
 
@@ -23,7 +25,7 @@ export default function AuthPage() {
 
     try {
       if (mode === "register") {
-        const { error: signUpError } = await supabase.auth.signUp({
+        const { data, error: signUpError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
           options: {
@@ -32,7 +34,19 @@ export default function AuthPage() {
         });
         if (signUpError) throw signUpError;
 
-        setMessage("注册成功，现在可以使用该账号登录。");
+        if (data.user?.id) {
+          await ensureProfileRow(data.user.id, registerRole);
+        }
+
+        if (data.session) {
+          setMessage("注册成功，已自动登录。");
+          setPassword("");
+          return;
+        }
+
+        setMessage(
+          "注册已提交。若项目开启了邮箱确认，请查收邮件并点击确认链接后再登录；未开启确认时可直接用该邮箱登录。"
+        );
         setMode("login");
         setPassword("");
         return;
@@ -43,8 +57,12 @@ export default function AuthPage() {
         password,
       });
       if (signInError) throw signInError;
-    } catch (err: any) {
-      setError(err.message ?? "认证失败，请检查邮箱和密码。");
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message: unknown }).message)
+          : undefined;
+      setError(formatAuthError(msg));
     } finally {
       setLoading(false);
     }
