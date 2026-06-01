@@ -1,5 +1,6 @@
--- Fix: "Could not find the function public.publish_bounty(..., p_hourly_rate, ...)"
--- Run this ENTIRE script in Supabase SQL Editor after BOUNTY_MIGRATION.sql (or if publish_bounty is missing / still uses total_reward).
+-- Fix publish_bounty RPC / 42P13 "cannot change name of input parameter p_total_reward"
+-- Run this ENTIRE script only (do not re-run full BOUNTY_MIGRATION publish_bounty without DROP).
+-- Fixes: missing p_hourly_rate in schema cache, or 42P13 when replacing p_total_reward.
 -- Then wait ~10s or Dashboard → Settings → API → Reload schema (if available).
 
 -- 1) Column: total_reward → hourly_rate (older bounty table)

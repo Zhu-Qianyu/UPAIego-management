@@ -298,6 +298,9 @@ $$;
 -- ---------------------------------------------------------------------------
 -- Public RPCs
 -- ---------------------------------------------------------------------------
+-- Parameter renames (e.g. p_total_reward → p_hourly_rate) require DROP first (42P13).
+DROP FUNCTION IF EXISTS public.publish_bounty(uuid, text, integer, numeric, integer, text, numeric);
+
 CREATE OR REPLACE FUNCTION public.publish_bounty(
   p_group_id uuid,
   p_title text,
