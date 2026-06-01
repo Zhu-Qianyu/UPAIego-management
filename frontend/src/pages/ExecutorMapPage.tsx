@@ -1,45 +1,26 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 import { listDevices, harvestDevice, type Device } from "../api/client";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { useAuth } from "../auth/AuthContext";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
+import { amapConfigured, loadAmap } from "../utils/amapLoader";
+import { mapCoordSourceFromEnv, toAmapLngLat } from "../utils/mapCoords";
 
-L.Icon.Default.mergeOptions({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
-
-const CN_CENTER: L.LatLngExpression = [35.0, 105.0];
-
-/** 默认 OSM；国内若底图全灰，可在 .env 设 VITE_MAP_TILE_URL 为下方 Esri 示例（无需 Key）。 */
-const DEFAULT_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const DEFAULT_TILE_ATTRIB =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-
-function tileLayerOptions(url: string): L.TileLayerOptions {
-  const envAttrib = (import.meta.env.VITE_MAP_TILE_ATTRIBUTION as string | undefined)?.trim();
-  const attribution =
-    envAttrib ||
-    (url.includes("openstreetmap") ? DEFAULT_TILE_ATTRIB
-      : url.includes("arcgisonline.com") ? "Tiles &copy; Esri"
-      : "Map");
-  const opt: L.TileLayerOptions = { attribution };
-  if (url.includes("{s}")) {
-    if (url.includes("openstreetmap")) opt.subdomains = "abc";
-    else if (url.includes("cartocdn")) opt.subdomains = "abcd";
-  }
-  return opt;
-}
+const CN_CENTER: [number, number] = [105.0, 35.0];
 
 function storageRatio(d: Device): number {
   const cap = Number(d.storage_capacity_mb) || 1024;
   const used = Number(d.storage_used_mb) || 0;
   return Math.min(1, Math.max(0, used / cap));
+}
+
+function markerPopupHtml(d: Device): string {
+  const pct = Math.round(storageRatio(d) * 100);
+  const name = d.readable_name.replace(/</g, "&lt;");
+  const id = d.device_id.replace(/</g, "&lt;");
+  return `<div style="font-size:13px;line-height:1.5"><strong>${name}</strong><br/>存储 ${pct}%<br/><span style="font-size:11px;color:#666">${id}</span></div>`;
 }
 
 type MapCacheV1 = { v: 1; devices: Device[] };
@@ -52,16 +33,22 @@ export default function ExecutorMapPage() {
     [session?.user?.id, location.pathname]
   );
 
-  const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const markersLayer = useRef<L.LayerGroup | null>(null);
+  const mapRef = useRef<AMap.Map | null>(null);
+  const amapNsRef = useRef<typeof AMap | null>(null);
+  const markersRef = useRef<AMap.Marker[]>([]);
+  const infoRef = useRef<AMap.InfoWindow | null>(null);
+
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState("");
-  const [tileHint, setTileHint] = useState("");
+  const [mapErr, setMapErr] = useState("");
+  const [mapReady, setMapReady] = useState(false);
   const fetchedOnceRef = useRef(false);
+
+  const coordSource = mapCoordSourceFromEnv();
 
   useLayoutEffect(() => {
     if (!cacheKey) return;
@@ -81,8 +68,8 @@ export default function ExecutorMapPage() {
       setDevices(res.devices);
       fetchedOnceRef.current = true;
       if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, devices: res.devices });
-    } catch (e: any) {
-      setErr(e.message ?? "加载设备失败");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "加载设备失败");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -96,57 +83,82 @@ export default function ExecutorMapPage() {
   }, [load]);
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current).setView(CN_CENTER, 4);
-    const tileUrl = (import.meta.env.VITE_MAP_TILE_URL as string | undefined)?.trim() || DEFAULT_TILE_URL;
-    const base = L.tileLayer(tileUrl, tileLayerOptions(tileUrl)).addTo(map);
-    let tileErrors = 0;
-    base.on("tileerror", () => {
-      tileErrors += 1;
-      if (tileErrors === 3) {
-        setTileHint(
-          "底图瓦片多次加载失败（常见于网络无法访问 OpenStreetMap）。请在 frontend/.env 设置 VITE_MAP_TILE_URL 为文档中的备用地址后重启 dev。"
-        );
+    if (!amapConfigured() || !containerRef.current) return;
+    let cancelled = false;
+
+    void (async () => {
+      setMapErr("");
+      try {
+        const AMapNS = await loadAmap();
+        if (cancelled || !containerRef.current) return;
+        amapNsRef.current = AMapNS;
+        if (mapRef.current) {
+          mapRef.current.destroy();
+          mapRef.current = null;
+        }
+        const map = new AMapNS.Map(containerRef.current, {
+          viewMode: "2D",
+          zoom: 4,
+          center: CN_CENTER,
+        });
+        map.addControl(new AMapNS.Scale());
+        map.addControl(new AMapNS.ToolBar({ position: "RB" }));
+        infoRef.current = new AMapNS.InfoWindow({ offset: new AMapNS.Pixel(0, -28) });
+        mapRef.current = map;
+        setMapReady(true);
+      } catch (e: unknown) {
+        if (!cancelled) {
+          setMapErr(e instanceof Error ? e.message : "高德地图加载失败");
+          setMapReady(false);
+        }
       }
-    });
-    markersLayer.current = L.layerGroup().addTo(map);
-    mapRef.current = map;
-    const relayout = () => {
-      map.invalidateSize({ animate: false });
-    };
-    requestAnimationFrame(() => requestAnimationFrame(relayout));
-    window.addEventListener("resize", relayout);
+    })();
+
     return () => {
-      window.removeEventListener("resize", relayout);
-      map.remove();
+      cancelled = true;
+      setMapReady(false);
+      markersRef.current = [];
+      infoRef.current = null;
+      amapNsRef.current = null;
+      mapRef.current?.destroy();
       mapRef.current = null;
-      markersLayer.current = null;
     };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    const layer = markersLayer.current;
-    if (!map || !layer) return;
-    layer.clearLayers();
-    const withCoords = devices.filter((d) => d.map_lat != null && d.map_lng != null);
-    const corners: L.LatLngTuple[] = [];
-    for (const d of withCoords) {
+    const AMapNS = amapNsRef.current;
+    if (!map || !mapReady || !AMapNS) return;
+
+    for (const m of markersRef.current) {
+      m.setMap(null);
+    }
+    markersRef.current = [];
+
+    const nextMarkers: AMap.Marker[] = [];
+    for (const d of devices) {
+      if (d.map_lat == null || d.map_lng == null) continue;
       const lat = Number(d.map_lat);
       const lng = Number(d.map_lng);
       if (Number.isNaN(lat) || Number.isNaN(lng)) continue;
-      const ll: L.LatLngTuple = [lat, lng];
-      corners.push(ll);
-      const m = L.marker(ll).addTo(layer);
-      const pct = Math.round(storageRatio(d) * 100);
-      m.bindPopup(
-        `<strong>${d.readable_name}</strong><br/>存储 ${pct}%<br/><span style="font-size:11px;color:#666">${d.device_id}</span>`
-      );
+      const position = toAmapLngLat(lat, lng, coordSource);
+      const marker = new AMapNS.Marker({ position, title: d.readable_name });
+      marker.on("click", () => {
+        infoRef.current?.setContent(markerPopupHtml(d));
+        infoRef.current?.open(map, position);
+      });
+      map.add(marker);
+      nextMarkers.push(marker);
     }
-    if (corners.length > 0) {
-      map.fitBounds(L.latLngBounds(corners), { padding: [40, 40], maxZoom: 14 });
+    markersRef.current = nextMarkers;
+
+    if (nextMarkers.length > 0) {
+      map.setFitView(nextMarkers, false, [48, 48, 48, 48], 14);
+    } else {
+      map.setZoom(4);
+      map.setCenter(CN_CENTER);
     }
-  }, [devices]);
+  }, [devices, mapReady, coordSource]);
 
   async function onHarvest(d: Device) {
     setBusyId(d.device_id);
@@ -154,8 +166,8 @@ export default function ExecutorMapPage() {
     try {
       await harvestDevice(d.device_id);
       await load();
-    } catch (e: any) {
-      setErr(e.message ?? "回收失败（需已在数据库执行 harvest_device RPC）");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "回收失败（需已在数据库执行 harvest_device RPC）");
     } finally {
       setBusyId(null);
     }
@@ -170,8 +182,8 @@ export default function ExecutorMapPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">数采地图</h1>
           <p className="text-sm text-gray-500 mt-1">
-            仅展示当前工作群内成员名下设备。存储条满后点击「回收数据」清空计数。设备需在库中有经纬度（map_lat /
-            map_lng）；存储由板端上报或手工维护。
+            高德地图展示当前工作群内设备。存储条满后可「回收数据」。设备需有 map_lat / map_lng
+            {coordSource === "wgs84" ? "（GPS 将自动转换为高德坐标）" : "（已为 GCJ-02）"}。
           </p>
         </div>
         <button
@@ -184,15 +196,30 @@ export default function ExecutorMapPage() {
       </div>
 
       {err && <div className="mb-4 text-sm text-red-600">{err}</div>}
-      {tileHint && (
+
+      {!amapConfigured() && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          {tileHint}
+          请在 <code className="bg-white px-1 rounded">frontend/.env</code> 配置{" "}
+          <code className="bg-white px-1 rounded">VITE_AMAP_KEY</code> 与{" "}
+          <code className="bg-white px-1 rounded">VITE_AMAP_SECURITY_CODE</code>（高德开放平台 Web
+          端 Key + 安全密钥），并在控制台绑定本站域名后重启 dev。
+        </div>
+      )}
+
+      {mapErr && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {mapErr}
         </div>
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 rounded-2xl overflow-hidden border border-gray-200 shadow-sm h-[420px] min-h-[320px]">
-          <div ref={containerRef} className="h-full w-full z-0" />
+        <div className="xl:col-span-2 rounded-2xl overflow-hidden border border-gray-200 shadow-sm h-[420px] min-h-[320px] relative">
+          <div ref={containerRef} className="h-full w-full" />
+          {!amapConfigured() && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100 text-sm text-gray-500">
+              地图未配置
+            </div>
+          )}
         </div>
         <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
           {devices.length === 0 && <p className="text-sm text-gray-400">暂无设备</p>}
