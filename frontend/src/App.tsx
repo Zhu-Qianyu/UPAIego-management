@@ -22,7 +22,7 @@ import KpiBanner from "./components/KpiBanner";
 import GroupStatusBanner from "./components/GroupStatusBanner";
 import AccountDeleteModal from "./components/AccountDeleteModal";
 import ProfileContactNotice from "./components/ProfileContactNotice";
-import { isProfileContactComplete } from "./api/profiles";
+import { isProfileContactComplete, profileContactColumnsExist } from "./api/profiles";
 import { SITE_DISPLAY_NAME } from "./branding";
 
 const SIDEBAR_COLLAPSED_KEY = "upai:sidebar-collapsed";
@@ -194,6 +194,15 @@ export default function App() {
     }
   });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [contactColumnsReady, setContactColumnsReady] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!profile) {
+      setContactColumnsReady(null);
+      return;
+    }
+    void profileContactColumnsExist().then(setContactColumnsReady);
+  }, [profile?.id]);
 
   useEffect(() => {
     try {
@@ -239,10 +248,7 @@ export default function App() {
     );
   }
 
-  if (!isProfileContactComplete(profile)) {
-    return <ProfileContactNotice />;
-  }
-
+  const needsContact = contactColumnsReady === true && !isProfileContactComplete(profile);
   const navItems = navForRole(profile.role);
 
   const homeTo =
@@ -401,6 +407,10 @@ export default function App() {
         />
 
         <main className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-8 flex-1">
+        {needsContact ? (
+          <ProfileContactNotice />
+        ) : (
+          <>
         <GroupStatusBanner />
         <KpiBanner />
         <AnnouncementsBanner />
@@ -488,6 +498,8 @@ export default function App() {
           <Route path="/auth" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+          </>
+        )}
         </main>
       </div>
     </div>

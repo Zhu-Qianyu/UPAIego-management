@@ -50,9 +50,35 @@ export async function updateMyProfileContact(realName: string, phone: string): P
   if (error) throw new Error(error.message);
 }
 
+/** false = 库表尚无 real_name/phone 列（未跑迁移），不应拦截全站 */
+export async function profileContactColumnsExist(): Promise<boolean> {
+  const { error } = await supabase.from("profiles").select("real_name").limit(1);
+  if (!error) return true;
+  const msg = error.message ?? "";
+  return !(error.code === "42703" || /real_name|does not exist|column/i.test(msg));
+}
+
 export async function fetchProfile(userId: string): Promise<Profile | null> {
-  const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, role, display_name, real_name, phone, created_at, updated_at")
+    .eq("id", userId)
+    .maybeSingle();
   if (error) {
+    const msg = error.message ?? "";
+    if (error.code === "42703" || /real_name|does not exist|column/i.test(msg)) {
+      const { data: fallback, error: err2 } = await supabase
+        .from("profiles")
+        .select("id, role, display_name, created_at, updated_at")
+        .eq("id", userId)
+        .maybeSingle();
+      if (err2) {
+        console.error("fetchProfile", err2);
+        return null;
+      }
+      if (!fallback?.role || !isUserRole(fallback.role)) return null;
+      return { ...fallback, real_name: null, phone: null } as Profile;
+    }
     console.error("fetchProfile", error);
     return null;
   }
