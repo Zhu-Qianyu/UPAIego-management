@@ -29,7 +29,7 @@ export default function BountyAdminPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [totalHours, setTotalHours] = useState("8");
-  const [totalReward, setTotalReward] = useState("0");
+  const [hourlyRate, setHourlyRate] = useState("0");
   const [completionDays, setCompletionDays] = useState<"1" | "2" | "3">("2");
   const [publishBusy, setPublishBusy] = useState(false);
 
@@ -83,13 +83,13 @@ export default function BountyAdminPage() {
       return;
     }
     const hours = parseInt(totalHours, 10);
-    const reward = parseFloat(totalReward);
+    const rate = parseFloat(hourlyRate);
     if (!Number.isFinite(hours) || hours <= 0) {
       setErr("总工时必须为正整数");
       return;
     }
-    if (!Number.isFinite(reward) || reward < 0) {
-      setErr("总报酬不能为负数");
+    if (!Number.isFinite(rate) || rate < 0) {
+      setErr("单价不能为负数");
       return;
     }
     setPublishBusy(true);
@@ -99,7 +99,7 @@ export default function BountyAdminPage() {
         groupId,
         title: title.trim() || "悬赏单",
         totalHours: hours,
-        totalReward: reward,
+        hourlyRate: rate,
         completionDays: parseInt(completionDays, 10) as 1 | 2 | 3,
         description: description.trim() || undefined,
       });
@@ -205,14 +205,14 @@ export default function BountyAdminPage() {
             />
           </label>
           <label className="block text-sm">
-            <span className="text-gray-600">总报酬（元，整单）</span>
+            <span className="text-gray-600">单价（元/小时）</span>
             <input
               type="number"
               min={0}
               step={0.01}
               className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
-              value={totalReward}
-              onChange={(e) => setTotalReward(e.target.value)}
+              value={hourlyRate}
+              onChange={(e) => setHourlyRate(e.target.value)}
               required
             />
           </label>
@@ -283,9 +283,9 @@ export default function BountyAdminPage() {
                           <dd>{claimedHours} h</dd>
                         </div>
                         <div>
-                          <dt className="text-gray-400">报酬 / 期限</dt>
+                          <dt className="text-gray-400">单价 / 期限</dt>
                           <dd>
-                            ¥{Number(b.total_reward).toFixed(2)} · {b.completion_days} 天
+                            ¥{Number(b.hourly_rate).toFixed(2)}/h · {b.completion_days} 天
                           </dd>
                         </div>
                       </dl>

@@ -11,7 +11,7 @@ export interface Bounty {
   description: string | null;
   total_hours: number;
   remaining_hours: number;
-  total_reward: number;
+  hourly_rate: number;
   completion_days: 1 | 2 | 3;
   points_per_hour: number;
   status: BountyStatus;
@@ -33,7 +33,7 @@ export interface BountyClaim {
   closed_at: string | null;
   close_reason: string | null;
   created_at: string;
-  bounties?: Pick<Bounty, "title" | "total_reward" | "points_per_hour" | "completion_days">;
+  bounties?: Pick<Bounty, "title" | "hourly_rate" | "points_per_hour" | "completion_days">;
 }
 
 export interface ExecutorTier {
@@ -123,7 +123,7 @@ export async function listMyClaims(): Promise<BountyClaim[]> {
   if (!u) return [];
   const { data, error } = await supabase
     .from(CLAIMS)
-    .select("*, bounties(title, total_reward, points_per_hour, completion_days)")
+    .select("*, bounties(title, hourly_rate, points_per_hour, completion_days)")
     .eq("executor_id", u.id)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
@@ -185,7 +185,7 @@ export async function publishBounty(input: {
   groupId: string;
   title: string;
   totalHours: number;
-  totalReward: number;
+  hourlyRate: number;
   completionDays: 1 | 2 | 3;
   description?: string;
   pointsPerHour?: number;
@@ -194,7 +194,7 @@ export async function publishBounty(input: {
     p_group_id: input.groupId,
     p_title: input.title,
     p_total_hours: input.totalHours,
-    p_total_reward: input.totalReward,
+    p_hourly_rate: input.hourlyRate,
     p_completion_days: input.completionDays,
     p_description: input.description ?? null,
     p_points_per_hour: input.pointsPerHour ?? 1,

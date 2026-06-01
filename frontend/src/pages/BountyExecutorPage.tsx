@@ -199,6 +199,11 @@ export default function BountyExecutorPage() {
             <ul className="space-y-3">
               {openBounties.map((b) => {
                 const penalty = estimatePenaltyPoints(1, b.points_per_hour);
+                const claimH = parseInt(claimHours[b.id] ?? "1", 10);
+                const estPay =
+                  Number.isFinite(claimH) && claimH > 0
+                    ? (claimH * Number(b.hourly_rate)).toFixed(2)
+                    : null;
                 return (
                   <li key={b.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-3">
                     <div className="flex flex-wrap justify-between gap-2">
@@ -210,7 +215,9 @@ export default function BountyExecutorPage() {
                         <div>
                           剩余 <strong className="text-indigo-700">{b.remaining_hours}</strong> / {b.total_hours} h
                         </div>
-                        <div>期限：接单后 {b.completion_days} 天 · ¥{Number(b.total_reward).toFixed(2)} 整单</div>
+                        <div>
+                          期限：接单后 {b.completion_days} 天 · ¥{Number(b.hourly_rate).toFixed(2)}/小时
+                        </div>
                       </div>
                     </div>
                     <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
@@ -228,6 +235,11 @@ export default function BountyExecutorPage() {
                           value={claimHours[b.id] ?? "1"}
                           onChange={(e) => setClaimHours((prev) => ({ ...prev, [b.id]: e.target.value }))}
                         />
+                        {estPay !== null && (
+                          <span className="block mt-1 text-xs text-gray-500">
+                            约 ¥{estPay}（{claimH}h × ¥{Number(b.hourly_rate).toFixed(2)}/h）
+                          </span>
+                        )}
                       </label>
                       <button
                         type="button"

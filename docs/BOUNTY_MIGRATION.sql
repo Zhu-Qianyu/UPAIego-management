@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS public.bounties (
   description text,
   total_hours integer NOT NULL CHECK (total_hours > 0),
   remaining_hours integer NOT NULL CHECK (remaining_hours >= 0),
-  total_reward numeric(12, 2) NOT NULL CHECK (total_reward >= 0),
+  hourly_rate numeric(12, 2) NOT NULL CHECK (hourly_rate >= 0),
   completion_days integer NOT NULL CHECK (completion_days IN (1, 2, 3)),
   points_per_hour numeric(8, 2) NOT NULL DEFAULT 1 CHECK (points_per_hour > 0),
   status text NOT NULL DEFAULT 'open'
@@ -302,7 +302,7 @@ CREATE OR REPLACE FUNCTION public.publish_bounty(
   p_group_id uuid,
   p_title text,
   p_total_hours integer,
-  p_total_reward numeric,
+  p_hourly_rate numeric,
   p_completion_days integer,
   p_description text DEFAULT NULL,
   p_points_per_hour numeric DEFAULT 1
@@ -332,7 +332,7 @@ BEGIN
   END IF;
   INSERT INTO public.bounties (
     group_id, title, description, total_hours, remaining_hours,
-    total_reward, completion_days, points_per_hour, status, created_by
+    hourly_rate, completion_days, points_per_hour, status, created_by
   )
   VALUES (
     p_group_id,
@@ -340,7 +340,7 @@ BEGIN
     NULLIF(trim(p_description), ''),
     p_total_hours,
     p_total_hours,
-    COALESCE(p_total_reward, 0),
+    COALESCE(p_hourly_rate, 0),
     p_completion_days,
     p_points_per_hour,
     'open',
@@ -641,3 +641,18 @@ COMMENT ON TABLE public.bounty_claims IS 'Partial hour claims against a bounty; 
 COMMENT ON TABLE public.executor_stats IS 'Executor points balance, tier, and active claim count; mutated only via RPC.';
 COMMENT ON TABLE public.executor_point_ledger IS 'Append-only point adjustments: complete, penalty, abandon, admin_adjust.';
 COMMENT ON TABLE public.executor_tiers IS 'Configurable tier thresholds and concurrent claim limits.';
+COMMENT ON COLUMN public.bounties.hourly_rate IS 'Reward unit price in CNY per hour (元/小时).';
+
+-- Upgrade: if an earlier run created total_reward, rename to hourly_rate
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'bounties' AND column_name = 'total_reward'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'bounties' AND column_name = 'hourly_rate'
+  ) THEN
+    ALTER TABLE public.bounties RENAME COLUMN total_reward TO hourly_rate;
+  END IF;
+END $$;
