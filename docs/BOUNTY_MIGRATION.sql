@@ -189,6 +189,66 @@ BEGIN
 END;
 $$;
 
+-- Each concurrent slot (台) allows up to 8 claimed hours per calendar day (Asia/Shanghai).
+CREATE OR REPLACE FUNCTION public.bounty_hours_per_slot_per_day()
+RETURNS integer
+LANGUAGE sql
+IMMUTABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT 8;
+$$;
+
+CREATE OR REPLACE FUNCTION public.executor_claimed_hours_on_date(p_user_id uuid, p_on_date date)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COALESCE(SUM(c.claimed_hours), 0)::integer
+  FROM public.bounty_claims c
+  WHERE c.executor_id = p_user_id
+    AND (c.created_at AT TIME ZONE 'Asia/Shanghai')::date = p_on_date;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_my_daily_claim_usage()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_stats public.executor_stats;
+  v_tier public.executor_tiers;
+  v_today date;
+  v_claimed integer;
+  v_cap integer;
+  v_per_slot integer;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not authenticated';
+  END IF;
+  v_per_slot := public.bounty_hours_per_slot_per_day();
+  v_stats := public._ensure_executor_stats(auth.uid());
+  SELECT t.* INTO v_tier FROM public.executor_tiers t WHERE t.tier_id = v_stats.tier_id;
+  v_today := (now() AT TIME ZONE 'Asia/Shanghai')::date;
+  v_claimed := public.executor_claimed_hours_on_date(auth.uid(), v_today);
+  v_cap := v_tier.max_concurrent_claims * v_per_slot;
+  RETURN jsonb_build_object(
+    'claimed_today', v_claimed,
+    'daily_limit', v_cap,
+    'remaining_today', GREATEST(0, v_cap - v_claimed),
+    'slots', v_tier.max_concurrent_claims,
+    'hours_per_slot', v_per_slot,
+    'claim_date', v_today::text,
+    'timezone', 'Asia/Shanghai'
+  );
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public._apply_executor_point_delta(
   p_user_id uuid,
   p_delta integer,
@@ -391,6 +451,10 @@ DECLARE
   v_tier public.executor_tiers;
   v_claim_id uuid;
   v_due timestamptz;
+  v_today date;
+  v_claimed_today integer;
+  v_daily_cap integer;
+  v_per_slot integer;
 BEGIN
   IF public.current_profile_role() <> 'collection_executor' THEN
     RAISE EXCEPTION 'collection_executor only';
@@ -416,6 +480,15 @@ BEGIN
   SELECT t.* INTO v_tier FROM public.executor_tiers t WHERE t.tier_id = v_stats.tier_id;
   IF v_stats.active_claim_count >= v_tier.max_concurrent_claims THEN
     RAISE EXCEPTION 'concurrent claim limit reached (%)', v_tier.max_concurrent_claims;
+  END IF;
+  v_per_slot := public.bounty_hours_per_slot_per_day();
+  v_today := (now() AT TIME ZONE 'Asia/Shanghai')::date;
+  v_claimed_today := public.executor_claimed_hours_on_date(auth.uid(), v_today);
+  v_daily_cap := v_tier.max_concurrent_claims * v_per_slot;
+  IF v_claimed_today + p_hours > v_daily_cap THEN
+    RAISE EXCEPTION
+      'daily claim limit exceeded: claimed % h today, requesting % h, limit % h (% slots x % h/day per slot)',
+      v_claimed_today, p_hours, v_daily_cap, v_tier.max_concurrent_claims, v_per_slot;
   END IF;
   v_due := now() + (v_bounty.completion_days || ' days')::interval;
   INSERT INTO public.bounty_claims (bounty_id, executor_id, claimed_hours, due_at)
@@ -578,6 +651,15 @@ GRANT EXECUTE ON FUNCTION public.admin_fail_bounty_claim(uuid, text) TO authenti
 
 REVOKE ALL ON FUNCTION public.process_overdue_bounty_claims() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.process_overdue_bounty_claims() TO authenticated;
+
+REVOKE ALL ON FUNCTION public.bounty_hours_per_slot_per_day() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.bounty_hours_per_slot_per_day() TO authenticated;
+
+REVOKE ALL ON FUNCTION public.executor_claimed_hours_on_date(uuid, date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.executor_claimed_hours_on_date(uuid, date) TO authenticated;
+
+REVOKE ALL ON FUNCTION public.get_my_daily_claim_usage() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_my_daily_claim_usage() TO authenticated;
 
 -- ---------------------------------------------------------------------------
 -- RLS

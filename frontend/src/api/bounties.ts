@@ -4,6 +4,20 @@ export type BountyStatus = "open" | "fulfilled" | "closed";
 export type BountyClaimStatus = "active" | "completed" | "failed" | "expired" | "abandoned";
 export type PointLedgerReason = "complete" | "penalty" | "admin_adjust" | "abandon";
 
+/** 每台（并发槽位）每个自然日最多可领取的小时数（与 DB bounty_hours_per_slot_per_day 一致） */
+export const BOUNTY_HOURS_PER_SLOT_PER_DAY = 8;
+export const BOUNTY_CLAIM_DAY_TIMEZONE = "Asia/Shanghai";
+
+export interface DailyClaimUsage {
+  claimed_today: number;
+  daily_limit: number;
+  remaining_today: number;
+  slots: number;
+  hours_per_slot: number;
+  claim_date: string;
+  timezone: string;
+}
+
 export interface Bounty {
   id: string;
   group_id: string;
@@ -115,6 +129,28 @@ export async function listClaimsForBounty(bountyId: string): Promise<BountyClaim
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as BountyClaim[];
+}
+
+export function dailyClaimLimitForSlots(slots: number): number {
+  return slots * BOUNTY_HOURS_PER_SLOT_PER_DAY;
+}
+
+/** 与 DB 一致：按 Asia/Shanghai 自然日汇总当日所有领取的 claimed_hours */
+export function sumClaimedHoursToday(claims: BountyClaim[]): number {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: BOUNTY_CLAIM_DAY_TIMEZONE });
+  return claims
+    .filter(
+      (c) =>
+        new Date(c.created_at).toLocaleDateString("en-CA", { timeZone: BOUNTY_CLAIM_DAY_TIMEZONE }) === today
+    )
+    .reduce((s, c) => s + c.claimed_hours, 0);
+}
+
+export async function fetchMyDailyClaimUsage(): Promise<DailyClaimUsage | null> {
+  const { data, error } = await supabase.rpc("get_my_daily_claim_usage");
+  if (error) throw new Error(error.message);
+  if (!data || typeof data !== "object") return null;
+  return data as DailyClaimUsage;
 }
 
 export async function listMyClaims(): Promise<BountyClaim[]> {

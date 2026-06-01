@@ -5,9 +5,13 @@ import {
   claimBounty,
   claimStatusLabel,
   completeBountyClaim,
+  dailyClaimLimitForSlots,
   estimatePenaltyPoints,
+  fetchMyDailyClaimUsage,
   fetchMyExecutorProfile,
+  sumClaimedHoursToday,
   formatDueCountdown,
+  type DailyClaimUsage,
   ledgerReasonLabel,
   listMyClaims,
   listOpenBountiesForGroup,
@@ -26,6 +30,7 @@ export default function BountyExecutorPage() {
   const [openBounties, setOpenBounties] = useState<Bounty[]>([]);
   const [myClaims, setMyClaims] = useState<BountyClaim[]>([]);
   const [profile, setProfile] = useState<ExecutorProfileView | null>(null);
+  const [dailyUsage, setDailyUsage] = useState<DailyClaimUsage | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState("");
@@ -37,14 +42,33 @@ export default function BountyExecutorPage() {
     try {
       const gid = await fetchActiveGroupId();
       setGroupId(gid);
-      const [open, mine, prof] = await Promise.all([
+      const [open, mine, prof, daily] = await Promise.all([
         gid ? listOpenBountiesForGroup(gid) : Promise.resolve([]),
         listMyClaims(),
         fetchMyExecutorProfile(),
+        fetchMyDailyClaimUsage().catch(() => null),
       ]);
       setOpenBounties(open);
       setMyClaims(mine);
       setProfile(prof);
+      if (daily) {
+        setDailyUsage(daily);
+      } else if (prof) {
+        const slots = prof.tier.max_concurrent_claims;
+        const claimed = sumClaimedHoursToday(mine);
+        const limit = dailyClaimLimitForSlots(slots);
+        setDailyUsage({
+          claimed_today: claimed,
+          daily_limit: limit,
+          remaining_today: Math.max(0, limit - claimed),
+          slots,
+          hours_per_slot: 8,
+          claim_date: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" }),
+          timezone: "Asia/Shanghai",
+        });
+      } else {
+        setDailyUsage(null);
+      }
     } catch (e: any) {
       setErr(e.message ?? "加载失败");
     } finally {
@@ -60,7 +84,11 @@ export default function BountyExecutorPage() {
   const activeClaims = useMemo(() => myClaims.filter((c) => c.status === "active"), [myClaims]);
   const tierLimit = profile?.tier.max_concurrent_claims ?? 1;
   const activeCount = profile?.stats.active_claim_count ?? activeClaims.length;
-  const canClaimMore = activeCount < tierLimit;
+  const claimedToday = dailyUsage?.claimed_today ?? 0;
+  const dailyLimit = dailyUsage?.daily_limit ?? tierLimit * 8;
+  const remainingToday = dailyUsage?.remaining_today ?? Math.max(0, dailyLimit - claimedToday);
+  const canClaimConcurrent = activeCount < tierLimit;
+  const canClaimMore = canClaimConcurrent && remainingToday > 0;
 
   async function onClaim(b: Bounty) {
     const raw = claimHours[b.id] ?? "1";
@@ -73,6 +101,10 @@ export default function BountyExecutorPage() {
       setErr(`剩余工时仅 ${b.remaining_hours} 小时`);
       return;
     }
+    if (hours > remainingToday) {
+      setErr(`今日领取上限剩余 ${remainingToday} 小时（已领 ${claimedToday}/${dailyLimit} h，${tierLimit} 台×8h/台）`);
+      return;
+    }
     setBusyId(b.id);
     setErr("");
     try {
@@ -80,7 +112,12 @@ export default function BountyExecutorPage() {
       await load();
       setTab("mine");
     } catch (e: any) {
-      setErr(e.message ?? "接单失败");
+      const msg = e.message ?? "接单失败";
+      setErr(
+        msg.includes("daily claim limit")
+          ? `超过今日领取上限（${claimedToday}/${dailyLimit} h，${tierLimit} 台×8h/台）`
+          : msg
+      );
     } finally {
       setBusyId(null);
     }
@@ -138,7 +175,8 @@ export default function BountyExecutorPage() {
         <div>
           <h1 className="text-xl font-semibold text-gray-900">悬赏令</h1>
           <p className="text-sm text-gray-500 mt-1">
-            按小时领取工时池 · 完成得积分升段 · 当前 {activeCount}/{tierLimit} 台进行中
+            按小时领取工时池 · 完成得积分升段 · 进行中 {activeCount}/{tierLimit} 台 · 今日已领{" "}
+            {claimedToday}/{dailyLimit} h（每台每天 8h）
           </p>
         </div>
         <button
@@ -160,9 +198,14 @@ export default function BountyExecutorPage() {
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{err}</div>
       )}
 
-      {!canClaimMore && tab === "open" && (
+      {!canClaimConcurrent && tab === "open" && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           已达当前段位并发上限（{tierLimit} 台）。请完成或处理进行中的接单后再领新单；已有单可继续做完。
+        </div>
+      )}
+      {canClaimConcurrent && remainingToday <= 0 && tab === "open" && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          今日领取已达上限（{dailyLimit} h = {tierLimit} 台 × 8h/台）。明日 0 点（北京时间）后可继续领取。
         </div>
       )}
 
@@ -229,7 +272,7 @@ export default function BountyExecutorPage() {
                         <input
                           type="number"
                           min={1}
-                          max={b.remaining_hours}
+                          max={Math.min(b.remaining_hours, remainingToday)}
                           step={1}
                           className="mt-1 block w-28 rounded-lg border border-gray-300 px-3 py-2"
                           value={claimHours[b.id] ?? "1"}
@@ -331,7 +374,13 @@ export default function BountyExecutorPage() {
                   {profile.stats.active_claim_count} / {profile.tier.max_concurrent_claims} 台
                 </dd>
               </div>
-              <div className="col-span-2">
+              <div>
+                <dt className="text-gray-500">今日已领</dt>
+                <dd className="text-lg font-semibold text-gray-900">
+                  {claimedToday} / {dailyLimit} h
+                </dd>
+              </div>
+              <div className="col-span-2 sm:col-span-4">
                 <dt className="text-gray-500">距下一档</dt>
                 <dd className="font-medium text-gray-800">
                   {profile.nextTier
@@ -351,6 +400,7 @@ export default function BountyExecutorPage() {
                     <th className="text-left px-3 py-2">段位</th>
                     <th className="text-left px-3 py-2">所需积分</th>
                     <th className="text-left px-3 py-2">并发上限</th>
+                    <th className="text-left px-3 py-2">今日可领上限</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -362,6 +412,7 @@ export default function BountyExecutorPage() {
                       <td className="px-3 py-2 font-medium">{t.name}</td>
                       <td className="px-3 py-2">≥ {t.min_points}</td>
                       <td className="px-3 py-2">{t.max_concurrent_claims} 台</td>
+                      <td className="px-3 py-2">{t.max_concurrent_claims * 8} h/日</td>
                     </tr>
                   ))}
                 </tbody>
