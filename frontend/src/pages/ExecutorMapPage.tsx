@@ -25,9 +25,10 @@ function markerPopupHtml(d: Device): string {
 
 type MapCacheV1 = { v: 1; devices: Device[] };
 
-function mapFeatureEnabled(): boolean {
-  return import.meta.env.VITE_MAP_FEATURE_ENABLED === "true";
-}
+/** 数采地图开关：默认关闭（显示暂未上线）。开放时改为 true 并重新构建部署。 */
+const MAP_PAGE_LIVE = false;
+// 若需用环境变量控制，可改为：
+// const MAP_PAGE_LIVE = import.meta.env.VITE_MAP_FEATURE_ENABLED === "true";
 
 function MapComingSoon() {
   return (
@@ -93,14 +94,14 @@ function ExecutorMapPageLive() {
   }, [cacheKey]);
 
   useEffect(() => {
-    if (!mapFeatureEnabled()) return;
+    if (!MAP_PAGE_LIVE) return;
     void load();
     const t = window.setInterval(() => void load(), 30000);
     return () => window.clearInterval(t);
   }, [load]);
 
   useEffect(() => {
-    if (!mapFeatureEnabled() || !amapConfigured() || !containerRef.current) return;
+    if (!MAP_PAGE_LIVE || !amapConfigured() || !containerRef.current) return;
     let cancelled = false;
 
     void (async () => {
@@ -283,6 +284,6 @@ function ExecutorMapPageLive() {
 }
 
 export default function ExecutorMapPage() {
-  if (!mapFeatureEnabled()) return <MapComingSoon />;
+  if (!MAP_PAGE_LIVE) return <MapComingSoon />;
   return <ExecutorMapPageLive />;
 }
