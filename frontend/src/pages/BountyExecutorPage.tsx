@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchActiveGroupId } from "../api/groups";
+import { fetchProfilesByIds, profileDisplayName, type ProfileContact } from "../api/profiles";
 import {
   abandonBountyClaim,
   claimBounty,
   claimStatusLabel,
-  completeBountyClaim,
   dailyClaimLimitForSlots,
   estimatePenaltyPoints,
   fetchMyDailyClaimUsage,
@@ -36,6 +36,7 @@ export default function BountyExecutorPage() {
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [claimHours, setClaimHours] = useState<Record<string, string>>({});
+  const [operatorsById, setOperatorsById] = useState<Record<string, ProfileContact>>({});
 
   const load = useCallback(async () => {
     setErr("");
@@ -50,6 +51,19 @@ export default function BountyExecutorPage() {
       ]);
       setOpenBounties(open);
       setMyClaims(mine);
+      const opIds = [
+        ...new Set(
+          mine.map((c) => c.bounties?.assigned_operator_id).filter((id): id is string => Boolean(id))
+        ),
+      ];
+      if (opIds.length) {
+        const ops = await fetchProfilesByIds(opIds);
+        const map: Record<string, ProfileContact> = {};
+        for (const p of ops) map[p.id] = p;
+        setOperatorsById(map);
+      } else {
+        setOperatorsById({});
+      }
       setProfile(prof);
       if (daily) {
         setDailyUsage(daily);
@@ -113,19 +127,6 @@ export default function BountyExecutorPage() {
       setTab("mine");
     } catch (e: any) {
       setErr(e.message ?? "接单失败");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function onComplete(c: BountyClaim) {
-    setBusyId(c.id);
-    setErr("");
-    try {
-      await completeBountyClaim(c.id, c.claimed_hours);
-      await load();
-    } catch (e: any) {
-      setErr(e.message ?? "提交完成失败");
     } finally {
       setBusyId(null);
     }
@@ -322,26 +323,31 @@ export default function BountyExecutorPage() {
                         <div className="text-xs">{new Date(c.due_at).toLocaleString()} 截止</div>
                       </div>
                     </div>
-                    {c.status === "active" && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          disabled={busyId === c.id}
-                          onClick={() => void onComplete(c)}
-                          className="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                        >
-                          标记完成（{c.claimed_hours} h）
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busyId === c.id}
-                          onClick={() => void onAbandon(c)}
-                          className="px-3 py-1.5 text-sm rounded-lg border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
-                        >
-                          放弃（约扣 {estimatePenaltyPoints(uncompleted, rate)} 分）
-                        </button>
-                      </div>
-                    )}
+                    {c.status === "active" && (() => {
+                      const opId = c.bounties?.assigned_operator_id;
+                      const op = opId ? operatorsById[opId] : undefined;
+                      return (
+                        <div className="mt-3 space-y-2">
+                          {op && (
+                            <p className="text-sm text-indigo-900 bg-indigo-50 rounded-lg px-3 py-2">
+                              运维联系人：{profileDisplayName(op)}
+                              {op.phone ? ` · ${op.phone}` : "（未登记手机）"}
+                            </p>
+                          )}
+                          <p className="text-xs text-gray-600">
+                            完成后由设备运维员审核计分，请勿自行标记完成；超时未审核部分仍可能按规则扣分。
+                          </p>
+                          <button
+                            type="button"
+                            disabled={busyId === c.id}
+                            onClick={() => void onAbandon(c)}
+                            className="px-3 py-1.5 text-sm rounded-lg border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            放弃（约扣 {estimatePenaltyPoints(uncompleted, rate)} 分）
+                          </button>
+                        </div>
+                      );
+                    })()}
                     {c.close_reason && (
                       <p className="mt-2 text-xs text-gray-500">备注：{c.close_reason}</p>
                     )}

@@ -9,6 +9,7 @@ import AdminConsole from "./pages/AdminConsole";
 import SceneTasksPage from "./pages/SceneTasksPage";
 import ExecutorMapPage from "./pages/ExecutorMapPage";
 import BountyPage from "./pages/BountyPage";
+import BountyOperatorWorkPage from "./pages/BountyOperatorWorkPage";
 import GroupPage from "./pages/GroupPage";
 import AdminGroupPage from "./pages/AdminGroupPage";
 import { useAuth } from "./auth/AuthContext";
@@ -20,6 +21,8 @@ import AnnouncementsBanner from "./components/AnnouncementsBanner";
 import KpiBanner from "./components/KpiBanner";
 import GroupStatusBanner from "./components/GroupStatusBanner";
 import AccountDeleteModal from "./components/AccountDeleteModal";
+import ProfileContactNotice from "./components/ProfileContactNotice";
+import { isProfileContactComplete } from "./api/profiles";
 import { SITE_DISPLAY_NAME } from "./branding";
 
 const SIDEBAR_COLLAPSED_KEY = "upai:sidebar-collapsed";
@@ -63,6 +66,7 @@ function navForRole(role: UserRole): { to: string; label: string }[] {
     ],
     device_operator: [
       { to: "/", label: "设备总览" },
+      { to: "/operator-work", label: "运维工作台" },
       { to: "/group", label: "群组" },
       { to: "/devices/manage", label: "设备管理" },
     ],
@@ -233,6 +237,10 @@ export default function App() {
     return (
       <MigrationNotice accountDeleteOpen={accountDeleteOpen} setAccountDeleteOpen={setAccountDeleteOpen} />
     );
+  }
+
+  if (!isProfileContactComplete(profile)) {
+    return <ProfileContactNotice />;
   }
 
   const navItems = navForRole(profile.role);
@@ -454,6 +462,14 @@ export default function App() {
             element={
               <RoleRoute allow={["admin", "collection_executor"]}>
                 <BountyPage />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/operator-work"
+            element={
+              <RoleRoute allow={["device_operator"]}>
+                <BountyOperatorWorkPage />
               </RoleRoute>
             }
           />

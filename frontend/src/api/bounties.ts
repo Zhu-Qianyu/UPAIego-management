@@ -30,6 +30,7 @@ export interface Bounty {
   points_per_hour: number;
   status: BountyStatus;
   created_by: string;
+  assigned_operator_id: string | null;
   created_at: string;
   updated_at: string;
   closed_at: string | null;
@@ -47,7 +48,34 @@ export interface BountyClaim {
   closed_at: string | null;
   close_reason: string | null;
   created_at: string;
-  bounties?: Pick<Bounty, "title" | "hourly_rate" | "points_per_hour" | "completion_days">;
+  bounties?: Pick<
+    Bounty,
+    "title" | "hourly_rate" | "points_per_hour" | "completion_days" | "assigned_operator_id" | "group_id"
+  >;
+  approved_by?: string | null;
+  approved_at?: string | null;
+}
+
+export interface DeviceExecutorAssignment {
+  id: string;
+  group_id: string;
+  device_id: string;
+  executor_id: string;
+  assigned_by: string;
+  status: "active" | "revoked";
+  created_at: string;
+  revoked_at: string | null;
+}
+
+export interface DeviceDataHourLog {
+  id: string;
+  group_id: string;
+  device_id: string;
+  bounty_claim_id: string | null;
+  registered_hours: number;
+  registered_by: string;
+  note: string | null;
+  created_at: string;
 }
 
 export interface ExecutorTier {
@@ -159,8 +187,24 @@ export async function listMyClaims(): Promise<BountyClaim[]> {
   if (!u) return [];
   const { data, error } = await supabase
     .from(CLAIMS)
-    .select("*, bounties(title, hourly_rate, points_per_hour, completion_days)")
+    .select(
+      "*, bounties(title, hourly_rate, points_per_hour, completion_days, assigned_operator_id, group_id)"
+    )
     .eq("executor_id", u.id)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as BountyClaim[];
+}
+
+export async function listActiveClaimsForGroup(groupId: string): Promise<BountyClaim[]> {
+  await processOverdueBountyClaims();
+  const { data, error } = await supabase
+    .from(CLAIMS)
+    .select(
+      "*, bounties!inner(title, hourly_rate, points_per_hour, completion_days, assigned_operator_id, group_id)"
+    )
+    .eq("status", "active")
+    .eq("bounties.group_id", groupId)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as BountyClaim[];
@@ -225,6 +269,7 @@ export async function publishBounty(input: {
   completionDays: 1 | 2 | 3;
   description?: string;
   pointsPerHour?: number;
+  assignedOperatorId: string;
 }): Promise<string> {
   const { data, error } = await supabase.rpc("publish_bounty", {
     p_group_id: input.groupId,
@@ -234,6 +279,7 @@ export async function publishBounty(input: {
     p_completion_days: input.completionDays,
     p_description: input.description ?? null,
     p_points_per_hour: input.pointsPerHour ?? 1,
+    p_assigned_operator_id: input.assignedOperatorId,
   });
   if (error) throw new Error(error.message);
   return data as string;
@@ -272,6 +318,86 @@ export async function adminFailBountyClaim(claimId: string, note?: string): Prom
     p_note: note ?? null,
   });
   if (error) throw new Error(error.message);
+}
+
+export async function operatorApproveBountyClaim(claimId: string, confirmedHours: number): Promise<void> {
+  const { error } = await supabase.rpc("operator_approve_bounty_claim", {
+    p_claim_id: claimId,
+    p_confirmed_hours: confirmedHours,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function operatorRejectBountyClaim(claimId: string, note?: string): Promise<void> {
+  const { error } = await supabase.rpc("operator_reject_bounty_claim", {
+    p_claim_id: claimId,
+    p_note: note ?? null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function assignDeviceToExecutor(deviceId: string, executorId: string): Promise<string> {
+  const { data, error } = await supabase.rpc("assign_device_to_executor", {
+    p_device_id: deviceId,
+    p_executor_id: executorId,
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+export async function revokeDeviceAssignment(assignmentId: string): Promise<void> {
+  const { error } = await supabase.rpc("revoke_device_assignment", {
+    p_assignment_id: assignmentId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function registerDeviceDataHours(input: {
+  deviceId: string;
+  registeredHours: number;
+  bountyClaimId?: string;
+  note?: string;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc("register_device_data_hours", {
+    p_device_id: input.deviceId,
+    p_registered_hours: input.registeredHours,
+    p_bounty_claim_id: input.bountyClaimId ?? null,
+    p_note: input.note ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+export async function listMyDeviceAssignments(): Promise<DeviceExecutorAssignment[]> {
+  const { data, error } = await supabase
+    .from("device_executor_assignments")
+    .select("*")
+    .eq("status", "active")
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as DeviceExecutorAssignment[];
+}
+
+export async function listMyDeviceHourLogs(limit = 50): Promise<DeviceDataHourLog[]> {
+  const u = (await supabase.auth.getUser()).data.user;
+  if (!u) return [];
+  const { data, error } = await supabase
+    .from("device_data_hour_logs")
+    .select("*")
+    .eq("registered_by", u.id)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as DeviceDataHourLog[];
+}
+
+export async function sumRegisteredHoursForClaim(claimId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("device_data_hour_logs")
+    .select("registered_hours")
+    .eq("bounty_claim_id", claimId);
+  if (error) throw new Error(error.message);
+  return (data ?? []).reduce((s, r) => s + Number(r.registered_hours), 0);
 }
 
 export function bountyStatusLabel(s: BountyStatus): string {

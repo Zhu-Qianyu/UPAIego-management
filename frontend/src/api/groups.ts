@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
-import { fetchProfile } from "./profiles";
+import { fetchProfile, fetchProfilesByIds, type ProfileContact } from "./profiles";
+import type { UserRole } from "../types/roles";
 
 const WG = "work_groups";
 const GM = "group_members";
@@ -77,6 +78,14 @@ export async function listAllGroupMembers(groupId: string): Promise<GroupMember[
   return ([...(data ?? [])] as GroupMember[]).sort(
     (a, b) => statusOrder(a.membership_status) - statusOrder(b.membership_status) || a.created_at.localeCompare(b.created_at)
   );
+}
+
+/** 群内指定角色的活跃成员资料（用于悬赏指定运维员、设备分发选执行员等） */
+export async function listGroupProfilesByRole(groupId: string, role: UserRole): Promise<ProfileContact[]> {
+  const members = await listAllGroupMembers(groupId);
+  const ids = members.filter((m) => m.membership_status === "active").map((m) => m.user_id);
+  const profiles = await fetchProfilesByIds(ids);
+  return profiles.filter((p) => p.role === role);
 }
 
 export async function createWorkGroup(displayName: string, inviteCode?: string): Promise<WorkGroup> {

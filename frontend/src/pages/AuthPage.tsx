@@ -13,6 +13,8 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [registerRole, setRegisterRole] = useState<UserRole>("device_operator");
+  const [realName, setRealName] = useState("");
+  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -25,17 +27,27 @@ export default function AuthPage() {
 
     try {
       if (mode === "register") {
+        const name = realName.trim();
+        const tel = phone.trim();
+        if (!name) {
+          setError("请填写真实姓名");
+          return;
+        }
+        if (!tel) {
+          setError("请填写手机号");
+          return;
+        }
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
           options: {
-            data: { role: registerRole },
+            data: { role: registerRole, real_name: name, phone: tel },
           },
         });
         if (signUpError) throw signUpError;
 
         if (data.user?.id) {
-          await ensureProfileRow(data.user.id, registerRole);
+          await ensureProfileRow(data.user.id, registerRole, { realName: name, phone: tel });
         }
 
         if (data.session) {
@@ -138,6 +150,33 @@ export default function AuthPage() {
                   ))}
                 </div>
               </div>
+            )}
+
+            {mode === "register" && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">真实姓名</label>
+                  <input
+                    type="text"
+                    required
+                    value={realName}
+                    onChange={(e) => setRealName(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="与证件一致，用于群内协作联系"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">手机号</label>
+                  <input
+                    type="tel"
+                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="11 位手机号"
+                  />
+                </div>
+              </>
             )}
 
             <div>

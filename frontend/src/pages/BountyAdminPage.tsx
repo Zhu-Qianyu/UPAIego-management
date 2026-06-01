@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchActiveGroupId } from "../api/groups";
-import { fetchProfilesByIds } from "../api/profiles";
+import { fetchActiveGroupId, listGroupProfilesByRole } from "../api/groups";
+import { fetchProfilesByIds, profileDisplayName } from "../api/profiles";
 import {
   adminFailBountyClaim,
   bountyStatusLabel,
@@ -32,6 +32,8 @@ export default function BountyAdminPage() {
   const [hourlyRate, setHourlyRate] = useState("0");
   const [completionDays, setCompletionDays] = useState<"1" | "2" | "3">("2");
   const [publishBusy, setPublishBusy] = useState(false);
+  const [deviceOperators, setDeviceOperators] = useState<{ id: string; label: string }[]>([]);
+  const [assignedOperatorId, setAssignedOperatorId] = useState("");
 
   const loadClaims = useCallback(async (bountyId: string) => {
     const claims = await listClaimsForBounty(bountyId);
@@ -73,6 +75,22 @@ export default function BountyAdminPage() {
   }, [load]);
 
   useEffect(() => {
+    if (!groupId) {
+      setDeviceOperators([]);
+      setAssignedOperatorId("");
+      return;
+    }
+    void listGroupProfilesByRole(groupId, "device_operator").then((rows) => {
+      const opts = rows.map((p) => ({
+        id: p.id,
+        label: `${profileDisplayName(p)}${p.phone ? ` · ${p.phone}` : ""}`,
+      }));
+      setDeviceOperators(opts);
+      setAssignedOperatorId((prev) => (prev && opts.some((o) => o.id === prev) ? prev : opts[0]?.id ?? ""));
+    });
+  }, [groupId]);
+
+  useEffect(() => {
     if (expandedId) void loadClaims(expandedId);
   }, [expandedId, loadClaims]);
 
@@ -92,6 +110,10 @@ export default function BountyAdminPage() {
       setErr("单价不能为负数");
       return;
     }
+    if (!assignedOperatorId) {
+      setErr("请选择负责审核的设备运维员");
+      return;
+    }
     setPublishBusy(true);
     setErr("");
     try {
@@ -102,6 +124,7 @@ export default function BountyAdminPage() {
         hourlyRate: rate,
         completionDays: parseInt(completionDays, 10) as 1 | 2 | 3,
         description: description.trim() || undefined,
+        assignedOperatorId,
       });
       setTitle("");
       setDescription("");
@@ -226,6 +249,26 @@ export default function BountyAdminPage() {
               <option value="1">1 天内</option>
               <option value="2">2 天内</option>
               <option value="3">3 天内</option>
+            </select>
+          </label>
+          <label className="block text-sm sm:col-span-2">
+            <span className="text-gray-600">指定设备运维员（执行员联系人）</span>
+            <select
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2"
+              value={assignedOperatorId}
+              onChange={(e) => setAssignedOperatorId(e.target.value)}
+              required
+              disabled={deviceOperators.length === 0}
+            >
+              {deviceOperators.length === 0 ? (
+                <option value="">群内暂无设备运维员</option>
+              ) : (
+                deviceOperators.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))
+              )}
             </select>
           </label>
         </div>
