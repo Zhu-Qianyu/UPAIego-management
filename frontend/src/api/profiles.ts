@@ -31,33 +31,6 @@ export function profileDisplayName(p: ProfileContact): string {
   return p.real_name?.trim() || p.display_name?.trim() || p.id.slice(0, 8);
 }
 
-/** 悬赏联系人、群内协作等要求已登记真名与手机 */
-export function isProfileContactComplete(p: Pick<Profile, "real_name" | "phone"> | null): boolean {
-  return Boolean(p?.real_name?.trim() && p?.phone?.trim());
-}
-
-export async function updateMyProfileContact(realName: string, phone: string): Promise<void> {
-  const u = (await supabase.auth.getUser()).data.user;
-  if (!u) throw new Error("未登录");
-  const name = realName.trim();
-  const tel = phone.trim();
-  if (!name) throw new Error("请填写真实姓名");
-  if (!tel) throw new Error("请填写手机号");
-  const { error } = await supabase
-    .from("profiles")
-    .update({ real_name: name, phone: tel, updated_at: new Date().toISOString() })
-    .eq("id", u.id);
-  if (error) throw new Error(error.message);
-}
-
-/** false = 库表尚无 real_name/phone 列（未跑迁移），不应拦截全站 */
-export async function profileContactColumnsExist(): Promise<boolean> {
-  const { error } = await supabase.from("profiles").select("real_name").limit(1);
-  if (!error) return true;
-  const msg = error.message ?? "";
-  return !(error.code === "42703" || /real_name|does not exist|column/i.test(msg));
-}
-
 export async function fetchProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("profiles")
@@ -92,16 +65,14 @@ export async function ensureProfileRow(
   role: UserRole,
   contact?: { realName: string; phone: string }
 ): Promise<string | null> {
-  const { error } = await supabase.from("profiles").upsert(
-    {
-      id: userId,
-      role,
-      real_name: contact?.realName.trim() ?? null,
-      phone: contact?.phone.trim() ?? null,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "id" }
-  );
+  const row: Record<string, unknown> = {
+    id: userId,
+    role,
+    updated_at: new Date().toISOString(),
+  };
+  if (contact?.realName.trim()) row.real_name = contact.realName.trim();
+  if (contact?.phone.trim()) row.phone = contact.phone.trim();
+  const { error } = await supabase.from("profiles").upsert(row, { onConflict: "id" });
   if (error) {
     console.error("ensureProfileRow", error);
     return error.message;

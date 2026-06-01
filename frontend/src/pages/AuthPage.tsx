@@ -29,25 +29,22 @@ export default function AuthPage() {
       if (mode === "register") {
         const name = realName.trim();
         const tel = phone.trim();
-        if (!name) {
-          setError("请填写真实姓名");
-          return;
-        }
-        if (!tel) {
-          setError("请填写手机号");
-          return;
-        }
+        const meta: Record<string, string> = { role: registerRole };
+        if (name) meta.real_name = name;
+        if (tel) meta.phone = tel;
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: {
-            data: { role: registerRole, real_name: name, phone: tel },
-          },
+          options: { data: meta },
         });
         if (signUpError) throw signUpError;
 
         if (data.user?.id) {
-          await ensureProfileRow(data.user.id, registerRole, { realName: name, phone: tel });
+          await ensureProfileRow(
+            data.user.id,
+            registerRole,
+            name || tel ? { realName: name, phone: tel } : undefined
+          );
         }
 
         if (data.session) {
@@ -155,21 +152,19 @@ export default function AuthPage() {
             {mode === "register" && (
               <>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">真实姓名</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">真实姓名（可选）</label>
                   <input
                     type="text"
-                    required
                     value={realName}
                     onChange={(e) => setRealName(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="与证件一致，用于群内协作联系"
+                    placeholder="便于悬赏与群内联系"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">手机号</label>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">手机号（可选）</label>
                   <input
                     type="tel"
-                    required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"

@@ -1,4 +1,4 @@
--- 可选：为已注册用户批量补全 real_name / phone（管理员在 SQL Editor 执行）
+-- 可选：为已注册用户补全 real_name / phone（非必填；管理员在 SQL Editor 执行）
 -- 前置：docs/BOUNTY_OPERATOR_AUDIT_MIGRATION.sql 已添加字段
 --
 -- 1) 查看缺资料的用户
