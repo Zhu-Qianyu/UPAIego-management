@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchActiveGroupId } from "../api/groups";
 import { fetchProfilesByIds, profileDisplayName, type ProfileContact } from "../api/profiles";
 import {
@@ -199,6 +200,13 @@ export default function BountyExecutorPage() {
           />
         }
       />
+
+      <Alert variant="info">
+        <Link to="/wallet" className="font-semibold text-indigo-800 underline underline-offset-2 hover:text-indigo-950">
+          我的钱包
+        </Link>
+        ：查看可提现余额与结算明细（运维审核后按悬赏单价入账）。
+      </Alert>
 
       {!groupId && <Alert variant="warn">请先加入工作群后再接单。</Alert>}
       {err && <Alert variant="error">{err}</Alert>}

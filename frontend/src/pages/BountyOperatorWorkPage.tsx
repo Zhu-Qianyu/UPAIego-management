@@ -9,7 +9,6 @@ import {
   listActiveClaimsForGroup,
   listMyDeviceAssignments,
   listMyDeviceHourLogs,
-  operatorApproveBountyClaim,
   operatorRejectBountyClaim,
   registerDeviceDataHours,
   revokeDeviceAssignment,
@@ -18,6 +17,12 @@ import {
   type DeviceDataHourLog,
   type DeviceExecutorAssignment,
 } from "../api/bounties";
+import {
+  formatCny,
+  previewSettlementForClaim,
+  settleBountyClaim,
+  type SettlementPreview,
+} from "../api/settlement";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import {
@@ -64,6 +69,7 @@ export default function BountyOperatorWorkPage() {
 
   const [confirmHours, setConfirmHours] = useState<Record<string, string>>({});
   const [registeredByClaim, setRegisteredByClaim] = useState<Record<string, number>>({});
+  const [settlementPreview, setSettlementPreview] = useState<Record<string, SettlementPreview>>({});
 
   const load = useCallback(async () => {
     setErr("");
@@ -90,12 +96,19 @@ export default function BountyOperatorWorkPage() {
         setExecutorNames(map);
       }
       const regMap: Record<string, number> = {};
+      const previewMap: Record<string, SettlementPreview> = {};
       await Promise.all(
         activeClaims.map(async (c) => {
           regMap[c.id] = await sumRegisteredHoursForClaim(c.id);
+          try {
+            previewMap[c.id] = await previewSettlementForClaim(c.id);
+          } catch {
+            /* migration not applied yet */
+          }
         })
       );
       setRegisteredByClaim(regMap);
+      setSettlementPreview(previewMap);
       const nextConfirm: Record<string, string> = {};
       for (const c of activeClaims) {
         const reg = regMap[c.id] ?? 0;
@@ -181,23 +194,31 @@ export default function BountyOperatorWorkPage() {
 
   async function onApprove(c: BountyClaim) {
     const raw = confirmHours[c.id] ?? String(c.claimed_hours);
-    const h = parseInt(raw, 10);
+    const h = parseFloat(raw);
     if (!Number.isFinite(h) || h <= 0) {
-      setErr("确认小时须为正整数");
+      setErr("确认小时须为正数");
       return;
     }
     if (h > c.claimed_hours) {
       setErr(`确认小时不能超过领取的 ${c.claimed_hours} 小时`);
       return;
     }
-    if (!window.confirm(`通过审核：确认执行 ${h} 小时（领取 ${c.claimed_hours} h），按 min 规则计分？`)) return;
+    const rate = c.bounties?.hourly_rate ?? settlementPreview[c.id]?.hourly_rate ?? 0;
+    const amount = Math.round(h * rate * 100) / 100;
+    const cashPart = rate > 0 ? `，结算入账 ${formatCny(amount)}（${h} h × ${formatCny(rate)}/h）` : "";
+    if (
+      !window.confirm(
+        `审核通过并入账：确认 ${h} 小时（领取 ${c.claimed_hours} h）${cashPart}；同时按规则发放积分。`
+      )
+    )
+      return;
     setBusyId(c.id);
     setErr("");
     try {
-      await operatorApproveBountyClaim(c.id, h);
+      await settleBountyClaim(c.id, h);
       await load();
     } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "审核失败";
+      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "审核入账失败";
       setErr(msg);
     } finally {
       setBusyId(null);
@@ -392,7 +413,7 @@ export default function BountyOperatorWorkPage() {
       {tab === "audit" && (
         <section className="space-y-4">
           <Alert variant="info">
-            审核通过：执行小时 = min(领取小时, 您确认的小时)；积分按执行小时 × 系数发放。驳回将扣分并退回未执行工时。
+            审核通过并入账：确认小时 × 悬赏单价（元/小时）计入执行员钱包；积分仍按执行小时 × 系数发放。请先收回设备并核对数采登记小时。
           </Alert>
           {claims.length === 0 ? (
             <EmptyState title="暂无待审核接单" description="执行员接单后会出现在这里" icon={<IconClipboard />} />
@@ -401,6 +422,10 @@ export default function BountyOperatorWorkPage() {
               {claims.map((c) => {
                 const title = c.bounties?.title ?? "悬赏单";
                 const reg = registeredByClaim[c.id] ?? 0;
+                const rate = c.bounties?.hourly_rate ?? settlementPreview[c.id]?.hourly_rate ?? 0;
+                const confirmH = parseFloat(confirmHours[c.id] ?? String(c.claimed_hours)) || 0;
+                const previewAmount =
+                  rate > 0 && confirmH > 0 ? Math.round(Math.min(confirmH, c.claimed_hours) * rate * 100) / 100 : 0;
                 return (
                   <li key={c.id} className="glass-panel rounded-2xl p-5 space-y-4">
                     <div className="flex flex-wrap justify-between gap-3">
@@ -417,6 +442,11 @@ export default function BountyOperatorWorkPage() {
                     </div>
                     <div className="flex flex-wrap gap-2 text-xs">
                       <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600">数采登记 {reg} h</span>
+                      {rate > 0 && (
+                        <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-800">
+                          单价 {formatCny(rate)}/h · 预估 {formatCny(previewAmount)}
+                        </span>
+                      )}
                       <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-indigo-700">{formatDueCountdown(c.due_at)}</span>
                     </div>
                     <div className="flex flex-wrap items-end gap-3 pt-1 border-t border-slate-100">
@@ -424,7 +454,8 @@ export default function BountyOperatorWorkPage() {
                         <span className={uiLabel}>确认执行（小时）</span>
                         <input
                           type="number"
-                          min={1}
+                          min={0.01}
+                          step={0.01}
                           max={c.claimed_hours}
                           className={`${uiInput} !w-28`}
                           value={confirmHours[c.id] ?? String(c.claimed_hours)}
@@ -432,7 +463,7 @@ export default function BountyOperatorWorkPage() {
                         />
                       </label>
                       <UiButton variant="success" disabled={busyId === c.id} onClick={() => void onApprove(c)}>
-                        通过
+                        通过并入账
                       </UiButton>
                       <UiButton variant="secondary" className="!text-red-600 !ring-red-100" disabled={busyId === c.id} onClick={() => void onReject(c)}>
                         驳回

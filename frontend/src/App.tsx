@@ -13,6 +13,7 @@ import BountyOperatorWorkPage from "./pages/BountyOperatorWorkPage";
 import GroupPage from "./pages/GroupPage";
 import AdminGroupPage from "./pages/AdminGroupPage";
 import ProfilePage from "./pages/ProfilePage";
+import ExecutorWalletPage from "./pages/ExecutorWalletPage";
 import { useAuth } from "./auth/AuthContext";
 import { supabase } from "./api/supabase";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "./auth/roleLabels";
@@ -78,6 +79,7 @@ function navForRole(role: UserRole): { to: string; label: string }[] {
     collection_executor: [
       { to: "/map", label: "数采地图" },
       { to: "/bounties", label: "悬赏令" },
+      { to: "/wallet", label: "我的钱包" },
       { to: "/scene", label: "场景采集" },
       { to: "/group", label: "群组" },
     ],
@@ -477,6 +479,14 @@ export default function App() {
           />
           <Route path="/group" element={<GroupPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route
+            path="/wallet"
+            element={
+              <RoleRoute allow={["collection_executor"]}>
+                <ExecutorWalletPage />
+              </RoleRoute>
+            }
+          />
           <Route
             path="/group/manage"
             element={

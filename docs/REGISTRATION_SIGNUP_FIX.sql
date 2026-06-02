@@ -1,8 +1,9 @@
--- 非 admin 角色注册时必须带有效群组号，否则 signup 事务整体回滚
--- 前置：ROLE_SYSTEM_MIGRATION.sql、GROUP_TOPICS_BUSINESS_MIGRATION.sql、PHONE_REGISTRATION_MIGRATION.sql
--- 若注册报 Database error saving new user，可先执行 REGISTRATION_SIGNUP_FIX.sql
--- 在 Supabase SQL Editor 整段执行
+-- 修复注册报错「Database error saving new user」
+-- 原因多为：未按序执行手机注册迁移、缺少列、或 handle_new_user 与线上一致。
+-- 在 Supabase SQL Editor 整段执行（可重复执行）。
 
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS real_name text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone text;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS contact_email text;
 ALTER TABLE public.group_members ADD COLUMN IF NOT EXISTS request_phone text;
 

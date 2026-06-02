@@ -29,9 +29,19 @@ export function formatAuthError(message: string | undefined | null): string {
     return "当前环境已关闭自助注册，请联系管理员开通账号。";
   }
 
+  if (lower.includes("database error saving new user")) {
+    return (
+      "注册时数据库写入失败。常见原因：① 未在 Supabase 执行手机注册相关 SQL（见 docs/REGISTRATION_SIGNUP_FIX.sql）；" +
+      "② 非管理员未填或填错群组号；③ 库表缺少 real_name/phone/contact_email 等列。" +
+      "请在 Supabase → Logs → Postgres 查看具体报错后重试。"
+    );
+  }
+
   if (lower.includes("invalid invite") || lower.includes("群组") || lower.includes("入群") || lower.includes("invite_code")) {
     return raw;
   }
+
+  if (/[\u4e00-\u9fff]/.test(raw)) return raw;
 
   return raw;
 }
