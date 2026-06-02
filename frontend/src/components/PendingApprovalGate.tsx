@@ -13,6 +13,8 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
   const [reapplyCode, setReapplyCode] = useState("");
   const [reapplyBusy, setReapplyBusy] = useState(false);
   const [reapplyErr, setReapplyErr] = useState("");
+  const [pendingGroupName, setPendingGroupName] = useState<string | null>(null);
+
   const [blocked, setBlocked] = useState<"none" | "pending" | "rejected" | "no_group">("none");
 
   const check = useCallback(async () => {
@@ -28,6 +30,8 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
         return;
       }
       if (rows.some((r) => r.membership_status === "pending")) {
+        const pend = rows.find((r) => r.membership_status === "pending");
+        setPendingGroupName(pend?.work_groups?.display_name ?? null);
         setBlocked("pending");
         return;
       }
@@ -82,8 +86,9 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
         <p className="text-sm text-gray-600 leading-relaxed">
           {blocked === "pending" ? (
             <>
-              您的账号（{ROLE_LABELS[profile!.role]} · 手机 {formatPhoneDisplay(profile!.phone)}）已提交注册。
-              平台管理员在「群组管理」中审批通过后即可使用系统。
+              您的账号（{ROLE_LABELS[profile!.role]} · 手机 {formatPhoneDisplay(profile!.phone)}）
+              {pendingGroupName ? <> 已申请加入「{pendingGroupName}」</> : null}
+              。请等待<strong>该工作群的平台管理员</strong>在「群组管理 → 待审批入群」中通过。
             </>
           ) : blocked === "no_group" ? (
             <>

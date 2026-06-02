@@ -20,6 +20,8 @@ export default function AuthPage() {
   const [registerRole, setRegisterRole] = useState<UserRole>("device_operator");
   const [realName, setRealName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [invitePreview, setInvitePreview] = useState<string | null>(null);
+  const [invitePreviewErr, setInvitePreviewErr] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -27,6 +29,27 @@ export default function AuthPage() {
   const needsGroupCode = mode === "register" && registerRole !== "admin";
   const groupCodeMissing = needsGroupCode && !inviteCode.trim();
   const canSubmitRegister = mode === "login" || !groupCodeMissing;
+
+  async function previewInviteCode(code: string) {
+    const c = code.trim();
+    if (!c) {
+      setInvitePreview(null);
+      setInvitePreviewErr("");
+      return;
+    }
+    try {
+      const { displayName } = await validateInviteCode(c);
+      setInvitePreview(displayName);
+      setInvitePreviewErr("");
+    } catch (e: unknown) {
+      setInvitePreview(null);
+      const msg =
+        e && typeof e === "object" && "message" in e
+          ? String((e as { message: unknown }).message)
+          : "群组号无效";
+      setInvitePreviewErr(msg);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -132,7 +155,7 @@ export default function AuthPage() {
               <p className="text-sm text-gray-500 mb-6">
                 {mode === "login"
                   ? "使用手机号与密码登录。"
-                  : "手机号注册；设备运维/场景/执行员必须填写有效群组号，否则无法完成注册。"}
+                  : "手机号注册；须填写有效群组号（任意管理员发放的均可），填哪个就加入哪个工作群，由该群管理员审批。"}
               </p>
 
               <div className="grid grid-cols-2 gap-2 bg-gray-100/90 rounded-lg p-1 mb-5">
@@ -179,7 +202,7 @@ export default function AuthPage() {
                             <span className="font-medium text-gray-900">{ROLE_LABELS[r]}</span>
                             <span className="block text-xs text-gray-500 mt-0.5">{ROLE_DESCRIPTIONS[r]}</span>
                             {r !== "admin" && (
-                              <span className="block text-xs text-amber-700 mt-0.5">注册需填写群组号</span>
+                              <span className="block text-xs text-amber-700 mt-0.5">注册必填群组号，归属对应管理员工作群</span>
                             )}
                           </span>
                         </label>
@@ -197,12 +220,26 @@ export default function AuthPage() {
                       type="text"
                       required
                       value={inviteCode}
-                      onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                      onChange={(e) => {
+                        const v = e.target.value.toUpperCase();
+                        setInviteCode(v);
+                        setInvitePreview(null);
+                        setInvitePreviewErr("");
+                      }}
+                      onBlur={() => void previewInviteCode(inviteCode)}
                       className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-amber-500"
-                      placeholder="向平台管理员索取"
+                      placeholder="填写你要加入的管理员所发群组号"
                     />
+                    {invitePreview && (
+                      <p className="text-xs text-emerald-800 bg-emerald-50 rounded-lg px-2 py-1.5 ring-1 ring-emerald-100">
+                        将加入工作群「{invitePreview}」，由该群平台管理员审批
+                      </p>
+                    )}
+                    {invitePreviewErr && (
+                      <p className="text-xs text-red-600">{invitePreviewErr}</p>
+                    )}
                     <p className="text-xs text-amber-800">
-                      未填写或群组号错误将无法注册；提交后需管理员在「群组管理」中审批。
+                      群组号不必与他人相同；填哪个有效群组号，就归到哪位管理员的工作群下。未填或无效将无法注册。
                     </p>
                   </div>
                 )}

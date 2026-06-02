@@ -127,7 +127,8 @@ export default function AdminGroupPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">群组管理</h1>
         <p className="text-sm text-gray-500 mt-1">
-          仅<strong>平台管理员</strong>可在此<strong>创建一个</strong>工作群组；其他角色只能使用入群代码加入，无法自建。向成员分发<strong>入群代码</strong>，对方在「群组」页提交申请后在此审批。
+          仅<strong>平台管理员</strong>可在此<strong>创建一个</strong>工作群组（各有独立群组号）。
+          成员注册时填写<strong>你的群组号</strong>即归入本群，申请会出现在下方「待审批入群」；不同管理员的群组号不同，填哪个归哪个。
         </p>
       </div>
 

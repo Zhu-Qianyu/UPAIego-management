@@ -113,13 +113,20 @@ export async function submitJoinRequest(invite: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-/** 注册前校验群组号是否存在（无需登录） */
-export async function validateInviteCode(inviteCode: string): Promise<void> {
+/** 注册前校验群组号并返回目标工作群名称（任意有效群组号均可） */
+export async function validateInviteCode(inviteCode: string): Promise<{ displayName: string }> {
   const code = inviteCode.trim();
   if (!code) throw new Error("请填写群组号（入群代码）");
-  const { data, error } = await supabase.rpc("validate_invite_code", { p_invite_code: code });
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("群组号无效，请向管理员确认");
+  const { data, error } = await supabase.rpc("lookup_invite_code", { p_invite_code: code });
+  if (error) {
+    const { data: ok, error: err2 } = await supabase.rpc("validate_invite_code", { p_invite_code: code });
+    if (err2) throw new Error(error.message);
+    if (!ok) throw new Error("群组号无效，请向对应管理员确认");
+    return { displayName: "工作群" };
+  }
+  const row = data as { valid?: boolean; display_name?: string; message?: string } | null;
+  if (!row?.valid) throw new Error(row?.message ?? "群组号无效，请向对应管理员确认");
+  return { displayName: row.display_name ?? "工作群" };
 }
 
 /** 补提交入群申请（注册 trigger 未写入或重新申请时使用） */
