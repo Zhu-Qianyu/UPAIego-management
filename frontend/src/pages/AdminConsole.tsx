@@ -13,6 +13,7 @@ import {
 } from "../api/adminContent";
 import { ROLE_LABELS } from "../auth/roleLabels";
 import Spinner from "../components/Spinner";
+import { CardList, CardListItem } from "../components/ui/PageLayout";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 import { useAuth } from "../auth/AuthContext";
@@ -249,10 +250,15 @@ export default function AdminConsole() {
             </button>
           </form>
 
-          <ul className="divide-y divide-gray-100 text-sm">
-            {kpis.length === 0 && <li className="py-4 text-gray-400">暂无 KPI</li>}
+          <CardList>
+            {kpis.length === 0 && (
+              <CardListItem className="max-w-none flex-[1_1_100%]">
+                <p className="py-4 text-gray-400 text-sm w-full">暂无 KPI</p>
+              </CardListItem>
+            )}
             {kpis.map((k) => (
-              <li key={k.id} className="py-3 flex justify-between gap-3">
+              <CardListItem key={k.id}>
+              <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm h-full flex justify-between gap-3">
                 <div>
                   <p className="font-medium text-gray-900">{listMetricTitle(k)}</p>
                   <p className="text-xs mt-1">
@@ -283,9 +289,10 @@ export default function AdminConsole() {
                 >
                   删除
                 </button>
-              </li>
+              </div>
+              </CardListItem>
             ))}
-          </ul>
+          </CardList>
         </section>
 
         <section className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6">
@@ -317,15 +324,17 @@ export default function AdminConsole() {
           </form>
 
           <h3 className="text-sm font-semibold text-gray-700 mb-2">近期公告</h3>
-          <ul className="space-y-3 text-sm max-h-80 overflow-y-auto">
+          <CardList className="max-h-80 overflow-y-auto">
             {messages.map((m) => (
-              <li key={m.id} className="rounded-lg border border-gray-100 p-3 bg-gray-50/80">
+              <CardListItem key={m.id}>
+              <div className="rounded-lg border border-gray-100 p-3 bg-gray-50/80 h-full">
                 <p className="font-medium text-gray-900">{m.title}</p>
                 <p className="text-gray-600 mt-1 whitespace-pre-wrap">{m.body}</p>
                 <p className="text-xs text-gray-400 mt-2">{new Date(m.created_at).toLocaleString()}</p>
-              </li>
+              </div>
+              </CardListItem>
             ))}
-          </ul>
+          </CardList>
         </section>
       </div>
     </div>

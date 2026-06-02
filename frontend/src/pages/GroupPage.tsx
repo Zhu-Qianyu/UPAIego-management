@@ -15,6 +15,7 @@ import {
   type WorkGroup,
 } from "../api/groups";
 import { fetchProfilesByIds } from "../api/profiles";
+import { CardList, CardListItem } from "../components/ui/PageLayout";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
@@ -412,9 +413,10 @@ export default function GroupPage() {
         {topics.length === 0 ? (
           <p className="text-gray-400 text-sm">暂无话题</p>
         ) : (
-          <ul className="space-y-3">
+          <CardList>
             {topics.map((t) => (
-              <li key={t.id} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+              <CardListItem key={t.id}>
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm h-full">
                 <div className="flex justify-between gap-3">
                   <div>
                     <p className="font-medium text-gray-900">{t.title}</p>
@@ -431,9 +433,10 @@ export default function GroupPage() {
                     </button>
                   )}
                 </div>
-              </li>
+              </div>
+              </CardListItem>
             ))}
-          </ul>
+          </CardList>
         )}
       </div>
     </div>

@@ -32,6 +32,8 @@ import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import {
   Alert,
+  CardList,
+  CardListItem,
   EmptyState,
   IconClipboard,
   IconSparkles,
@@ -266,7 +268,7 @@ export default function BountyExecutorPage() {
           {openBounties.length === 0 ? (
             <EmptyState title="暂无可接悬赏单" description="等待管理员发布新的工时池" icon={<IconSparkles />} />
           ) : (
-            <ul className="space-y-4">
+            <CardList>
               {openBounties.map((b) => {
                 const penalty = estimatePenaltyPoints(1, b.points_per_hour);
                 const claimH = parseInt(claimHours[b.id] ?? "1", 10);
@@ -275,7 +277,8 @@ export default function BountyExecutorPage() {
                     ? (claimH * Number(b.hourly_rate)).toFixed(2)
                     : null;
                 return (
-                  <li key={b.id} className="glass-panel rounded-2xl p-5 space-y-4">
+                  <CardListItem key={b.id}>
+                  <div className="glass-panel rounded-2xl p-5 space-y-4 h-full">
                     <div className="flex flex-wrap justify-between gap-2">
                       <div>
                         <h3 className="font-medium text-gray-900">{b.title}</h3>
@@ -315,10 +318,11 @@ export default function BountyExecutorPage() {
                         {busyId === b.id ? "提交中…" : "接单"}
                       </UiButton>
                     </div>
-                  </li>
+                  </div>
+                  </CardListItem>
                 );
               })}
-            </ul>
+            </CardList>
           )}
         </section>
       )}
@@ -328,7 +332,7 @@ export default function BountyExecutorPage() {
           {myClaims.length === 0 ? (
             <EmptyState title="尚无接单记录" description="在「可接单」页领取悬赏工时" icon={<IconClipboard />} />
           ) : (
-            <ul className="space-y-4">
+            <CardList>
               {myClaims.map((c) => {
                 const title = c.bounties?.title ?? "悬赏单";
                 const rate = c.bounties?.points_per_hour ?? 1;
@@ -348,7 +352,8 @@ export default function BountyExecutorPage() {
                         : `领取 ${c.claimed_hours} 小时 · ${claimStatusLabel(c.status)}`;
                 const checkout = checkoutsByClaim[c.id];
                 return (
-                  <li key={c.id} className="glass-panel rounded-2xl p-5">
+                  <CardListItem key={c.id}>
+                  <div className="glass-panel rounded-2xl p-5 h-full">
                     <div className="flex flex-wrap justify-between gap-2">
                       <div>
                         <h3 className="font-medium text-gray-900">{title}</h3>
@@ -412,10 +417,11 @@ export default function BountyExecutorPage() {
                     {c.close_reason && (
                       <p className="mt-2 text-xs text-gray-500">备注：{c.close_reason}</p>
                     )}
-                  </li>
+                  </div>
+                  </CardListItem>
                 );
               })}
-            </ul>
+            </CardList>
           )}
         </section>
       )}
@@ -487,9 +493,10 @@ export default function BountyExecutorPage() {
             {profile.ledger.length === 0 ? (
               <p className="text-sm text-gray-500 py-6 text-center border border-dashed rounded-xl">暂无流水</p>
             ) : (
-              <ul className="divide-y divide-slate-100 glass-panel rounded-2xl overflow-hidden">
+              <CardList>
                 {profile.ledger.map((row) => (
-                  <li key={row.id} className="px-4 py-3 flex flex-wrap justify-between gap-2 text-sm">
+                  <CardListItem key={row.id}>
+                  <div className="glass-panel rounded-2xl px-4 py-3 text-sm h-full flex flex-col justify-between gap-2">
                     <div>
                       <span className={row.delta >= 0 ? "text-emerald-700" : "text-red-700"}>
                         {row.delta >= 0 ? "+" : ""}
@@ -501,9 +508,10 @@ export default function BountyExecutorPage() {
                     <div className="text-gray-500 text-xs">
                       余额 {row.balance_after} · {new Date(row.created_at).toLocaleString()}
                     </div>
-                  </li>
+                  </div>
+                  </CardListItem>
                 ))}
-              </ul>
+              </CardList>
             )}
           </div>
         </section>

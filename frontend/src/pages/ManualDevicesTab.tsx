@@ -13,6 +13,7 @@ import {
   type PartyDemand,
 } from "../api/operations";
 import { fetchActiveGroupId } from "../api/groups";
+import { CardList, CardListItem } from "../components/ui/PageLayout";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { openManualDevicesPrint } from "../utils/manualDevicesExport";
@@ -66,7 +67,7 @@ function ManualTrackedDeviceRow({
   }
 
   return (
-    <li className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row gap-4">
+    <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row gap-4 h-full">
       <div className="shrink-0 flex flex-col items-center gap-1">
         {qr ? (
           <img src={qr} alt="" className="w-40 h-40 object-contain rounded-lg border border-gray-100 bg-white" />
@@ -125,7 +126,7 @@ function ManualTrackedDeviceRow({
           </button>
         </div>
       </div>
-    </li>
+    </div>
   );
 }
 
@@ -296,11 +297,13 @@ export default function ManualDevicesTab() {
       {rows.length === 0 ? (
         <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">暂无离线设备</p>
       ) : (
-        <ul className="space-y-4">
+        <CardList>
           {rows.map((r) => (
-            <ManualTrackedDeviceRow key={`${r.id}-${r.updated_at}`} row={r} onChanged={() => void refresh()} />
+            <CardListItem key={`${r.id}-${r.updated_at}`}>
+              <ManualTrackedDeviceRow row={r} onChanged={() => void refresh()} />
+            </CardListItem>
           ))}
-        </ul>
+        </CardList>
       )}
     </div>
   );

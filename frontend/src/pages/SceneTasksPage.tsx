@@ -24,6 +24,7 @@ import {
   type SceneTaskAssignment,
 } from "../api/operations";
 import Spinner from "../components/Spinner";
+import { CardList, CardListItem } from "../components/ui/PageLayout";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, routeViewCacheKeyExtra, writeRouteViewCache } from "../utils/routeViewCache";
 import { useAuth } from "../auth/AuthContext";
@@ -380,9 +381,10 @@ function PartyDemandsTab({
           添加甲方业务
         </button>
       </form>
-      <ul className="space-y-3">
+      <CardList>
         {rows.map((r) => (
-          <li key={r.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+          <CardListItem key={r.id}>
+          <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 h-full w-full">
             {editingId === r.id ? (
               <form onSubmit={onSaveEdit} className="space-y-3">
                 <p className="text-xs font-medium text-gray-700">编辑甲方业务</p>
@@ -533,9 +535,10 @@ function PartyDemandsTab({
                 </div>
               </div>
             )}
-          </li>
+          </div>
+          </CardListItem>
         ))}
-      </ul>
+      </CardList>
     </div>
   );
 }
@@ -911,9 +914,10 @@ function ScenarioWorkstationsTab({
           {busy ? "上传中..." : "添加场景岗位"}
         </button>
       </form>
-      <div className="space-y-4">
+      <CardList as="div">
         {rows.map((r) => (
-          <div key={r.id} className="relative rounded-xl border border-gray-200 overflow-hidden">
+          <CardListItem as="div" key={r.id}>
+          <div className="relative rounded-xl border border-gray-200 overflow-hidden h-full w-full">
             <ScenarioRow row={r} />
             <div className="absolute top-2 right-2 flex gap-1">
               <button
@@ -1027,8 +1031,9 @@ function ScenarioWorkstationsTab({
               </form>
             )}
           </div>
+          </CardListItem>
         ))}
-      </div>
+      </CardList>
     </div>
   );
 }
@@ -1472,14 +1477,14 @@ function SceneTasksInner({
           </p>
         )}
 
-        <div className="space-y-4">
+        <CardList as="div">
           {tasks.map((t) => {
             const pos = t.scenario_position_id ? positions.get(t.scenario_position_id) : undefined;
             const assigns = assignmentsByTaskId.get(t.id) ?? [];
             return (
+              <CardListItem as="div" key={t.id}>
               <div
-                key={t.id}
-                className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm"
+                className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm h-full w-full"
               >
                 <div className="p-4 flex flex-col sm:flex-row gap-3 sm:items-start sm:justify-between">
                   <div className="flex-1 min-w-0">
@@ -1593,9 +1598,10 @@ function SceneTasksInner({
                   </div>
                 )}
               </div>
+              </CardListItem>
             );
           })}
-        </div>
+        </CardList>
       </div>
     </>
   );

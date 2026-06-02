@@ -15,7 +15,7 @@ const heroGradients: Record<Accent, string> = {
 };
 
 export function PageShell({ children }: { children: ReactNode }) {
-  return <div className="page-shell max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">{children}</div>;
+  return <div className="page-shell max-w-[90rem] mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">{children}</div>;
 }
 
 export function PageHero({
@@ -212,6 +212,35 @@ export function EmptyState({
       {description && <p className="mt-1 text-sm text-slate-500 max-w-sm">{description}</p>}
     </div>
   );
+}
+
+/** 展示列表：收窄卡片宽度，横向自动换行 */
+export const cardListClass = "list-none flex flex-wrap gap-4 items-stretch m-0 p-0 w-full";
+export const cardListItemClass =
+  "list-none w-full min-w-[16rem] max-w-[22rem] flex-[1_1_18rem] min-h-0";
+
+export function CardList({
+  children,
+  className = "",
+  as: Tag = "ul",
+}: {
+  children: ReactNode;
+  className?: string;
+  as?: "ul" | "div";
+}) {
+  return <Tag className={`${cardListClass}${className ? ` ${className}` : ""}`}>{children}</Tag>;
+}
+
+export function CardListItem({
+  children,
+  className = "",
+  as: Tag = "li",
+}: {
+  children: ReactNode;
+  className?: string;
+  as?: "li" | "div";
+}) {
+  return <Tag className={`${cardListItemClass}${className ? ` ${className}` : ""}`}>{children}</Tag>;
 }
 
 export function Alert({

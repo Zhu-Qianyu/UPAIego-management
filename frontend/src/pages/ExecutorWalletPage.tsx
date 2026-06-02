@@ -13,6 +13,8 @@ import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import {
   Alert,
+  CardList,
+  CardListItem,
   EmptyState,
   IconSparkles,
   PageHero,
@@ -149,12 +151,10 @@ export default function ExecutorWalletPage() {
           {ledger.length === 0 ? (
             <EmptyState title="暂无流水" description="完成悬赏并由运维员入账后，将显示在此" icon={<IconSparkles />} />
           ) : (
-            <ul className="space-y-2">
+            <CardList>
               {ledger.map((row) => (
-                <li
-                  key={row.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50/90 ring-1 ring-slate-200/80 px-4 py-3 text-sm"
-                >
+                <CardListItem key={row.id}>
+                <div className="rounded-xl bg-slate-50/90 ring-1 ring-slate-200/80 px-4 py-3 text-sm h-full flex flex-col justify-between gap-2">
                   <div>
                     <p className="font-medium text-slate-900">{walletLedgerReasonLabel(row.reason)}</p>
                     {row.note && <p className="text-xs text-slate-500 mt-0.5">{row.note}</p>}
@@ -169,9 +169,10 @@ export default function ExecutorWalletPage() {
                     </p>
                     <p className="text-xs text-slate-500">余额 {formatCny(row.balance_after)}</p>
                   </div>
-                </li>
+                </div>
+                </CardListItem>
               ))}
-            </ul>
+            </CardList>
           )}
         </Panel>
       )}
@@ -181,12 +182,10 @@ export default function ExecutorWalletPage() {
           {lines.length === 0 ? (
             <EmptyState title="暂无结算单" description="运维员审核并入账后会生成明细" icon={<IconSparkles />} />
           ) : (
-            <ul className="space-y-2">
+            <CardList>
               {lines.map((line) => (
-                <li
-                  key={line.id}
-                  className="rounded-xl bg-slate-50/90 ring-1 ring-slate-200/80 px-4 py-3 text-sm space-y-1"
-                >
+                <CardListItem key={line.id}>
+                <div className="rounded-xl bg-slate-50/90 ring-1 ring-slate-200/80 px-4 py-3 text-sm space-y-1 h-full">
                   <div className="flex flex-wrap justify-between gap-2">
                     <span className="font-semibold text-slate-900">+{formatCny(line.amount)}</span>
                     <span className="text-xs text-slate-500">{new Date(line.settled_at).toLocaleString()}</span>
@@ -198,9 +197,10 @@ export default function ExecutorWalletPage() {
                     )}
                   </p>
                   {line.operator_note && <p className="text-xs text-slate-500">{line.operator_note}</p>}
-                </li>
+                </div>
+                </CardListItem>
               ))}
-            </ul>
+            </CardList>
           )}
         </Panel>
       )}

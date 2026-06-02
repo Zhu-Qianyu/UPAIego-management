@@ -32,6 +32,8 @@ import {
 } from "../utils/deviceAssignmentId";
 import {
   Alert,
+  CardList,
+  CardListItem,
   EmptyState,
   IconClipboard,
   IconDevices,
@@ -307,7 +309,7 @@ export default function BountyOperatorWorkPage() {
       {workbenches.length === 0 ? (
         <EmptyState title="暂无进行中接单" description="执行员接单后会出现在此" icon={<IconClipboard />} />
       ) : (
-        <ul className="space-y-4">
+        <CardList>
           {workbenches.map((w) => {
             const c = w.claim;
             const title = c.bounties?.title ?? "悬赏单";
@@ -328,7 +330,8 @@ export default function BountyOperatorWorkPage() {
                 : null;
 
             return (
-              <li key={c.id} className="glass-panel rounded-2xl p-5 space-y-4">
+              <CardListItem key={c.id}>
+              <div className="glass-panel rounded-2xl p-5 space-y-4 h-full">
                 <div className="flex flex-wrap justify-between gap-3">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
@@ -474,9 +477,9 @@ export default function BountyOperatorWorkPage() {
                 {w.logs.length > 0 && (
                   <div className="border-t border-slate-100 pt-3">
                     <p className={uiLabel}>结算记录</p>
-                    <ul className="mt-2 space-y-1.5">
+                    <ul className="mt-2 flex flex-wrap gap-2">
                       {w.logs.map((log) => (
-                        <li key={log.id} className="text-xs text-slate-600 flex flex-wrap justify-between gap-2">
+                        <li key={log.id} className="text-xs text-slate-600 rounded-lg bg-slate-50 px-2.5 py-1.5 ring-1 ring-slate-200/80">
                           <span>
                             {deviceLabelById[log.device_id] ?? log.device_id} ·{" "}
                             <span className="font-medium text-indigo-600">{log.registered_hours} h</span>
@@ -498,10 +501,11 @@ export default function BountyOperatorWorkPage() {
                     驳回接单
                   </UiButton>
                 </div>
-              </li>
+              </div>
+              </CardListItem>
             );
           })}
-        </ul>
+        </CardList>
       )}
     </PageShell>
   );

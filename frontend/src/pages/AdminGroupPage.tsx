@@ -11,6 +11,7 @@ import {
 import { fetchProfilesByIds, profileDisplayName } from "../api/profiles";
 import { ROLE_LABELS } from "../auth/roleLabels";
 import { formatPhoneDisplay } from "../utils/phoneAuth";
+import { CardList, CardListItem } from "../components/ui/PageLayout";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
@@ -175,11 +176,12 @@ export default function AdminGroupPage() {
           {pending.length === 0 ? (
             <p className="text-sm text-gray-400">暂无待处理申请</p>
           ) : (
-            <ul className="divide-y divide-gray-100">
+            <CardList>
               {pending.map((m) => {
                 const info = pendingProfiles[m.user_id];
                 return (
-                <li key={m.id} className="py-3 flex flex-wrap items-center justify-between gap-2">
+                <CardListItem key={m.id}>
+                <div className="rounded-xl border border-gray-200 bg-white p-4 h-full flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-medium text-gray-900">{info?.name ?? m.user_id.slice(0, 8)}</p>
                     <p className="text-xs text-gray-600 mt-0.5">
@@ -208,10 +210,11 @@ export default function AdminGroupPage() {
                       拒绝
                     </button>
                   </div>
-                </li>
+                </div>
+                </CardListItem>
                 );
               })}
-            </ul>
+            </CardList>
           )}
         </div>
       )}

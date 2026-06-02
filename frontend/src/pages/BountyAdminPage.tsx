@@ -18,6 +18,8 @@ import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import {
   Alert,
+  CardList,
+  CardListItem,
   IconSparkles,
   PageHero,
   PageShell,
@@ -323,14 +325,14 @@ export default function BountyAdminPage() {
                 当前群尚无甲方业务，请场景业务员先在「场景业务 → 甲方业务」中添加。
               </p>
             ) : (
-              <ul className="mt-2 space-y-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200/80 p-3 bg-slate-50/50">
+              <ul className="mt-2 flex flex-wrap gap-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200/80 p-3 bg-slate-50/50">
                 {partyDemands.map((pd) => {
                   const checked = selectedPartyDemandIds.includes(pd.id);
                   const label = `${pd.client_company?.trim() || pd.title?.trim() || "甲方"}${
                     pd.device_type?.trim() ? ` · ${pd.device_type.trim()}` : ""
                   }`;
                   return (
-                    <li key={pd.id}>
+                    <li key={pd.id} className="min-w-[12rem] max-w-xs flex-[1_1_14rem]">
                       <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
                         <input
                           type="checkbox"
@@ -372,13 +374,14 @@ export default function BountyAdminPage() {
         {bounties.length === 0 ? (
           <p className="text-sm text-gray-500 py-8 text-center border border-dashed rounded-xl">暂无悬赏令</p>
         ) : (
-          <ul className="space-y-3">
+          <CardList>
             {bounties.map((b) => {
               const claims = claimsByBounty[b.id] ?? [];
               const expanded = expandedId === b.id;
               const claimedHours = b.total_hours - b.remaining_hours;
               return (
-                <li key={b.id} className="glass-panel overflow-hidden rounded-2xl">
+                <CardListItem key={b.id}>
+                <div className="glass-panel overflow-hidden rounded-2xl h-full">
                   <div className="p-4 flex flex-wrap gap-3 items-start justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -477,10 +480,11 @@ export default function BountyAdminPage() {
                       )}
                     </div>
                   )}
-                </li>
+                </div>
+                </CardListItem>
               );
             })}
-          </ul>
+          </CardList>
         )}
       </section>
     </PageShell>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocation } from "react-router-dom";
 import { listDevices, harvestDevice, type Device } from "../api/client";
 import Spinner from "../components/Spinner";
+import { CardList, CardListItem } from "../components/ui/PageLayout";
 import RefreshStrip from "../components/RefreshStrip";
 import { useAuth } from "../auth/AuthContext";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
@@ -249,15 +250,15 @@ function ExecutorMapPageLive() {
             </div>
           )}
         </div>
-        <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-          {devices.length === 0 && <p className="text-sm text-gray-400">暂无设备</p>}
+        <CardList as="div" className="max-h-[420px] overflow-y-auto pr-1 content-start">
+          {devices.length === 0 && <p className="text-sm text-gray-400 w-full">暂无设备</p>}
           {devices.map((d) => {
             const r = storageRatio(d);
             const full = r >= 0.95;
             return (
+              <CardListItem as="div" key={d.device_id}>
               <div
-                key={d.device_id}
-                className={`rounded-xl border p-3 text-sm ${
+                className={`rounded-xl border p-3 text-sm h-full w-full ${
                   full ? "border-amber-400 bg-amber-50/80" : "border-gray-200 bg-white"
                 }`}
               >
@@ -285,9 +286,10 @@ function ExecutorMapPageLive() {
                   {busyId === d.device_id ? "处理中..." : full ? "回收数据" : "存储未满"}
                 </button>
               </div>
+              </CardListItem>
             );
           })}
-        </div>
+        </CardList>
       </div>
     </div>
   );
