@@ -16,6 +16,7 @@ import {
   ledgerReasonLabel,
   listMyClaims,
   listOpenBountiesForGroup,
+  sumRegisteredHoursForClaim,
   type Bounty,
   type BountyClaim,
   type ExecutorProfileView,
@@ -51,6 +52,7 @@ export default function BountyExecutorPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [claimHours, setClaimHours] = useState<Record<string, string>>({});
   const [operatorsById, setOperatorsById] = useState<Record<string, ProfileContact>>({});
+  const [registeredByClaim, setRegisteredByClaim] = useState<Record<string, number>>({});
 
   const load = useCallback(async () => {
     setErr("");
@@ -65,6 +67,13 @@ export default function BountyExecutorPage() {
       ]);
       setOpenBounties(open);
       setMyClaims(mine);
+      const regMap: Record<string, number> = {};
+      await Promise.all(
+        mine.map(async (c) => {
+          regMap[c.id] = await sumRegisteredHoursForClaim(c.id);
+        })
+      );
+      setRegisteredByClaim(regMap);
       const opIds = [
         ...new Set(
           mine.map((c) => c.bounties?.assigned_operator_id).filter((id): id is string => Boolean(id))
@@ -299,6 +308,20 @@ export default function BountyExecutorPage() {
                 const title = c.bounties?.title ?? "悬赏单";
                 const rate = c.bounties?.points_per_hour ?? 1;
                 const uncompleted = Math.max(c.claimed_hours - c.executed_hours, 0);
+                const registered = registeredByClaim[c.id] ?? 0;
+                const progressHours = c.status === "completed" ? c.executed_hours : registered;
+                const progressPct =
+                  c.claimed_hours > 0
+                    ? Math.min(100, Math.round((Math.min(progressHours, c.claimed_hours) / c.claimed_hours) * 100))
+                    : 0;
+                const progressLabel =
+                  c.status === "completed"
+                    ? `已确认 ${c.executed_hours} / ${c.claimed_hours} 小时`
+                    : c.status === "active"
+                      ? `运维登记 ${registered} / ${c.claimed_hours} 小时`
+                      : registered > 0
+                        ? `运维登记 ${registered} / ${c.claimed_hours} 小时`
+                        : `领取 ${c.claimed_hours} 小时 · ${claimStatusLabel(c.status)}`;
                 return (
                   <li key={c.id} className="glass-panel rounded-2xl p-5">
                     <div className="flex flex-wrap justify-between gap-2">
@@ -313,6 +336,20 @@ export default function BountyExecutorPage() {
                           <div className="text-indigo-700 font-medium">{formatDueCountdown(c.due_at)}</div>
                         )}
                         <div className="text-xs">{new Date(c.due_at).toLocaleString()} 截止</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="font-medium text-slate-700">完成进度</span>
+                        <span className="text-slate-500">{progressLabel}</span>
+                      </div>
+                      <div className="h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            c.status === "completed" ? "bg-emerald-500" : "bg-indigo-500"
+                          }`}
+                          style={{ width: `${progressPct}%` }}
+                        />
                       </div>
                     </div>
                     {c.status === "active" && (() => {
