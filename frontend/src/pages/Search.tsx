@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { searchDevices, type Device, type DeviceListScope } from "../api/client";
 import {
@@ -18,6 +18,7 @@ import {
   onlineDeviceAttentionRank,
   resetDeviceConnectivityHysteresis,
 } from "../utils/deviceStatus";
+import { bumpNowMs, useNowMs } from "../hooks/useNowMs";
 
 export default function Search({ embedded }: { embedded?: boolean }) {
   const { profile } = useAuth();
@@ -28,12 +29,26 @@ export default function Search({ embedded }: { embedded?: boolean }) {
   const [manualResults, setManualResults] = useState<ManualTrackedDevice[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [nowMs, setNowMs] = useState(Date.now());
+  const nowMs = useNowMs();
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
+  const sortedResults = useMemo(
+    () =>
+      [...results].sort(
+        (a, b) => onlineDeviceAttentionRank(b, nowMs) - onlineDeviceAttentionRank(a, nowMs)
+      ),
+    [results, nowMs]
+  );
+
+  const sortedManualResults = useMemo(
+    () =>
+      [...manualResults].sort((a, b) => {
+        const ra = externalDeviceStatusAttentionRank(a.external_status);
+        const rb = externalDeviceStatusAttentionRank(b.external_status);
+        if (rb !== ra) return rb - ra;
+        return b.created_at.localeCompare(a.created_at);
+      }),
+    [manualResults]
+  );
 
   async function handleSearch(e?: React.FormEvent) {
     e?.preventDefault();
@@ -61,7 +76,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
   async function refreshSearchStatuses() {
     if (!query.trim()) return;
     resetDeviceConnectivityHysteresis();
-    setNowMs(Date.now());
+    bumpNowMs();
     setLoading(true);
     try {
       const q = query.trim();
@@ -141,9 +156,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {[...results]
-                    .sort((a, b) => onlineDeviceAttentionRank(b, nowMs) - onlineDeviceAttentionRank(a, nowMs))
-                    .map((d) => (
+                  {sortedResults.map((d) => (
                     <tr key={d.device_id} className="hover:bg-indigo-50/40 transition-colors">
                       <td className="px-4 py-3 text-xs text-gray-500">联网</td>
                       <td className="px-4 py-3 font-medium text-indigo-700">{d.readable_name}</td>
@@ -183,14 +196,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {[...manualResults]
-                      .sort((a, b) => {
-                        const ra = externalDeviceStatusAttentionRank(a.external_status);
-                        const rb = externalDeviceStatusAttentionRank(b.external_status);
-                        if (rb !== ra) return rb - ra;
-                        return b.created_at.localeCompare(a.created_at);
-                      })
-                      .map((m) => (
+                    {sortedManualResults.map((m) => (
                       <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-4 py-3 font-medium text-slate-900">{formatManualTrackedDeviceLabel(m)}</td>
                         <td className="px-4 py-3 font-mono text-xs text-indigo-700">{m.public_code}</td>

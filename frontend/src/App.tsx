@@ -1,19 +1,6 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
-import DeviceDetail from "./pages/DeviceDetail";
-import DeviceManagePage from "./pages/DeviceManagePage";
-import ManualDeviceByCodePage from "./pages/ManualDeviceByCodePage";
 import AuthPage from "./pages/AuthPage";
-import RoleHome from "./pages/RoleHome";
-import AdminConsole from "./pages/AdminConsole";
-import SceneTasksPage from "./pages/SceneTasksPage";
-import ExecutorMapPage from "./pages/ExecutorMapPage";
-import BountyPage from "./pages/BountyPage";
-import BountyOperatorWorkPage from "./pages/BountyOperatorWorkPage";
-import GroupPage from "./pages/GroupPage";
-import AdminGroupPage from "./pages/AdminGroupPage";
-import ProfilePage from "./pages/ProfilePage";
-import ExecutorWalletPage from "./pages/ExecutorWalletPage";
 import { useAuth } from "./auth/AuthContext";
 import { supabase } from "./api/supabase";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "./auth/roleLabels";
@@ -24,8 +11,23 @@ import KpiBanner from "./components/KpiBanner";
 import GroupStatusBanner from "./components/GroupStatusBanner";
 import AccountDeleteModal from "./components/AccountDeleteModal";
 import PendingApprovalGate from "./components/PendingApprovalGate";
+import Spinner from "./components/Spinner";
 import { SITE_DISPLAY_NAME } from "./branding";
 import { accountDisplayLabel } from "./utils/phoneAuth";
+
+const DeviceDetail = lazy(() => import("./pages/DeviceDetail"));
+const DeviceManagePage = lazy(() => import("./pages/DeviceManagePage"));
+const ManualDeviceByCodePage = lazy(() => import("./pages/ManualDeviceByCodePage"));
+const RoleHome = lazy(() => import("./pages/RoleHome"));
+const AdminConsole = lazy(() => import("./pages/AdminConsole"));
+const SceneTasksPage = lazy(() => import("./pages/SceneTasksPage"));
+const ExecutorMapPage = lazy(() => import("./pages/ExecutorMapPage"));
+const BountyPage = lazy(() => import("./pages/BountyPage"));
+const BountyOperatorWorkPage = lazy(() => import("./pages/BountyOperatorWorkPage"));
+const GroupPage = lazy(() => import("./pages/GroupPage"));
+const AdminGroupPage = lazy(() => import("./pages/AdminGroupPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const ExecutorWalletPage = lazy(() => import("./pages/ExecutorWalletPage"));
 
 const SIDEBAR_COLLAPSED_KEY = "upai:sidebar-collapsed";
 
@@ -408,6 +410,7 @@ export default function App() {
         <GroupStatusBanner />
         <KpiBanner />
         <AnnouncementsBanner />
+        <Suspense fallback={<Spinner />}>
         <Routes>
           <Route path="/" element={<RoleHome />} />
           <Route
@@ -501,6 +504,7 @@ export default function App() {
           <Route path="/auth" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
         </PendingApprovalGate>
         </main>
       </div>

@@ -17,9 +17,8 @@ def _next_readable_name(db: Session) -> str:
 
     Finds the current max numeric readable_name and increments by 1.
     """
-    all_names = db.query(Device.readable_name).all()
     max_num = 0
-    for (name,) in all_names:
+    for (name,) in db.query(Device.readable_name).yield_per(256):
         try:
             num = int(name)
             if num > max_num:

@@ -20,6 +20,7 @@ import {
   resetDeviceConnectivityHysteresis,
 } from "../utils/deviceStatus";
 import { useAuth } from "../auth/AuthContext";
+import { bumpNowMs, useNowMs } from "../hooks/useNowMs";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 
 const PAGE_SIZE = 20;
@@ -61,7 +62,7 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
   const [refreshing, setRefreshing] = useState(false);
   const [sortCol, setSortCol] = useState<keyof Device>("registered_at");
   const [sortAsc, setSortAsc] = useState(false);
-  const [nowMs, setNowMs] = useState(Date.now());
+  const nowMs = useNowMs();
 
   useLayoutEffect(() => {
     if (!cacheKey) return;
@@ -121,7 +122,7 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
 
   const refreshDeviceStatuses = useCallback(async () => {
     resetDeviceConnectivityHysteresis();
-    setNowMs(Date.now());
+    bumpNowMs();
     await load();
   }, [load]);
 
@@ -129,19 +130,25 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
+  const sorted = useMemo(() => {
+    return [...devices].sort((a, b) => {
+      const ra = onlineDeviceAttentionRank(a, nowMs);
+      const rb = onlineDeviceAttentionRank(b, nowMs);
+      if (rb !== ra) return rb - ra;
+      const va = (a[sortCol] as string) ?? "";
+      const vb = (b[sortCol] as string) ?? "";
+      return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+  }, [devices, nowMs, sortCol, sortAsc]);
 
-  const sorted = [...devices].sort((a, b) => {
-    const ra = onlineDeviceAttentionRank(a, nowMs);
-    const rb = onlineDeviceAttentionRank(b, nowMs);
-    if (rb !== ra) return rb - ra;
-    const va = (a[sortCol] as string) ?? "";
-    const vb = (b[sortCol] as string) ?? "";
-    return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
-  });
+  const sortedManualRows = useMemo(() => {
+    return [...manualRows].sort((a, b) => {
+      const ra = externalDeviceStatusAttentionRank(a.external_status);
+      const rb = externalDeviceStatusAttentionRank(b.external_status);
+      if (rb !== ra) return rb - ra;
+      return b.created_at.localeCompare(a.created_at);
+    });
+  }, [manualRows]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
@@ -322,14 +329,7 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {[...manualRows]
-                    .sort((a, b) => {
-                      const ra = externalDeviceStatusAttentionRank(a.external_status);
-                      const rb = externalDeviceStatusAttentionRank(b.external_status);
-                      if (rb !== ra) return rb - ra;
-                      return b.created_at.localeCompare(a.created_at);
-                    })
-                    .map((m) => (
+                  {sortedManualRows.map((m) => (
                       <tr key={m.id} className="hover:bg-slate-50/80">
                         <td className="px-4 py-3 font-medium text-slate-900">{formatManualTrackedDeviceLabel(m)}</td>
                         <td className="px-4 py-3 font-mono text-xs text-indigo-700">{m.public_code}</td>

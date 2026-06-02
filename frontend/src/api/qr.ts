@@ -1,4 +1,4 @@
-import QRCode from "qrcode";
+import { qrDataUrlCached } from "../utils/qrDataUrlCache";
 
 /** 联网设备贴签二维码：纯文本，扫码后直接显示设备标识（非网址）。 */
 export function buildOnlineDeviceQrText(opts: {
@@ -26,7 +26,7 @@ export async function generateQrDataUrl(
     serial_id: serialId ?? null,
   });
 
-  return QRCode.toDataURL(payload, {
+  return qrDataUrlCached(payload, {
     errorCorrectionLevel: "M",
     margin: 2,
     width: 300,

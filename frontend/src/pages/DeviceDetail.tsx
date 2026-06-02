@@ -8,6 +8,7 @@ import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import DeviceOnlineRefreshButton from "../components/DeviceOnlineRefreshButton";
 import { getEffectiveDeviceStatus, resetDeviceConnectivityHysteresis } from "../utils/deviceStatus";
+import { bumpNowMs, useNowMs } from "../hooks/useNowMs";
 import { readRouteViewCache, routeViewCacheKeyExtra, writeRouteViewCache } from "../utils/routeViewCache";
 
 type DeviceDetailCacheV1 = { v: 1; device: Device };
@@ -30,7 +31,7 @@ export default function DeviceDetail() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [nowMs, setNowMs] = useState(Date.now());
+  const nowMs = useNowMs();
 
   const [editStatus, setEditStatus] = useState("");
   const [editCal, setEditCal] = useState("");
@@ -97,11 +98,6 @@ export default function DeviceDetail() {
     return () => window.clearInterval(timer);
   }, [id, deviceScope]);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
   async function handleSave() {
     if (!id) return;
     setSaving(true);
@@ -141,7 +137,7 @@ export default function DeviceDetail() {
   async function handleRefreshDeviceStatus() {
     if (!id) return;
     resetDeviceConnectivityHysteresis([id]);
-    setNowMs(Date.now());
+    bumpNowMs();
     setRefreshing(true);
     try {
       const latest = await getDevice(id, { scope: deviceScope });

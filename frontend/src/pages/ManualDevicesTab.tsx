@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import QRCode from "qrcode";
+import { useCallback, useEffect, useMemo, useState, memo } from "react";
 import {
   createManualTrackedDevice,
   deleteManualTrackedDevice,
@@ -19,8 +18,9 @@ import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { openManualDevicesPrint } from "../utils/manualDevicesExport";
 import { buildManualTrackedDeviceQrText } from "../utils/manualDeviceQrPayload";
+import { qrDataUrlCached } from "../utils/qrDataUrlCache";
 
-function ManualTrackedDeviceRow({
+const ManualTrackedDeviceRow = memo(function ManualTrackedDeviceRow({
   row,
   onChanged,
 }: {
@@ -40,7 +40,7 @@ function ManualTrackedDeviceRow({
 
   useEffect(() => {
     let cancel = false;
-    QRCode.toDataURL(qrPayload, { width: 168, margin: 1, errorCorrectionLevel: "M" })
+    qrDataUrlCached(qrPayload, { width: 168, margin: 1, errorCorrectionLevel: "M" })
       .then((dataUrl) => {
         if (!cancel) setQr(dataUrl);
       })
@@ -129,7 +129,7 @@ function ManualTrackedDeviceRow({
       </div>
     </div>
   );
-}
+});
 
 export default function ManualDevicesTab() {
   const [groupId, setGroupId] = useState<string | null>(null);
