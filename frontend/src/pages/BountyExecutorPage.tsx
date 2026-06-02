@@ -218,7 +218,7 @@ export default function BountyExecutorPage() {
       <PageHero
         eyebrow="数采执行"
         title="悬赏令"
-        description="按小时领取工时池；向运维借设备，归还后由运维按次结算入账。"
+        description="按小时领取工时池；向运维借设备，归还与结算分开（结算可多次）。"
         accent="indigo"
         icon={<IconSparkles />}
         onRefresh={() => { setRefreshing(true); void load(); }}
@@ -239,7 +239,7 @@ export default function BountyExecutorPage() {
         <Link to="/wallet" className="font-semibold text-indigo-800 underline underline-offset-2 hover:text-indigo-950">
           我的钱包
         </Link>
-        ：查看可提现余额与按次结算明细（运维归还设备后当场入账）。
+        ：查看可提现余额与结算明细（运维按次结算，与归还设备分开）。
       </Alert>
 
       {!groupId && <Alert variant="warn">请先加入工作群后再接单。</Alert>}
@@ -389,6 +389,11 @@ export default function BountyExecutorPage() {
                               {isOfflineDeviceAssignmentId(checkout.device_id) ? "（离线）" : "（联网）"}
                             </p>
                           )}
+                          {c.device_returned_at && !checkout && (
+                            <p className="text-sm text-emerald-900 bg-emerald-50 rounded-lg px-3 py-2 mt-2">
+                              设备已归还（{new Date(c.device_returned_at).toLocaleString()}）
+                            </p>
+                          )}
                           {op && (
                             <p className="text-sm text-indigo-900 bg-indigo-50 rounded-lg px-3 py-2">
                               运维联系人：{profileDisplayName(op)}
@@ -396,7 +401,7 @@ export default function BountyExecutorPage() {
                             </p>
                           )}
                           <p className="text-xs text-gray-600">
-                            向运维借设备作业，归还后由运维录入小时并当场结算；请勿自行标记完成。
+                            向运维借设备作业；结算可多次，归还设备每单仅一次，请勿自行标记完成。
                           </p>
                           <UiButton variant="secondary" className="!text-red-600" disabled={busyId === c.id} onClick={() => void onAbandon(c)}>
                             放弃（约扣 {estimatePenaltyPoints(uncompleted, rate)} 分）

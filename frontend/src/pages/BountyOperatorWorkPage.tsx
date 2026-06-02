@@ -16,7 +16,8 @@ import {
   listAssignableDevicesForClaim,
   listClaimHourLogs,
   operatorRejectBountyClaim,
-  returnAndSettleSession,
+  returnDeviceForClaim,
+  settleClaimSession,
   type AssignableDevice,
   type BountyClaim,
   type ClaimCheckout,
@@ -171,11 +172,7 @@ export default function BountyOperatorWorkPage() {
     }
   }
 
-  async function onReturnSettle(w: ClaimWorkbench) {
-    if (!w.checkout) {
-      setErr("当前无借出设备");
-      return;
-    }
+  async function onSettle(w: ClaimWorkbench) {
     const raw = sessionHoursByClaim[w.claim.id] ?? "1";
     const hours = parseFloat(raw);
     const remaining = Math.max(w.claim.claimed_hours - Number(w.claim.executed_hours), 0);
@@ -187,27 +184,44 @@ export default function BountyOperatorWorkPage() {
       setErr(`本次不能超过剩余 ${remaining} 小时`);
       return;
     }
+    if (!w.checkout && !w.claim.device_returned_at) {
+      setErr("请先借出设备后再结算");
+      return;
+    }
     const rate = w.claim.bounties?.hourly_rate ?? 0;
     const amount = estimateSettlementAmount(hours, rate);
     const cashPart = rate > 0 ? `，入账 ${formatCny(amount)}` : "";
-    if (
-      !window.confirm(
-        `归还结算：本次 ${hours} h${cashPart}；设备将回到可分配库。确认？`
-      )
-    ) {
-      return;
-    }
+    if (!window.confirm(`结算：本次 ${hours} h${cashPart}。确认？`)) return;
     setBusyId(`settle-${w.claim.id}`);
     setErr("");
     try {
-      await returnAndSettleSession(
-        w.checkout.id,
-        hours,
-        sessionNoteByClaim[w.claim.id]?.trim() || undefined
-      );
+      await settleClaimSession(w.claim.id, hours, sessionNoteByClaim[w.claim.id]?.trim() || undefined);
       await load();
     } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "归还结算失败";
+      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "结算失败";
+      setErr(msg);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onReturn(w: ClaimWorkbench) {
+    if (!w.checkout) {
+      setErr("当前无借出设备");
+      return;
+    }
+    if (w.claim.device_returned_at) {
+      setErr("该接单已归还过设备");
+      return;
+    }
+    if (!window.confirm("确认执行员已归还设备？设备将回到可分配库（不含本次结算）。")) return;
+    setBusyId(`return-${w.claim.id}`);
+    setErr("");
+    try {
+      await returnDeviceForClaim(w.claim.id);
+      await load();
+    } catch (e: unknown) {
+      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "归还失败";
       setErr(msg);
     } finally {
       setBusyId(null);
@@ -271,7 +285,7 @@ export default function BountyOperatorWorkPage() {
       <PageHero
         eyebrow="设备运维"
         title="执行员结算"
-        description="借出合规设备 → 执行员归还 → 录入本次小时并当场结算；同一单可多次归还直到结清。"
+        description="借出设备 → 多次结算入账 → 归还设备回库（归还每单仅一次）。"
         accent="violet"
         icon={<IconWrench />}
         onRefresh={() => {
@@ -287,7 +301,7 @@ export default function BountyOperatorWorkPage() {
       {err && <Alert variant="error">{err}</Alert>}
 
       <Alert variant="info">
-        仅显示本群进行中接单。设备须为<strong>正常状态</strong>且类型在悬赏发布时已勾选；已借出设备不可再分配。
+        借出后可持续<strong>结算</strong>（可多次）；执行员<strong>归还</strong>设备时单独操作，每接单仅可归还一次。
       </Alert>
 
       {workbenches.length === 0 ? (
@@ -303,9 +317,15 @@ export default function BountyOperatorWorkPage() {
             const sessionH = parseFloat(sessionHoursByClaim[c.id] ?? "1") || 0;
             const previewAmount =
               rate > 0 && sessionH > 0 ? estimateSettlementAmount(Math.min(sessionH, remaining), rate) : 0;
+            const deviceReturned = Boolean(c.device_returned_at);
+            const canCheckout = !w.checkout && !deviceReturned;
+            const canReturn = Boolean(w.checkout) && !deviceReturned;
+            const canSettle = remaining > 0 && (Boolean(w.checkout) || deviceReturned || w.logs.length > 0);
             const deviceLabel = w.checkout
               ? deviceLabelById[w.checkout.device_id] ?? w.checkout.device_id
-              : null;
+              : w.logs[0]
+                ? deviceLabelById[w.logs[0].device_id] ?? w.logs[0].device_id
+                : null;
 
             return (
               <li key={c.id} className="glass-panel rounded-2xl p-5 space-y-4">
@@ -344,7 +364,7 @@ export default function BountyOperatorWorkPage() {
                   />
                 </div>
 
-                {!w.checkout ? (
+                {!canCheckout ? null : (
                   <Panel title="借出设备" description="从可分配库选择一台设备" icon={<IconDevices />}>
                     {w.assignable.length === 0 ? (
                       <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
@@ -379,15 +399,20 @@ export default function BountyOperatorWorkPage() {
                       </div>
                     )}
                   </Panel>
-                ) : (
-                  <Panel title="归还结算" description="执行员归还设备后，录入本次小时并当场入账" icon={<IconClipboard />}>
-                    <p className="text-sm text-slate-700 mb-3">
-                      借出设备：
-                      <span className="font-semibold text-slate-900 ml-1">{deviceLabel}</span>
-                      {isOfflineDeviceAssignmentId(w.checkout.device_id) && (
-                        <span className="ml-1.5 text-[10px] font-semibold uppercase text-violet-700">离线</span>
-                      )}
-                    </p>
+                )}
+
+                {(w.checkout || deviceReturned) && deviceLabel && (
+                  <p className="text-sm text-slate-700">
+                    {w.checkout ? "借出中：" : "已归还："}
+                    <span className="font-semibold text-slate-900 ml-1">{deviceLabel}</span>
+                    {w.checkout && isOfflineDeviceAssignmentId(w.checkout.device_id) && (
+                      <span className="ml-1.5 text-[10px] font-semibold uppercase text-violet-700">离线</span>
+                    )}
+                  </p>
+                )}
+
+                {canSettle && (
+                  <Panel title="结算" description="录入本次小时并当场入账（可多次，直至结清）" icon={<IconClipboard />}>
                     <div className="flex flex-wrap items-end gap-3">
                       <label className="block">
                         <span className={uiLabel}>本次小时</span>
@@ -419,12 +444,31 @@ export default function BountyOperatorWorkPage() {
                       <UiButton
                         variant="success"
                         disabled={busyId === `settle-${c.id}`}
-                        onClick={() => void onReturnSettle(w)}
+                        onClick={() => void onSettle(w)}
                       >
-                        {busyId === `settle-${c.id}` ? "结算中…" : "归还并结算"}
+                        {busyId === `settle-${c.id}` ? "结算中…" : "确认结算"}
                       </UiButton>
                     </div>
                   </Panel>
+                )}
+
+                {canReturn && (
+                  <div className="flex flex-wrap gap-3">
+                    <UiButton
+                      variant="secondary"
+                      disabled={busyId === `return-${c.id}`}
+                      onClick={() => void onReturn(w)}
+                    >
+                      {busyId === `return-${c.id}` ? "提交中…" : "确认归还设备"}
+                    </UiButton>
+                    <span className="text-xs text-slate-500 self-center">每接单仅可归还一次，不含结算</span>
+                  </div>
+                )}
+
+                {deviceReturned && !w.checkout && (
+                  <p className="text-xs text-emerald-800 bg-emerald-50 rounded-lg px-3 py-2">
+                    设备已于 {new Date(c.device_returned_at!).toLocaleString()} 归还；未完成部分可继续结算。
+                  </p>
                 )}
 
                 {w.logs.length > 0 && (

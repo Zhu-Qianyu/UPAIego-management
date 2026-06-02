@@ -80,6 +80,7 @@ export interface BountyClaim {
   closed_at: string | null;
   close_reason: string | null;
   created_at: string;
+  device_returned_at?: string | null;
   bounties?: Pick<
     Bounty,
     "title" | "hourly_rate" | "points_per_hour" | "completion_days" | "assigned_operator_id" | "group_id"
@@ -354,20 +355,20 @@ export async function checkoutDeviceForClaim(claimId: string, deviceId: string):
   return data as string;
 }
 
-export async function returnAndSettleSession(
-  assignmentId: string,
+export async function settleClaimSession(
+  claimId: string,
   sessionHours: number,
   note?: string
 ): Promise<ReturnSettleResult> {
-  const { data, error } = await supabase.rpc("return_and_settle_session", {
-    p_assignment_id: assignmentId,
+  const { data, error } = await supabase.rpc("settle_claim_session", {
+    p_claim_id: claimId,
     p_session_hours: sessionHours,
     p_note: note ?? null,
   });
   if (error) throw new Error(error.message);
   const row = (data ?? {}) as Record<string, unknown>;
   return {
-    assignment_id: String(row.assignment_id ?? assignmentId),
+    assignment_id: String(row.assignment_id ?? ""),
     hour_log_id: String(row.hour_log_id ?? ""),
     settlement_line_id: row.settlement_line_id ? String(row.settlement_line_id) : null,
     session_hours: Number(row.session_hours) || 0,
@@ -376,6 +377,25 @@ export async function returnAndSettleSession(
     claimed_hours: Number(row.claimed_hours) || 0,
     claim_completed: Boolean(row.claim_completed),
   };
+}
+
+export async function returnDeviceForClaim(claimId: string): Promise<void> {
+  const { error } = await supabase.rpc("return_device_for_claim", {
+    p_claim_id: claimId,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** @deprecated 已拆分为 settleClaimSession + returnDeviceForClaim */
+export async function returnAndSettleSession(
+  assignmentId: string,
+  sessionHours: number,
+  note?: string
+): Promise<ReturnSettleResult> {
+  void assignmentId;
+  void sessionHours;
+  void note;
+  throw new Error("请分别使用结算与归还");
 }
 
 export async function listAssignableDevicesForClaim(claimId: string): Promise<AssignableDevice[]> {
