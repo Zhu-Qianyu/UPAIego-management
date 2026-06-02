@@ -20,6 +20,7 @@ export interface GroupMember {
   user_id: string;
   membership_status: "pending" | "active" | "rejected";
   request_email: string | null;
+  request_phone: string | null;
   created_at: string;
   decided_at: string | null;
 }
@@ -108,6 +109,14 @@ export async function createWorkGroup(displayName: string, inviteCode?: string):
 export async function submitJoinRequest(invite: string): Promise<void> {
   const { error } = await supabase.rpc("submit_group_join_request", {
     p_invite_code: invite.trim(),
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** 注册完成后绑定群组号并进入待审批状态（非 admin） */
+export async function completeSignupGroupRequest(inviteCode: string): Promise<void> {
+  const { error } = await supabase.rpc("complete_signup_group_request", {
+    p_invite_code: inviteCode.trim(),
   });
   if (error) throw new Error(error.message);
 }

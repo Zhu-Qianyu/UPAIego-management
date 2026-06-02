@@ -42,7 +42,7 @@ export default function GroupStatusBanner() {
   if (show === "pending") {
     return (
       <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-        你的<strong>入群申请</strong>正在等待管理员审批，通过后可见本群话题与业务数据。
+        你的<strong>入群申请</strong>正在等待平台管理员审批（群组管理 → 待审批入群），通过后可见本群话题与业务数据。
       </div>
     );
   }

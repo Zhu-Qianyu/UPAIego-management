@@ -8,6 +8,7 @@ export interface Profile {
   display_name: string | null;
   real_name: string | null;
   phone: string | null;
+  contact_email: string | null;
   created_at: string;
 }
 
@@ -34,7 +35,7 @@ export function profileDisplayName(p: ProfileContact): string {
 export async function fetchProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, role, display_name, real_name, phone, created_at, updated_at")
+    .select("id, role, display_name, real_name, phone, contact_email, created_at, updated_at")
     .eq("id", userId)
     .maybeSingle();
   if (error) {
@@ -50,7 +51,7 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
         return null;
       }
       if (!fallback?.role || !isUserRole(fallback.role)) return null;
-      return { ...fallback, real_name: null, phone: null } as Profile;
+      return { ...fallback, real_name: null, phone: null, contact_email: null } as Profile;
     }
     console.error("fetchProfile", error);
     return null;
@@ -63,15 +64,16 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
 export async function ensureProfileRow(
   userId: string,
   role: UserRole,
-  contact?: { realName: string; phone: string }
+  contact?: { realName?: string; phone?: string; contactEmail?: string }
 ): Promise<string | null> {
   const row: Record<string, unknown> = {
     id: userId,
     role,
     updated_at: new Date().toISOString(),
   };
-  if (contact?.realName.trim()) row.real_name = contact.realName.trim();
-  if (contact?.phone.trim()) row.phone = contact.phone.trim();
+  if (contact?.realName?.trim()) row.real_name = contact.realName.trim();
+  if (contact?.phone?.trim()) row.phone = contact.phone.trim();
+  if (contact?.contactEmail?.trim()) row.contact_email = contact.contactEmail.trim();
   const { error } = await supabase.from("profiles").upsert(row, { onConflict: "id" });
   if (error) {
     console.error("ensureProfileRow", error);

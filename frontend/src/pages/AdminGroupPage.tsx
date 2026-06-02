@@ -8,6 +8,9 @@ import {
   type GroupMember,
   type WorkGroup,
 } from "../api/groups";
+import { fetchProfilesByIds, profileDisplayName } from "../api/profiles";
+import { ROLE_LABELS } from "../auth/roleLabels";
+import { formatPhoneDisplay } from "../utils/phoneAuth";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
@@ -26,6 +29,9 @@ export default function AdminGroupPage() {
 
   const [owned, setOwned] = useState<WorkGroup | null | undefined>(undefined);
   const [pending, setPending] = useState<GroupMember[]>([]);
+  const [pendingProfiles, setPendingProfiles] = useState<
+    Record<string, { name: string; phone: string; role: string }>
+  >({});
   const [name, setName] = useState("");
   const [customCode, setCustomCode] = useState("");
   const [loading, setLoading] = useState(true);
@@ -53,6 +59,21 @@ export default function AdminGroupPage() {
       if (g) {
         const p = await listPendingMembers(g.id);
         setPending(p);
+        if (p.length) {
+          const profs = await fetchProfilesByIds(p.map((m) => m.user_id));
+          const map: Record<string, { name: string; phone: string; role: string }> = {};
+          for (const row of p) {
+            const prof = profs.find((x) => x.id === row.user_id);
+            map[row.user_id] = {
+              name: prof ? profileDisplayName(prof) : row.user_id.slice(0, 8),
+              phone: formatPhoneDisplay(prof?.phone ?? row.request_phone),
+              role: prof?.role ? ROLE_LABELS[prof.role] : "—",
+            };
+          }
+          setPendingProfiles(map);
+        } else {
+          setPendingProfiles({});
+        }
         if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, owned: g, pending: p });
       } else {
         setPending([]);
@@ -154,10 +175,18 @@ export default function AdminGroupPage() {
             <p className="text-sm text-gray-400">暂无待处理申请</p>
           ) : (
             <ul className="divide-y divide-gray-100">
-              {pending.map((m) => (
+              {pending.map((m) => {
+                const info = pendingProfiles[m.user_id];
+                return (
                 <li key={m.id} className="py-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-mono text-gray-800">{m.request_email || m.user_id}</p>
+                    <p className="text-sm font-medium text-gray-900">{info?.name ?? m.user_id.slice(0, 8)}</p>
+                    <p className="text-xs text-gray-600 mt-0.5">
+                      {info?.role ?? "—"} · 手机 {info?.phone ?? "—"}
+                      {m.request_email && !m.request_email.endsWith("@upaiego.auth") && (
+                        <span> · {m.request_email}</span>
+                      )}
+                    </p>
                     <p className="text-xs text-gray-400">{new Date(m.created_at).toLocaleString()}</p>
                   </div>
                   <div className="flex gap-2">
@@ -179,7 +208,8 @@ export default function AdminGroupPage() {
                     </button>
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </div>

@@ -21,7 +21,9 @@ import AnnouncementsBanner from "./components/AnnouncementsBanner";
 import KpiBanner from "./components/KpiBanner";
 import GroupStatusBanner from "./components/GroupStatusBanner";
 import AccountDeleteModal from "./components/AccountDeleteModal";
+import PendingApprovalGate from "./components/PendingApprovalGate";
 import { SITE_DISPLAY_NAME } from "./branding";
+import { accountDisplayLabel } from "./utils/phoneAuth";
 
 const SIDEBAR_COLLAPSED_KEY = "upai:sidebar-collapsed";
 
@@ -373,7 +375,7 @@ export default function App() {
             title={`${ROLE_LABELS[profile.role]} — ${ROLE_DESCRIPTIONS[profile.role]}`}
           >
             <span className="hidden sm:inline truncate text-xs text-gray-600 max-w-[140px] md:max-w-[220px]">
-              {session?.user?.email}
+              {accountDisplayLabel(profile.phone, session?.user?.email, profile.contact_email)}
             </span>
             <span
               className="shrink-0 rounded-md bg-indigo-100 px-2 py-0.5 text-[11px] sm:text-xs font-semibold text-indigo-800 ring-1 ring-indigo-200/80"
@@ -395,6 +397,7 @@ export default function App() {
         />
 
         <main className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-8 flex-1">
+        <PendingApprovalGate>
         <GroupStatusBanner />
         <KpiBanner />
         <AnnouncementsBanner />
@@ -482,6 +485,7 @@ export default function App() {
           <Route path="/auth" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </PendingApprovalGate>
         </main>
       </div>
     </div>
