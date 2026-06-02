@@ -1,7 +1,7 @@
 /** 将 Supabase Auth 英文错误转为用户可读中文说明 */
 export function formatAuthError(message: string | undefined | null): string {
   const raw = (message ?? "").trim();
-  if (!raw) return "认证失败，请检查手机号和密码。";
+  if (!raw) return "认证失败，请检查账号和密码。";
 
   const lower = raw.toLowerCase();
 
@@ -18,7 +18,7 @@ export function formatAuthError(message: string | undefined | null): string {
   }
 
   if (lower.includes("invalid login credentials") || lower.includes("invalid credentials")) {
-    return "手机号或密码不正确。";
+    return "手机号/邮箱或密码不正确。";
   }
 
   if (lower.includes("email not confirmed")) {

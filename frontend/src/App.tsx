@@ -12,6 +12,7 @@ import BountyPage from "./pages/BountyPage";
 import BountyOperatorWorkPage from "./pages/BountyOperatorWorkPage";
 import GroupPage from "./pages/GroupPage";
 import AdminGroupPage from "./pages/AdminGroupPage";
+import ProfilePage from "./pages/ProfilePage";
 import { useAuth } from "./auth/AuthContext";
 import { supabase } from "./api/supabase";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "./auth/roleLabels";
@@ -374,9 +375,13 @@ export default function App() {
             className="flex min-w-0 flex-1 sm:flex-initial items-center justify-end gap-2"
             title={`${ROLE_LABELS[profile.role]} — ${ROLE_DESCRIPTIONS[profile.role]}`}
           >
-            <span className="hidden sm:inline truncate text-xs text-gray-600 max-w-[140px] md:max-w-[220px]">
-              {accountDisplayLabel(profile.phone, session?.user?.email, profile.contact_email)}
-            </span>
+            <Link
+              to="/profile"
+              className="truncate text-xs text-indigo-700 hover:text-indigo-900 max-w-[100px] sm:max-w-[140px] md:max-w-[220px] underline-offset-2 hover:underline"
+              title="编辑个人信息"
+            >
+              {accountDisplayLabel(profile.phone, session?.user?.email, profile.contact_email, profile.real_name)}
+            </Link>
             <span
               className="shrink-0 rounded-md bg-indigo-100 px-2 py-0.5 text-[11px] sm:text-xs font-semibold text-indigo-800 ring-1 ring-indigo-200/80"
               aria-label={`当前角色：${ROLE_LABELS[profile.role]}`}
@@ -471,6 +476,7 @@ export default function App() {
             }
           />
           <Route path="/group" element={<GroupPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route
             path="/group/manage"
             element={

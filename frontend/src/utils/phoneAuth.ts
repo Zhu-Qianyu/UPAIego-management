@@ -31,10 +31,33 @@ export function isSyntheticAuthEmail(email: string | null | undefined): boolean 
 export function accountDisplayLabel(
   phone: string | null | undefined,
   email: string | null | undefined,
-  contactEmail?: string | null
+  contactEmail?: string | null,
+  realName?: string | null
 ): string {
+  if (realName?.trim()) return realName.trim();
   if (contactEmail?.trim()) return contactEmail.trim();
   if (phone?.trim()) return formatPhoneDisplay(phone);
   if (email && !isSyntheticAuthEmail(email)) return email;
-  return "—";
+  return "个人信息";
+}
+
+/** 登录：手机号（新账号）或邮箱（含历史邮箱注册账号） */
+export function resolveLoginAuthEmail(loginId: string): string {
+  const raw = loginId.trim();
+  if (!raw) throw new Error("请输入手机号或邮箱");
+  if (raw.includes("@")) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) throw new Error("邮箱格式不正确");
+    return raw.toLowerCase();
+  }
+  if (!isValidChinaMobile(raw)) throw new Error("请输入有效的手机号或邮箱");
+  return phoneToAuthEmail(normalizePhone(raw));
+}
+
+export function describeAuthLoginEmail(email: string | null | undefined): string {
+  if (!email) return "—";
+  if (isSyntheticAuthEmail(email)) {
+    const digits = email.replace(/^p/, "").replace(/@upaiego\.auth$/, "");
+    return `手机号 ${formatPhoneDisplay(digits)}（系统登录标识）`;
+  }
+  return email;
 }

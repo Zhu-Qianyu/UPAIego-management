@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import type { UserRole } from "../types/roles";
 import { isUserRole } from "../types/roles";
+import { isValidChinaMobile, normalizePhone } from "../utils/phoneAuth";
 
 export interface Profile {
   id: string;
@@ -80,4 +81,46 @@ export async function ensureProfileRow(
     return error.message;
   }
   return null;
+}
+
+export interface ProfileUpdateInput {
+  realName?: string;
+  displayName?: string;
+  phone?: string;
+  contactEmail?: string;
+}
+
+export async function updateMyProfile(input: ProfileUpdateInput): Promise<void> {
+  const u = (await supabase.auth.getUser()).data.user;
+  if (!u) throw new Error("未登录");
+  const payload: Record<string, string | null> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (input.realName !== undefined) payload.real_name = input.realName.trim() || null;
+  if (input.displayName !== undefined) payload.display_name = input.displayName.trim() || null;
+  if (input.phone !== undefined) {
+    const p = input.phone.trim();
+    if (p && !isValidChinaMobile(p)) throw new Error("手机号须为 11 位中国大陆号码");
+    payload.phone = p ? normalizePhone(p) : null;
+  }
+  if (input.contactEmail !== undefined) {
+    const e = input.contactEmail.trim();
+    if (e && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) throw new Error("联系邮箱格式不正确");
+    payload.contact_email = e || null;
+  }
+  const { error } = await supabase.from("profiles").update(payload).eq("id", u.id);
+  if (error) throw new Error(error.message);
+}
+
+export async function updateMyAuthEmail(newEmail: string): Promise<void> {
+  const email = newEmail.trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("登录邮箱格式不正确");
+  const { error } = await supabase.auth.updateUser({ email });
+  if (error) throw new Error(error.message);
+}
+
+export async function updateMyPassword(newPassword: string): Promise<void> {
+  if (newPassword.length < 6) throw new Error("密码至少 6 位");
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw new Error(error.message);
 }

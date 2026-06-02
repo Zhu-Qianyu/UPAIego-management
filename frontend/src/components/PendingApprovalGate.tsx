@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { supabase } from "../api/supabase";
 import { fetchActiveGroupId, fetchMyMemberships, completeSignupGroupRequest } from "../api/groups";
 import { useAuth } from "../auth/AuthContext";
@@ -9,6 +10,8 @@ import Spinner from "./Spinner";
 /** 非管理员且未入群：待审批 / 无群组 / 被拒绝时拦截 */
 export default function PendingApprovalGate({ children }: { children: React.ReactNode }) {
   const { profile, refreshProfile } = useAuth();
+  const location = useLocation();
+  const profileOnly = location.pathname === "/profile";
   const [checking, setChecking] = useState(true);
   const [reapplyCode, setReapplyCode] = useState("");
   const [reapplyBusy, setReapplyBusy] = useState(false);
@@ -62,7 +65,7 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
     );
   }
 
-  if (blocked === "none") return <>{children}</>;
+  if (blocked === "none" || profileOnly) return <>{children}</>;
 
   async function logout() {
     await supabase.auth.signOut();

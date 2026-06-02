@@ -6,7 +6,7 @@ import { SITE_DISPLAY_NAME, SITE_SUBTITLE } from "../branding";
 import { ensureProfileRow } from "../api/profiles";
 import { validateInviteCode } from "../api/groups";
 import { formatAuthError } from "../utils/authErrors";
-import { isValidChinaMobile, normalizePhone, phoneToAuthEmail } from "../utils/phoneAuth";
+import { isValidChinaMobile, normalizePhone, phoneToAuthEmail, resolveLoginAuthEmail } from "../utils/phoneAuth";
 
 type Mode = "login" | "register";
 
@@ -14,7 +14,8 @@ const NON_ADMIN_ROLES: UserRole[] = ["device_operator", "scene_operator", "colle
 
 export default function AuthPage() {
   const [mode, setMode] = useState<Mode>("login");
-  const [phone, setPhone] = useState("");
+  const [loginId, setLoginId] = useState("");
+  const [registerPhone, setRegisterPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [registerRole, setRegisterRole] = useState<UserRole>("device_operator");
@@ -58,15 +59,14 @@ export default function AuthPage() {
     setLoading(true);
 
     try {
-      const tel = normalizePhone(phone);
-      if (!isValidChinaMobile(phone)) {
-        setError("请输入有效的 11 位中国大陆手机号");
-        return;
-      }
-
-      const authEmail = phoneToAuthEmail(tel);
-
       if (mode === "register") {
+        const tel = normalizePhone(registerPhone);
+        if (!isValidChinaMobile(registerPhone)) {
+          setError("请输入有效的 11 位中国大陆手机号");
+          return;
+        }
+
+        const authEmail = phoneToAuthEmail(tel);
         const name = realName.trim();
         const contactEmail = email.trim();
         const code = inviteCode.trim().toUpperCase();
@@ -114,10 +114,12 @@ export default function AuthPage() {
 
         setMessage("注册已提交。若无法自动登录，请稍后用手机号和密码登录。");
         setMode("login");
+        setLoginId(registerPhone);
         setPassword("");
         return;
       }
 
+      const authEmail = resolveLoginAuthEmail(loginId);
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: authEmail,
         password,
@@ -154,7 +156,7 @@ export default function AuthPage() {
               <p className="text-sm font-medium text-gray-600 mb-1">{SITE_SUBTITLE}</p>
               <p className="text-sm text-gray-500 mb-6">
                 {mode === "login"
-                  ? "使用手机号与密码登录。"
+                  ? "使用手机号或邮箱与密码登录（老账号若无手机号请用注册邮箱）。"
                   : "手机号注册；须填写有效群组号（任意管理员发放的均可），填哪个就加入哪个工作群，由该群管理员审批。"}
               </p>
 
@@ -244,18 +246,33 @@ export default function AuthPage() {
                   </div>
                 )}
 
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">手机号</label>
-                  <input
-                    type="tel"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="11 位手机号"
-                    autoComplete="tel"
-                  />
-                </div>
+                {mode === "login" ? (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">手机号或邮箱</label>
+                    <input
+                      type="text"
+                      required
+                      value={loginId}
+                      onChange={(e) => setLoginId(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="11 位手机号或注册邮箱"
+                      autoComplete="username"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">手机号</label>
+                    <input
+                      type="tel"
+                      required
+                      value={registerPhone}
+                      onChange={(e) => setRegisterPhone(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="11 位手机号"
+                      autoComplete="tel"
+                    />
+                  </div>
+                )}
 
                 {mode === "register" && (
                   <>
