@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export const uiInput =
   "mt-1.5 w-full rounded-xl border border-slate-200/90 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-400";
@@ -372,6 +372,87 @@ export function CompactListRow({
       </div>
       {actions ? <div className="mt-2 flex flex-wrap gap-2">{actions}</div> : null}
     </li>
+  );
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel = "确认",
+  cancelLabel = "取消",
+  variant = "primary",
+  busy = false,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  message: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: "primary" | "success" | "danger";
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape" || busy) return;
+      onCancel();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, busy, onCancel]);
+
+  if (!open) return null;
+
+  const confirmClass =
+    variant === "success"
+      ? "bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
+      : variant === "danger"
+        ? "bg-red-600 hover:bg-red-700 focus:ring-red-500"
+        : "bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500";
+
+  return (
+    <div
+      className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-dialog-title"
+      onClick={() => {
+        if (!busy) onCancel();
+      }}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200 p-5 sm:p-6 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="confirm-dialog-title" className="text-lg font-semibold text-slate-900">
+          {title}
+        </h2>
+        <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{message}</p>
+        <div className="flex flex-col-reverse sm:flex-row gap-3 pt-1">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onCancel}
+            className="flex-1 py-3 sm:py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 touch-manipulation"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onConfirm}
+            className={`flex-1 py-3 sm:py-2.5 rounded-xl text-white text-sm font-medium disabled:opacity-50 touch-manipulation focus:outline-none focus:ring-2 focus:ring-offset-1 ${confirmClass}`}
+          >
+            {busy ? "处理中…" : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -36,6 +36,7 @@ import {
   CardListItem,
   CompactList,
   CompactListRow,
+  ConfirmDialog,
   EmptyState,
   ListViewSection,
   listCardInnerClass,
@@ -59,6 +60,14 @@ type ClaimWorkbench = {
   logs: DeviceDataHourLog[];
 };
 
+type OperatorConfirm = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  variant: "success" | "primary" | "danger";
+  action: () => Promise<void>;
+};
+
 export default function BountyOperatorWorkPage() {
   const [groupId, setGroupId] = useState<string | null>(null);
   const [offlineDevices, setOfflineDevices] = useState<ManualTrackedDevice[]>([]);
@@ -73,6 +82,8 @@ export default function BountyOperatorWorkPage() {
   const [checkoutDeviceByClaim, setCheckoutDeviceByClaim] = useState<Record<string, string>>({});
   const [sessionHoursByClaim, setSessionHoursByClaim] = useState<Record<string, string>>({});
   const [sessionNoteByClaim, setSessionNoteByClaim] = useState<Record<string, string>>({});
+  const [operatorConfirm, setOperatorConfirm] = useState<OperatorConfirm | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const deviceLabelById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -178,7 +189,21 @@ export default function BountyOperatorWorkPage() {
     }
   }
 
-  async function onSettle(w: ClaimWorkbench) {
+  async function executeSettle(w: ClaimWorkbench, hours: number) {
+    setBusyId(`settle-${w.claim.id}`);
+    setErr("");
+    try {
+      await settleClaimSession(w.claim.id, hours, sessionNoteByClaim[w.claim.id]?.trim() || undefined);
+      await load();
+    } catch (e: unknown) {
+      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "结算失败";
+      setErr(msg);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function onSettle(w: ClaimWorkbench) {
     const raw = sessionHoursByClaim[w.claim.id] ?? "1";
     const hours = parseFloat(raw);
     const remaining = Math.max(w.claim.claimed_hours - Number(w.claim.executed_hours), 0);
@@ -197,30 +222,16 @@ export default function BountyOperatorWorkPage() {
     const rate = w.claim.bounties?.hourly_rate ?? 0;
     const amount = estimateSettlementAmount(hours, rate);
     const cashPart = rate > 0 ? `，入账 ${formatCny(amount)}` : "";
-    if (!window.confirm(`结算：本次 ${hours} h${cashPart}。确认？`)) return;
-    setBusyId(`settle-${w.claim.id}`);
-    setErr("");
-    try {
-      await settleClaimSession(w.claim.id, hours, sessionNoteByClaim[w.claim.id]?.trim() || undefined);
-      await load();
-    } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "结算失败";
-      setErr(msg);
-    } finally {
-      setBusyId(null);
-    }
+    setOperatorConfirm({
+      title: "确认结算",
+      message: `结算：本次 ${hours} h${cashPart}。确认？`,
+      confirmLabel: "确认结算",
+      variant: "success",
+      action: () => executeSettle(w, hours),
+    });
   }
 
-  async function onReturn(w: ClaimWorkbench) {
-    if (!w.checkout) {
-      setErr("当前无借出设备");
-      return;
-    }
-    if (w.claim.device_returned_at) {
-      setErr("该接单已归还过设备");
-      return;
-    }
-    if (!window.confirm("确认执行员已归还设备？设备将回到可分配库（不含本次结算）。")) return;
+  async function executeReturn(w: ClaimWorkbench) {
     setBusyId(`return-${w.claim.id}`);
     setErr("");
     try {
@@ -231,6 +242,36 @@ export default function BountyOperatorWorkPage() {
       setErr(msg);
     } finally {
       setBusyId(null);
+    }
+  }
+
+  function onReturn(w: ClaimWorkbench) {
+    if (!w.checkout) {
+      setErr("当前无借出设备");
+      return;
+    }
+    if (w.claim.device_returned_at) {
+      setErr("该接单已归还过设备");
+      return;
+    }
+    setOperatorConfirm({
+      title: "确认归还设备",
+      message: "确认执行员已归还设备？设备将回到可分配库（不含本次结算）。",
+      confirmLabel: "确认归还",
+      variant: "primary",
+      action: () => executeReturn(w),
+    });
+  }
+
+  async function handleOperatorConfirm() {
+    if (!operatorConfirm || confirmBusy) return;
+    const action = operatorConfirm.action;
+    setConfirmBusy(true);
+    try {
+      await action();
+      setOperatorConfirm(null);
+    } finally {
+      setConfirmBusy(false);
     }
   }
 
@@ -478,7 +519,7 @@ export default function BountyOperatorWorkPage() {
                       <UiButton
                         variant="success"
                         disabled={busyId === `settle-${c.id}`}
-                        onClick={() => void onSettle(w)}
+                        onClick={() => onSettle(w)}
                       >
                         {busyId === `settle-${c.id}` ? "结算中…" : "确认结算"}
                       </UiButton>
@@ -491,7 +532,7 @@ export default function BountyOperatorWorkPage() {
                     <UiButton
                       variant="secondary"
                       disabled={busyId === `return-${c.id}`}
-                      onClick={() => void onReturn(w)}
+                      onClick={() => onReturn(w)}
                     >
                       {busyId === `return-${c.id}` ? "提交中…" : "确认归还设备"}
                     </UiButton>
@@ -539,6 +580,18 @@ export default function BountyOperatorWorkPage() {
         </CardList>
         </ListViewSection>
       )}
+      <ConfirmDialog
+        open={operatorConfirm !== null}
+        title={operatorConfirm?.title ?? ""}
+        message={operatorConfirm?.message ?? ""}
+        confirmLabel={operatorConfirm?.confirmLabel}
+        variant={operatorConfirm?.variant ?? "primary"}
+        busy={confirmBusy}
+        onConfirm={() => void handleOperatorConfirm()}
+        onCancel={() => {
+          if (!confirmBusy) setOperatorConfirm(null);
+        }}
+      />
     </PageShell>
   );
 }
