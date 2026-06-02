@@ -185,12 +185,14 @@ export default function AuthPage() {
                 {mode === "register" && (
                   <div>
                     <span className="block text-xs font-medium text-gray-500 mb-2">注册为</span>
-                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
                         <label
                           key={r}
-                          className={`flex gap-3 rounded-xl border p-3 cursor-pointer text-sm transition-colors ${
-                            registerRole === r ? "border-indigo-500 bg-indigo-50" : "border-gray-200 hover:border-gray-300"
+                          className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border px-2 py-3 text-center text-sm transition-colors ${
+                            registerRole === r
+                              ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200"
+                              : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                           }`}
                         >
                           <input
@@ -198,18 +200,16 @@ export default function AuthPage() {
                             name="role"
                             checked={registerRole === r}
                             onChange={() => setRegisterRole(r)}
-                            className="mt-0.5"
+                            className="sr-only"
                           />
-                          <span>
-                            <span className="font-medium text-gray-900">{ROLE_LABELS[r]}</span>
-                            <span className="block text-xs text-gray-500 mt-0.5">{ROLE_DESCRIPTIONS[r]}</span>
-                            {r !== "admin" && (
-                              <span className="block text-xs text-amber-700 mt-0.5">注册必填群组号，归属对应管理员工作群</span>
-                            )}
-                          </span>
+                          <span className="font-medium text-gray-900 leading-snug">{ROLE_LABELS[r]}</span>
                         </label>
                       ))}
                     </div>
+                    <p className="mt-2 text-xs text-gray-500 leading-relaxed">{ROLE_DESCRIPTIONS[registerRole]}</p>
+                    {registerRole !== "admin" && (
+                      <p className="mt-1 text-xs text-amber-700">注册必填群组号，归属对应管理员工作群</p>
+                    )}
                   </div>
                 )}
 
