@@ -6,13 +6,14 @@ import { ROLE_LABELS } from "../auth/roleLabels";
 import { formatPhoneDisplay } from "../utils/phoneAuth";
 import Spinner from "./Spinner";
 
-/** 非管理员且未入群：待审批时仅显示等待页 */
+/** 非管理员且未入群：待审批 / 无群组 / 被拒绝时拦截 */
 export default function PendingApprovalGate({ children }: { children: React.ReactNode }) {
   const { profile, refreshProfile } = useAuth();
+  const [checking, setChecking] = useState(true);
   const [reapplyCode, setReapplyCode] = useState("");
   const [reapplyBusy, setReapplyBusy] = useState(false);
   const [reapplyErr, setReapplyErr] = useState("");
-  const [blocked, setBlocked] = useState<"none" | "pending" | "rejected">("none");
+  const [blocked, setBlocked] = useState<"none" | "pending" | "rejected" | "no_group">("none");
 
   const check = useCallback(async () => {
     if (!profile || profile.role === "admin") {
@@ -32,6 +33,10 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
       }
       if (rows.length > 0 && rows.every((r) => r.membership_status === "rejected")) {
         setBlocked("rejected");
+        return;
+      }
+      if (rows.length === 0) {
+        setBlocked("no_group");
         return;
       }
       setBlocked("none");
@@ -59,6 +64,8 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
     await supabase.auth.signOut();
   }
 
+  const showReapply = blocked === "rejected" || blocked === "no_group";
+
   return (
     <div className="max-w-lg mx-auto px-4 py-16">
       <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-8 shadow-sm text-center space-y-4">
@@ -66,7 +73,11 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
           {blocked === "pending" ? "⏳" : "✕"}
         </div>
         <h1 className="text-xl font-semibold text-gray-900">
-          {blocked === "pending" ? "等待管理员审批" : "入群申请未通过"}
+          {blocked === "pending"
+            ? "等待管理员审批"
+            : blocked === "no_group"
+              ? "缺少群组绑定"
+              : "入群申请未通过"}
         </h1>
         <p className="text-sm text-gray-600 leading-relaxed">
           {blocked === "pending" ? (
@@ -74,16 +85,20 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
               您的账号（{ROLE_LABELS[profile!.role]} · 手机 {formatPhoneDisplay(profile!.phone)}）已提交注册。
               平台管理员在「群组管理」中审批通过后即可使用系统。
             </>
+          ) : blocked === "no_group" ? (
+            <>
+              当前账号未关联任何群组。非管理员注册时必须填写群组号；请退出后重新注册，或下方补填群组号提交申请。
+            </>
           ) : (
             <>您的入群申请已被拒绝。请填写新的群组号重新提交，或联系管理员。</>
           )}
         </p>
-        {blocked === "rejected" && (
+        {showReapply && (
           <div className="flex flex-col gap-2 text-left max-w-sm mx-auto pt-2">
             <input
               value={reapplyCode}
               onChange={(e) => setReapplyCode(e.target.value.toUpperCase())}
-              placeholder="群组号"
+              placeholder="群组号（必填）"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
             />
             {reapplyErr && <p className="text-xs text-red-600">{reapplyErr}</p>}
@@ -110,7 +125,7 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
               }}
               className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium disabled:opacity-50"
             >
-              {reapplyBusy ? "提交中…" : "重新提交入群申请"}
+              {reapplyBusy ? "提交中…" : "提交群组号申请"}
             </button>
           </div>
         )}

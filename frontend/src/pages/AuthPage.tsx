@@ -4,7 +4,7 @@ import type { UserRole } from "../types/roles";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "../auth/roleLabels";
 import { SITE_DISPLAY_NAME, SITE_SUBTITLE } from "../branding";
 import { ensureProfileRow } from "../api/profiles";
-import { completeSignupGroupRequest } from "../api/groups";
+import { validateInviteCode } from "../api/groups";
 import { formatAuthError } from "../utils/authErrors";
 import { isValidChinaMobile, normalizePhone, phoneToAuthEmail } from "../utils/phoneAuth";
 
@@ -25,6 +25,8 @@ export default function AuthPage() {
   const [message, setMessage] = useState("");
 
   const needsGroupCode = mode === "register" && registerRole !== "admin";
+  const groupCodeMissing = needsGroupCode && !inviteCode.trim();
+  const canSubmitRegister = mode === "login" || !groupCodeMissing;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,9 +48,12 @@ export default function AuthPage() {
         const contactEmail = email.trim();
         const code = inviteCode.trim().toUpperCase();
 
-        if (registerRole !== "admin" && !code) {
-          setError("设备运维员、场景操作员、数采执行员注册时必须填写群组号（入群代码）");
-          return;
+        if (registerRole !== "admin") {
+          if (!code) {
+            setError(`${NON_ADMIN_ROLES.map((r) => ROLE_LABELS[r]).join("、")}注册时必须填写群组号，否则无法注册`);
+            return;
+          }
+          await validateInviteCode(code);
         }
 
         const meta: Record<string, string> = {
@@ -57,6 +62,7 @@ export default function AuthPage() {
         };
         if (name) meta.real_name = name;
         if (contactEmail) meta.contact_email = contactEmail;
+        if (registerRole !== "admin") meta.invite_code = code;
 
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: authEmail,
@@ -71,10 +77,6 @@ export default function AuthPage() {
             phone: tel,
             contactEmail: contactEmail || undefined,
           });
-        }
-
-        if (data.session && registerRole !== "admin") {
-          await completeSignupGroupRequest(code);
         }
 
         if (data.session) {
@@ -130,7 +132,7 @@ export default function AuthPage() {
               <p className="text-sm text-gray-500 mb-6">
                 {mode === "login"
                   ? "使用手机号与密码登录。"
-                  : "手机号注册；非管理员角色需填写群组号，注册后由平台管理员审批。"}
+                  : "手机号注册；设备运维/场景/执行员必须填写有效群组号，否则无法完成注册。"}
               </p>
 
               <div className="grid grid-cols-2 gap-2 bg-gray-100/90 rounded-lg p-1 mb-5">
@@ -176,10 +178,32 @@ export default function AuthPage() {
                           <span>
                             <span className="font-medium text-gray-900">{ROLE_LABELS[r]}</span>
                             <span className="block text-xs text-gray-500 mt-0.5">{ROLE_DESCRIPTIONS[r]}</span>
+                            {r !== "admin" && (
+                              <span className="block text-xs text-amber-700 mt-0.5">注册需填写群组号</span>
+                            )}
                           </span>
                         </label>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {needsGroupCode && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 space-y-2">
+                    <label className="block text-xs font-semibold text-amber-900">
+                      群组号（入群代码）<span className="text-red-600">* 必填</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={inviteCode}
+                      onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                      className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      placeholder="向平台管理员索取"
+                    />
+                    <p className="text-xs text-amber-800">
+                      未填写或群组号错误将无法注册；提交后需管理员在「群组管理」中审批。
+                    </p>
                   </div>
                 )}
 
@@ -219,24 +243,6 @@ export default function AuthPage() {
                         autoComplete="email"
                       />
                     </div>
-                    {needsGroupCode && (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">
-                          群组号（入群代码）<span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={inviteCode}
-                          onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          placeholder="向管理员索取"
-                        />
-                        <p className="mt-1 text-xs text-gray-500">
-                          {NON_ADMIN_ROLES.map((r) => ROLE_LABELS[r]).join("、")}注册必填，提交后需管理员审批。
-                        </p>
-                      </div>
-                    )}
                   </>
                 )}
 
@@ -259,7 +265,7 @@ export default function AuthPage() {
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !canSubmitRegister}
                   className="w-full px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                 >
                   {loading ? "请稍候..." : mode === "login" ? "登录" : "提交注册"}

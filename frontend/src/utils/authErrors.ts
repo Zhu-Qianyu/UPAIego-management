@@ -29,7 +29,7 @@ export function formatAuthError(message: string | undefined | null): string {
     return "当前环境已关闭自助注册，请联系管理员开通账号。";
   }
 
-  if (lower.includes("invalid invite") || lower.includes("群组") || lower.includes("入群")) {
+  if (lower.includes("invalid invite") || lower.includes("群组") || lower.includes("入群") || lower.includes("invite_code")) {
     return raw;
   }
 

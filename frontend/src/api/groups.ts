@@ -113,7 +113,16 @@ export async function submitJoinRequest(invite: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-/** 注册完成后绑定群组号并进入待审批状态（非 admin） */
+/** 注册前校验群组号是否存在（无需登录） */
+export async function validateInviteCode(inviteCode: string): Promise<void> {
+  const code = inviteCode.trim();
+  if (!code) throw new Error("请填写群组号（入群代码）");
+  const { data, error } = await supabase.rpc("validate_invite_code", { p_invite_code: code });
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("群组号无效，请向管理员确认");
+}
+
+/** 补提交入群申请（注册 trigger 未写入或重新申请时使用） */
 export async function completeSignupGroupRequest(inviteCode: string): Promise<void> {
   const { error } = await supabase.rpc("complete_signup_group_request", {
     p_invite_code: inviteCode.trim(),
