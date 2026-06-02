@@ -36,6 +36,38 @@ export interface Bounty {
   closed_at: string | null;
 }
 
+export interface BountyAllowedPartyDemand {
+  party_demand_id: string;
+  client_company: string | null;
+  title: string | null;
+  device_type: string | null;
+}
+
+export interface AssignableDevice {
+  device_id: string;
+  kind: "online" | "offline";
+  label: string;
+  device_type: string | null;
+}
+
+export interface ClaimCheckout {
+  id: string;
+  device_id: string;
+  executor_id: string;
+  created_at: string;
+}
+
+export interface ReturnSettleResult {
+  assignment_id: string;
+  hour_log_id: string;
+  settlement_line_id: string | null;
+  session_hours: number;
+  amount: number;
+  executed_hours: number;
+  claimed_hours: number;
+  claim_completed: boolean;
+}
+
 export interface BountyClaim {
   id: string;
   bounty_id: string;
@@ -61,6 +93,7 @@ export interface DeviceExecutorAssignment {
   group_id: string;
   device_id: string;
   executor_id: string;
+  bounty_claim_id: string | null;
   assigned_by: string;
   status: "active" | "revoked";
   created_at: string;
@@ -72,6 +105,7 @@ export interface DeviceDataHourLog {
   group_id: string;
   device_id: string;
   bounty_claim_id: string | null;
+  assignment_id: string | null;
   registered_hours: number;
   registered_by: string;
   note: string | null;
@@ -270,7 +304,11 @@ export async function publishBounty(input: {
   description?: string;
   pointsPerHour?: number;
   assignedOperatorId: string;
+  partyDemandIds: string[];
 }): Promise<string> {
+  if (!input.partyDemandIds.length) {
+    throw new Error("请至少选择一种可用设备类型（甲方业务）");
+  }
   const { data, error } = await supabase.rpc("publish_bounty", {
     p_group_id: input.groupId,
     p_title: input.title,
@@ -280,9 +318,112 @@ export async function publishBounty(input: {
     p_description: input.description ?? null,
     p_points_per_hour: input.pointsPerHour ?? 1,
     p_assigned_operator_id: input.assignedOperatorId,
+    p_party_demand_ids: input.partyDemandIds,
   });
   if (error) throw new Error(error.message);
   return data as string;
+}
+
+export async function listBountyAllowedPartyDemands(bountyId: string): Promise<BountyAllowedPartyDemand[]> {
+  const { data, error } = await supabase
+    .from("bounty_allowed_party_demands")
+    .select("party_demand_id, party_demands(client_company, title, device_type)")
+    .eq("bounty_id", bountyId);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => {
+    const pd = row.party_demands as
+      | { client_company: string | null; title: string | null; device_type: string | null }
+      | { client_company: string | null; title: string | null; device_type: string | null }[]
+      | null;
+    const p = Array.isArray(pd) ? pd[0] : pd;
+    return {
+      party_demand_id: row.party_demand_id as string,
+      client_company: p?.client_company ?? null,
+      title: p?.title ?? null,
+      device_type: p?.device_type ?? null,
+    };
+  });
+}
+
+export async function checkoutDeviceForClaim(claimId: string, deviceId: string): Promise<string> {
+  const { data, error } = await supabase.rpc("checkout_device_for_claim", {
+    p_claim_id: claimId,
+    p_device_id: deviceId,
+  });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+export async function returnAndSettleSession(
+  assignmentId: string,
+  sessionHours: number,
+  note?: string
+): Promise<ReturnSettleResult> {
+  const { data, error } = await supabase.rpc("return_and_settle_session", {
+    p_assignment_id: assignmentId,
+    p_session_hours: sessionHours,
+    p_note: note ?? null,
+  });
+  if (error) throw new Error(error.message);
+  const row = (data ?? {}) as Record<string, unknown>;
+  return {
+    assignment_id: String(row.assignment_id ?? assignmentId),
+    hour_log_id: String(row.hour_log_id ?? ""),
+    settlement_line_id: row.settlement_line_id ? String(row.settlement_line_id) : null,
+    session_hours: Number(row.session_hours) || 0,
+    amount: Number(row.amount) || 0,
+    executed_hours: Number(row.executed_hours) || 0,
+    claimed_hours: Number(row.claimed_hours) || 0,
+    claim_completed: Boolean(row.claim_completed),
+  };
+}
+
+export async function listAssignableDevicesForClaim(claimId: string): Promise<AssignableDevice[]> {
+  const { data, error } = await supabase.rpc("list_assignable_devices_for_claim", {
+    p_claim_id: claimId,
+  });
+  if (error) throw new Error(error.message);
+  if (!Array.isArray(data)) return [];
+  return data as AssignableDevice[];
+}
+
+export async function getActiveCheckoutForClaim(claimId: string): Promise<ClaimCheckout | null> {
+  const { data, error } = await supabase.rpc("get_active_checkout_for_claim", {
+    p_claim_id: claimId,
+  });
+  if (error) throw new Error(error.message);
+  if (!data || typeof data !== "object") return null;
+  const row = data as Record<string, unknown>;
+  return {
+    id: String(row.id),
+    device_id: String(row.device_id),
+    executor_id: String(row.executor_id),
+    created_at: String(row.created_at),
+  };
+}
+
+export async function listMyActiveCheckouts(): Promise<DeviceExecutorAssignment[]> {
+  const u = (await supabase.auth.getUser()).data.user;
+  if (!u) return [];
+  const { data, error } = await supabase
+    .from("device_executor_assignments")
+    .select("*")
+    .eq("executor_id", u.id)
+    .eq("status", "active")
+    .not("bounty_claim_id", "is", null)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as DeviceExecutorAssignment[];
+}
+
+export async function listClaimHourLogs(claimId: string): Promise<DeviceDataHourLog[]> {
+  const { data, error } = await supabase
+    .from("device_data_hour_logs")
+    .select("*")
+    .eq("bounty_claim_id", claimId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as DeviceDataHourLog[];
 }
 
 export async function closeBounty(bountyId: string): Promise<void> {

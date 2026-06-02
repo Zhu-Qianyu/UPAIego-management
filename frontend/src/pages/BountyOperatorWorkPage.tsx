@@ -1,41 +1,43 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchActiveGroupId, listGroupProfilesByRole } from "../api/groups";
-import { listDevices, type Device } from "../api/client";
-import { fetchProfilesByIds, profileDisplayName, type ProfileContact } from "../api/profiles";
+import { fetchActiveGroupId } from "../api/groups";
 import {
-  assignDeviceToExecutor,
+  formatManualTrackedDeviceLabel,
+  listManualTrackedDevices,
+  type ManualTrackedDevice,
+} from "../api/operations";
+import { listDevices, type Device } from "../api/client";
+import { fetchProfilesByIds, profileDisplayName } from "../api/profiles";
+import {
+  checkoutDeviceForClaim,
   claimStatusLabel,
   formatDueCountdown,
+  getActiveCheckoutForClaim,
   listActiveClaimsForGroup,
-  listMyDeviceAssignments,
-  listMyDeviceHourLogs,
+  listAssignableDevicesForClaim,
+  listClaimHourLogs,
   operatorRejectBountyClaim,
-  registerDeviceDataHours,
-  revokeDeviceAssignment,
-  sumRegisteredHoursForClaim,
+  returnAndSettleSession,
+  type AssignableDevice,
   type BountyClaim,
+  type ClaimCheckout,
   type DeviceDataHourLog,
-  type DeviceExecutorAssignment,
 } from "../api/bounties";
-import {
-  formatCny,
-  previewSettlementForClaim,
-  settleBountyClaim,
-  type SettlementPreview,
-} from "../api/settlement";
+import { estimateSettlementAmount, formatCny } from "../api/settlement";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
+import {
+  isOfflineDeviceAssignmentId,
+  toOfflineDeviceAssignmentId,
+} from "../utils/deviceAssignmentId";
 import {
   Alert,
   EmptyState,
   IconClipboard,
-  IconClock,
   IconDevices,
   IconWrench,
   PageHero,
   PageShell,
   Panel,
-  SegmentedTabs,
   StatGrid,
   UiButton,
   uiInput,
@@ -43,79 +45,100 @@ import {
   uiSelect,
 } from "../components/ui/PageLayout";
 
-type Tab = "assign" | "hours" | "audit";
+type ClaimWorkbench = {
+  claim: BountyClaim;
+  checkout: ClaimCheckout | null;
+  assignable: AssignableDevice[];
+  logs: DeviceDataHourLog[];
+};
 
 export default function BountyOperatorWorkPage() {
-  const [tab, setTab] = useState<Tab>("audit");
   const [groupId, setGroupId] = useState<string | null>(null);
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [executors, setExecutors] = useState<ProfileContact[]>([]);
-  const [assignments, setAssignments] = useState<DeviceExecutorAssignment[]>([]);
-  const [hourLogs, setHourLogs] = useState<DeviceDataHourLog[]>([]);
-  const [claims, setClaims] = useState<BountyClaim[]>([]);
+  const [offlineDevices, setOfflineDevices] = useState<ManualTrackedDevice[]>([]);
+  const [onlineDevices, setOnlineDevices] = useState<Device[]>([]);
+  const [workbenches, setWorkbenches] = useState<ClaimWorkbench[]>([]);
   const [executorNames, setExecutorNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const [assignDeviceId, setAssignDeviceId] = useState("");
-  const [assignExecutorId, setAssignExecutorId] = useState("");
+  const [checkoutDeviceByClaim, setCheckoutDeviceByClaim] = useState<Record<string, string>>({});
+  const [sessionHoursByClaim, setSessionHoursByClaim] = useState<Record<string, string>>({});
+  const [sessionNoteByClaim, setSessionNoteByClaim] = useState<Record<string, string>>({});
 
-  const [hourDeviceId, setHourDeviceId] = useState("");
-  const [hourAmount, setHourAmount] = useState("1");
-  const [hourClaimId, setHourClaimId] = useState("");
-  const [hourNote, setHourNote] = useState("");
-
-  const [confirmHours, setConfirmHours] = useState<Record<string, string>>({});
-  const [registeredByClaim, setRegisteredByClaim] = useState<Record<string, number>>({});
-  const [settlementPreview, setSettlementPreview] = useState<Record<string, SettlementPreview>>({});
+  const deviceLabelById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const d of onlineDevices) {
+      map[d.device_id] = d.readable_name || d.device_id;
+    }
+    for (const m of offlineDevices) {
+      map[toOfflineDeviceAssignmentId(m.public_code)] = `${formatManualTrackedDeviceLabel(m)} · ${m.public_code}`;
+    }
+    return map;
+  }, [onlineDevices, offlineDevices]);
 
   const load = useCallback(async () => {
     setErr("");
     try {
       const gid = await fetchActiveGroupId();
       setGroupId(gid);
-      const [devRes, execs, assigns, logs, activeClaims] = await Promise.all([
+      if (!gid) {
+        setWorkbenches([]);
+        return;
+      }
+      const [claims, devRes] = await Promise.all([
+        listActiveClaimsForGroup(gid),
         listDevices({ scope: "own", limit: 500, offset: 0 }),
-        gid ? listGroupProfilesByRole(gid, "collection_executor") : Promise.resolve([]),
-        listMyDeviceAssignments(),
-        listMyDeviceHourLogs(),
-        gid ? listActiveClaimsForGroup(gid) : Promise.resolve([]),
       ]);
-      setDevices(devRes.devices);
-      setExecutors(execs);
-      setAssignments(assigns);
-      setHourLogs(logs);
-      setClaims(activeClaims);
-      const execIds = [...new Set(activeClaims.map((c) => c.executor_id))];
+      setOnlineDevices(devRes.devices);
+      try {
+        setOfflineDevices(await listManualTrackedDevices(gid));
+      } catch {
+        setOfflineDevices([]);
+      }
+
+      const execIds = [...new Set(claims.map((c) => c.executor_id))];
       if (execIds.length) {
         const profiles = await fetchProfilesByIds(execIds);
         const map: Record<string, string> = {};
         for (const p of profiles) map[p.id] = profileDisplayName(p);
         setExecutorNames(map);
+      } else {
+        setExecutorNames({});
       }
-      const regMap: Record<string, number> = {};
-      const previewMap: Record<string, SettlementPreview> = {};
-      await Promise.all(
-        activeClaims.map(async (c) => {
-          regMap[c.id] = await sumRegisteredHoursForClaim(c.id);
-          try {
-            previewMap[c.id] = await previewSettlementForClaim(c.id);
-          } catch {
-            /* migration not applied yet */
-          }
+
+      const rows: ClaimWorkbench[] = await Promise.all(
+        claims.map(async (claim) => {
+          const [checkout, assignable, logs] = await Promise.all([
+            getActiveCheckoutForClaim(claim.id).catch(() => null),
+            listAssignableDevicesForClaim(claim.id).catch(() => [] as AssignableDevice[]),
+            listClaimHourLogs(claim.id).catch(() => [] as DeviceDataHourLog[]),
+          ]);
+          return { claim, checkout, assignable, logs };
         })
       );
-      setRegisteredByClaim(regMap);
-      setSettlementPreview(previewMap);
-      const nextConfirm: Record<string, string> = {};
-      for (const c of activeClaims) {
-        const reg = regMap[c.id] ?? 0;
-        const suggested = Math.min(c.claimed_hours, Math.max(0, Math.floor(reg)) || c.claimed_hours);
-        nextConfirm[c.id] = String(suggested);
-      }
-      setConfirmHours(nextConfirm);
+      setWorkbenches(rows);
+
+      setCheckoutDeviceByClaim((prev) => {
+        const next = { ...prev };
+        for (const w of rows) {
+          if (!next[w.claim.id] && w.assignable[0]) {
+            next[w.claim.id] = w.assignable[0].device_id;
+          }
+        }
+        return next;
+      });
+      setSessionHoursByClaim((prev) => {
+        const next = { ...prev };
+        for (const w of rows) {
+          if (next[w.claim.id] === undefined) {
+            const remaining = Math.max(w.claim.claimed_hours - Number(w.claim.executed_hours), 0);
+            next[w.claim.id] = remaining > 0 ? String(Math.min(1, remaining)) : "1";
+          }
+        }
+        return next;
+      });
     } catch (e: unknown) {
       const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "加载失败";
       setErr(msg);
@@ -129,96 +152,62 @@ export default function BountyOperatorWorkPage() {
     void load();
   }, [load]);
 
-  async function onAssign(e: React.FormEvent) {
-    e.preventDefault();
-    if (!assignDeviceId || !assignExecutorId) {
-      setErr("请选择设备与执行员");
+  async function onCheckout(claimId: string) {
+    const deviceId = checkoutDeviceByClaim[claimId];
+    if (!deviceId) {
+      setErr("请选择要借出的设备");
       return;
     }
-    setBusyId("assign");
+    setBusyId(`checkout-${claimId}`);
     setErr("");
     try {
-      await assignDeviceToExecutor(assignDeviceId, assignExecutorId);
+      await checkoutDeviceForClaim(claimId, deviceId);
       await load();
-      setAssignDeviceId("");
-      setAssignExecutorId("");
     } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "分发失败";
+      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "借出失败";
       setErr(msg);
     } finally {
       setBusyId(null);
     }
   }
 
-  async function onRevoke(assignmentId: string) {
-    if (!window.confirm("撤销后执行员将不再绑定该设备，确认？")) return;
-    setBusyId(assignmentId);
-    setErr("");
-    try {
-      await revokeDeviceAssignment(assignmentId);
-      await load();
-    } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "撤销失败";
-      setErr(msg);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function onRegisterHours(e: React.FormEvent) {
-    e.preventDefault();
-    const hours = parseFloat(hourAmount);
-    if (!hourDeviceId || !Number.isFinite(hours) || hours <= 0) {
-      setErr("请选择设备并填写正数小时");
+  async function onReturnSettle(w: ClaimWorkbench) {
+    if (!w.checkout) {
+      setErr("当前无借出设备");
       return;
     }
-    setBusyId("hours");
-    setErr("");
-    try {
-      await registerDeviceDataHours({
-        deviceId: hourDeviceId,
-        registeredHours: hours,
-        bountyClaimId: hourClaimId.trim() || undefined,
-        note: hourNote.trim() || undefined,
-      });
-      await load();
-      setHourAmount("1");
-      setHourNote("");
-    } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "登记失败";
-      setErr(msg);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function onApprove(c: BountyClaim) {
-    const raw = confirmHours[c.id] ?? String(c.claimed_hours);
-    const h = parseFloat(raw);
-    if (!Number.isFinite(h) || h <= 0) {
-      setErr("确认小时须为正数");
+    const raw = sessionHoursByClaim[w.claim.id] ?? "1";
+    const hours = parseFloat(raw);
+    const remaining = Math.max(w.claim.claimed_hours - Number(w.claim.executed_hours), 0);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      setErr("本次小时须为正数");
       return;
     }
-    if (h > c.claimed_hours) {
-      setErr(`确认小时不能超过领取的 ${c.claimed_hours} 小时`);
+    if (hours > remaining) {
+      setErr(`本次不能超过剩余 ${remaining} 小时`);
       return;
     }
-    const rate = c.bounties?.hourly_rate ?? settlementPreview[c.id]?.hourly_rate ?? 0;
-    const amount = Math.round(h * rate * 100) / 100;
-    const cashPart = rate > 0 ? `，结算入账 ${formatCny(amount)}（${h} h × ${formatCny(rate)}/h）` : "";
+    const rate = w.claim.bounties?.hourly_rate ?? 0;
+    const amount = estimateSettlementAmount(hours, rate);
+    const cashPart = rate > 0 ? `，入账 ${formatCny(amount)}` : "";
     if (
       !window.confirm(
-        `审核通过并入账：确认 ${h} 小时（领取 ${c.claimed_hours} h）${cashPart}；同时按规则发放积分。`
+        `归还结算：本次 ${hours} h${cashPart}；设备将回到可分配库。确认？`
       )
-    )
+    ) {
       return;
-    setBusyId(c.id);
+    }
+    setBusyId(`settle-${w.claim.id}`);
     setErr("");
     try {
-      await settleBountyClaim(c.id, h);
+      await returnAndSettleSession(
+        w.checkout.id,
+        hours,
+        sessionNoteByClaim[w.claim.id]?.trim() || undefined
+      );
       await load();
     } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "审核入账失败";
+      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : "归还结算失败";
       setErr(msg);
     } finally {
       setBusyId(null);
@@ -228,7 +217,7 @@ export default function BountyOperatorWorkPage() {
   async function onReject(c: BountyClaim) {
     const note = window.prompt("驳回原因（可选）", "运维审核未通过");
     if (note === null) return;
-    setBusyId(c.id);
+    setBusyId(`reject-${c.id}`);
     setErr("");
     try {
       await operatorRejectBountyClaim(c.id, note || undefined);
@@ -243,12 +232,29 @@ export default function BountyOperatorWorkPage() {
 
   const stats = useMemo(
     () => [
-      { label: "待审核", value: claims.length, hint: "进行中接单", tone: claims.length ? ("warn" as const) : ("default" as const) },
-      { label: "设备分发", value: assignments.length, hint: "活跃绑定" },
-      { label: "我的设备", value: devices.length, hint: "可管理" },
-      { label: "执行员", value: executors.length, hint: "群内" },
+      {
+        label: "进行中接单",
+        value: workbenches.length,
+        hint: "待结算",
+        tone: workbenches.length ? ("warn" as const) : ("default" as const),
+      },
+      {
+        label: "已借出",
+        value: workbenches.filter((w) => w.checkout).length,
+        hint: "待归还",
+      },
+      {
+        label: "离线设备",
+        value: offlineDevices.filter((d) => d.external_status === "normal").length,
+        hint: "本群正常",
+      },
+      {
+        label: "联网设备",
+        value: onlineDevices.length,
+        hint: "需关联甲方类型",
+      },
     ],
-    [claims.length, assignments.length, devices.length, executors.length]
+    [workbenches, offlineDevices, onlineDevices]
   );
 
   if (loading) {
@@ -264,8 +270,8 @@ export default function BountyOperatorWorkPage() {
       <RefreshStrip active={refreshing} />
       <PageHero
         eyebrow="设备运维"
-        title="运维工作台"
-        description="设备分发给执行员、登记数采小时、审核悬赏接单。与场景业务模块独立运行。"
+        title="执行员结算"
+        description="借出合规设备 → 执行员归还 → 录入本次小时并当场结算；同一单可多次归还直到结清。"
         accent="violet"
         icon={<IconWrench />}
         onRefresh={() => {
@@ -280,201 +286,178 @@ export default function BountyOperatorWorkPage() {
       {!groupId && <Alert variant="warn">请先加入工作群后再使用运维功能。</Alert>}
       {err && <Alert variant="error">{err}</Alert>}
 
-      <SegmentedTabs
-        value={tab}
-        onChange={setTab}
-        tabs={[
-          { id: "audit", label: "悬赏审核", icon: <IconClipboard />, badge: claims.length },
-          { id: "assign", label: "设备分发", icon: <IconDevices /> },
-          { id: "hours", label: "数采登记", icon: <IconClock /> },
-        ]}
-      />
+      <Alert variant="info">
+        仅显示本群进行中接单。设备须为<strong>正常状态</strong>且类型在悬赏发布时已勾选；已借出设备不可再分配。
+      </Alert>
 
-      {tab === "assign" && (
-        <section className="space-y-4">
-          <Panel title="分发设备给执行员" description="同一设备新分发将自动撤销旧绑定" icon={<IconDevices />}>
-            <form onSubmit={onAssign} className="space-y-4">
-              <div className="grid sm:grid-cols-2 gap-4">
-                <label className="block">
-                  <span className={uiLabel}>设备</span>
-                  <select className={uiSelect} value={assignDeviceId} onChange={(e) => setAssignDeviceId(e.target.value)} required>
-                    <option value="">选择设备</option>
-                    {devices.map((d) => (
-                      <option key={d.device_id} value={d.device_id}>
-                        {d.readable_name || d.device_id}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className={uiLabel}>执行员</span>
-                  <select className={uiSelect} value={assignExecutorId} onChange={(e) => setAssignExecutorId(e.target.value)} required>
-                    <option value="">选择执行员</option>
-                    {executors.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {profileDisplayName(p)}
-                        {p.phone ? ` · ${p.phone}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <UiButton type="submit" disabled={busyId === "assign"}>
-                {busyId === "assign" ? "提交中…" : "确认分发"}
-              </UiButton>
-            </form>
-          </Panel>
+      {workbenches.length === 0 ? (
+        <EmptyState title="暂无进行中接单" description="执行员接单后会出现在此" icon={<IconClipboard />} />
+      ) : (
+        <ul className="space-y-4">
+          {workbenches.map((w) => {
+            const c = w.claim;
+            const title = c.bounties?.title ?? "悬赏单";
+            const executed = Number(c.executed_hours);
+            const remaining = Math.max(c.claimed_hours - executed, 0);
+            const rate = c.bounties?.hourly_rate ?? 0;
+            const sessionH = parseFloat(sessionHoursByClaim[c.id] ?? "1") || 0;
+            const previewAmount =
+              rate > 0 && sessionH > 0 ? estimateSettlementAmount(Math.min(sessionH, remaining), rate) : 0;
+            const deviceLabel = w.checkout
+              ? deviceLabelById[w.checkout.device_id] ?? w.checkout.device_id
+              : null;
 
-          <Panel title="当前绑定" icon={<IconClipboard />}>
-            {assignments.length === 0 ? (
-              <EmptyState title="暂无活跃分发" description="选择设备与执行员后点击确认分发" icon={<IconDevices />} />
-            ) : (
-              <ul className="space-y-2">
-                {assignments.map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50/80 ring-1 ring-slate-200/80 px-4 py-3 text-sm"
-                  >
-                    <span className="text-slate-700">
-                      <span className="font-semibold text-slate-900">{a.device_id}</span>
-                      <span className="mx-2 text-slate-300">→</span>
-                      {executorNames[a.executor_id] ?? a.executor_id.slice(0, 8)}
+            return (
+              <li key={c.id} className="glass-panel rounded-2xl p-5 space-y-4">
+                <div className="flex flex-wrap justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+                    <p className="text-sm text-slate-600 mt-1">
+                      {executorNames[c.executor_id] ?? c.executor_id.slice(0, 8)} · 领取{" "}
+                      <span className="font-semibold text-indigo-600">{c.claimed_hours} h</span>
+                    </p>
+                  </div>
+                  <span className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+                    {claimStatusLabel(c.status)}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-800">
+                    已结算 {executed} / {c.claimed_hours} h
+                  </span>
+                  <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600">剩余 {remaining} h</span>
+                  {rate > 0 && (
+                    <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-indigo-700">
+                      {formatCny(rate)}/h
                     </span>
-                    <UiButton variant="ghost" size="sm" className="!text-red-600" disabled={busyId === a.id} onClick={() => void onRevoke(a.id)}>
-                      撤销
-                    </UiButton>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-        </section>
-      )}
+                  )}
+                  <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-indigo-700">{formatDueCountdown(c.due_at)}</span>
+                </div>
 
-      {tab === "hours" && (
-        <section className="space-y-4">
-          <Panel title="登记设备数采小时" description="可关联悬赏接单 ID，供审核时参考" icon={<IconClock />}>
-            <form onSubmit={onRegisterHours} className="space-y-4">
-              <div className="grid sm:grid-cols-2 gap-4">
-                <label className="block">
-                  <span className={uiLabel}>设备</span>
-                  <select className={uiSelect} value={hourDeviceId} onChange={(e) => setHourDeviceId(e.target.value)} required>
-                    <option value="">选择设备</option>
-                    {devices.map((d) => (
-                      <option key={d.device_id} value={d.device_id}>
-                        {d.readable_name || d.device_id}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block">
-                  <span className={uiLabel}>小时数</span>
-                  <input type="number" min={0.01} step={0.01} className={uiInput} value={hourAmount} onChange={(e) => setHourAmount(e.target.value)} required />
-                </label>
-                <label className="block sm:col-span-2">
-                  <span className={uiLabel}>关联悬赏接单 ID（可选）</span>
-                  <input className={`${uiInput} font-mono text-xs`} value={hourClaimId} onChange={(e) => setHourClaimId(e.target.value)} placeholder="uuid" />
-                </label>
-              </div>
-              <label className="block">
-                <span className={uiLabel}>备注</span>
-                <input className={uiInput} value={hourNote} onChange={(e) => setHourNote(e.target.value)} />
-              </label>
-              <UiButton type="submit" disabled={busyId === "hours"}>
-                {busyId === "hours" ? "提交中…" : "登记"}
-              </UiButton>
-            </form>
-          </Panel>
+                <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 rounded-full transition-all"
+                    style={{
+                      width: `${c.claimed_hours > 0 ? Math.min(100, Math.round((executed / c.claimed_hours) * 100)) : 0}%`,
+                    }}
+                  />
+                </div>
 
-          <Panel title="最近登记" icon={<IconClock />}>
-            {hourLogs.length === 0 ? (
-              <EmptyState title="暂无登记记录" icon={<IconClock />} />
-            ) : (
-              <ul className="space-y-2">
-                {hourLogs.map((log) => (
-                  <li key={log.id} className="rounded-xl bg-slate-50/90 ring-1 ring-slate-200/80 px-4 py-3 text-sm">
-                    <div className="flex flex-wrap justify-between gap-2">
-                      <span className="font-medium text-slate-900">
-                        {log.device_id} · <span className="text-indigo-600">{log.registered_hours} h</span>
-                      </span>
-                      <span className="text-xs text-slate-400">{new Date(log.created_at).toLocaleString()}</span>
-                    </div>
-                    {log.bounty_claim_id && (
-                      <p className="mt-1 text-xs text-slate-500 font-mono">接单 {log.bounty_claim_id.slice(0, 8)}…</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-        </section>
-      )}
-
-      {tab === "audit" && (
-        <section className="space-y-4">
-          <Alert variant="info">
-            审核通过并入账：确认小时 × 悬赏单价（元/小时）计入执行员钱包；积分仍按执行小时 × 系数发放。请先收回设备并核对数采登记小时。
-          </Alert>
-          {claims.length === 0 ? (
-            <EmptyState title="暂无待审核接单" description="执行员接单后会出现在这里" icon={<IconClipboard />} />
-          ) : (
-            <ul className="space-y-4">
-              {claims.map((c) => {
-                const title = c.bounties?.title ?? "悬赏单";
-                const reg = registeredByClaim[c.id] ?? 0;
-                const rate = c.bounties?.hourly_rate ?? settlementPreview[c.id]?.hourly_rate ?? 0;
-                const confirmH = parseFloat(confirmHours[c.id] ?? String(c.claimed_hours)) || 0;
-                const previewAmount =
-                  rate > 0 && confirmH > 0 ? Math.round(Math.min(confirmH, c.claimed_hours) * rate * 100) / 100 : 0;
-                return (
-                  <li key={c.id} className="glass-panel rounded-2xl p-5 space-y-4">
-                    <div className="flex flex-wrap justify-between gap-3">
-                      <div>
-                        <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-                        <p className="text-sm text-slate-600 mt-1">
-                          {executorNames[c.executor_id] ?? c.executor_id.slice(0, 8)} · 领取{" "}
-                          <span className="font-semibold text-indigo-600">{c.claimed_hours} h</span>
-                        </p>
+                {!w.checkout ? (
+                  <Panel title="借出设备" description="从可分配库选择一台设备" icon={<IconDevices />}>
+                    {w.assignable.length === 0 ? (
+                      <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
+                        无可借设备：请确认悬赏已配置甲方类型，且有正常状态、未占用的设备（离线设备在设备管理登记；联网设备需关联甲方业务）。
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap items-end gap-3">
+                        <label className="block flex-1 min-w-[200px]">
+                          <span className={uiLabel}>设备</span>
+                          <select
+                            className={uiSelect}
+                            value={checkoutDeviceByClaim[c.id] ?? ""}
+                            onChange={(e) =>
+                              setCheckoutDeviceByClaim((prev) => ({ ...prev, [c.id]: e.target.value }))
+                            }
+                          >
+                            {w.assignable.map((d) => (
+                              <option key={d.device_id} value={d.device_id}>
+                                {d.kind === "offline" ? "离线 · " : "联网 · "}
+                                {d.label}
+                                {d.device_type ? ` (${d.device_type})` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <UiButton
+                          disabled={busyId === `checkout-${c.id}`}
+                          onClick={() => void onCheckout(c.id)}
+                        >
+                          {busyId === `checkout-${c.id}` ? "借出中…" : "确认借出"}
+                        </UiButton>
                       </div>
-                      <span className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
-                        {claimStatusLabel(c.status)}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-slate-600">数采登记 {reg} h</span>
-                      {rate > 0 && (
-                        <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-emerald-800">
-                          单价 {formatCny(rate)}/h · 预估 {formatCny(previewAmount)}
-                        </span>
+                    )}
+                  </Panel>
+                ) : (
+                  <Panel title="归还结算" description="执行员归还设备后，录入本次小时并当场入账" icon={<IconClipboard />}>
+                    <p className="text-sm text-slate-700 mb-3">
+                      借出设备：
+                      <span className="font-semibold text-slate-900 ml-1">{deviceLabel}</span>
+                      {isOfflineDeviceAssignmentId(w.checkout.device_id) && (
+                        <span className="ml-1.5 text-[10px] font-semibold uppercase text-violet-700">离线</span>
                       )}
-                      <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-indigo-700">{formatDueCountdown(c.due_at)}</span>
-                    </div>
-                    <div className="flex flex-wrap items-end gap-3 pt-1 border-t border-slate-100">
+                    </p>
+                    <div className="flex flex-wrap items-end gap-3">
                       <label className="block">
-                        <span className={uiLabel}>确认执行（小时）</span>
+                        <span className={uiLabel}>本次小时</span>
                         <input
                           type="number"
                           min={0.01}
                           step={0.01}
-                          max={c.claimed_hours}
+                          max={remaining}
                           className={`${uiInput} !w-28`}
-                          value={confirmHours[c.id] ?? String(c.claimed_hours)}
-                          onChange={(e) => setConfirmHours((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                          value={sessionHoursByClaim[c.id] ?? "1"}
+                          onChange={(e) =>
+                            setSessionHoursByClaim((prev) => ({ ...prev, [c.id]: e.target.value }))
+                          }
                         />
                       </label>
-                      <UiButton variant="success" disabled={busyId === c.id} onClick={() => void onApprove(c)}>
-                        通过并入账
-                      </UiButton>
-                      <UiButton variant="secondary" className="!text-red-600 !ring-red-100" disabled={busyId === c.id} onClick={() => void onReject(c)}>
-                        驳回
+                      {rate > 0 && previewAmount > 0 && (
+                        <span className="text-sm text-emerald-700 pb-2">预估 {formatCny(previewAmount)}</span>
+                      )}
+                      <label className="block flex-1 min-w-[160px]">
+                        <span className={uiLabel}>备注（可选）</span>
+                        <input
+                          className={uiInput}
+                          value={sessionNoteByClaim[c.id] ?? ""}
+                          onChange={(e) =>
+                            setSessionNoteByClaim((prev) => ({ ...prev, [c.id]: e.target.value }))
+                          }
+                        />
+                      </label>
+                      <UiButton
+                        variant="success"
+                        disabled={busyId === `settle-${c.id}`}
+                        onClick={() => void onReturnSettle(w)}
+                      >
+                        {busyId === `settle-${c.id}` ? "结算中…" : "归还并结算"}
                       </UiButton>
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+                  </Panel>
+                )}
+
+                {w.logs.length > 0 && (
+                  <div className="border-t border-slate-100 pt-3">
+                    <p className={uiLabel}>结算记录</p>
+                    <ul className="mt-2 space-y-1.5">
+                      {w.logs.map((log) => (
+                        <li key={log.id} className="text-xs text-slate-600 flex flex-wrap justify-between gap-2">
+                          <span>
+                            {deviceLabelById[log.device_id] ?? log.device_id} ·{" "}
+                            <span className="font-medium text-indigo-600">{log.registered_hours} h</span>
+                          </span>
+                          <span className="text-slate-400">{new Date(log.created_at).toLocaleString()}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="flex justify-end border-t border-slate-100 pt-3">
+                  <UiButton
+                    variant="secondary"
+                    className="!text-red-600 !ring-red-100"
+                    disabled={busyId === `reject-${c.id}`}
+                    onClick={() => void onReject(c)}
+                  >
+                    驳回接单
+                  </UiButton>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </PageShell>
   );

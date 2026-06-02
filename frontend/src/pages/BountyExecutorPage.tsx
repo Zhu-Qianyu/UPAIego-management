@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchActiveGroupId } from "../api/groups";
+import {
+  formatManualTrackedDeviceLabel,
+  listManualTrackedDevices,
+} from "../api/operations";
+import { listDevices } from "../api/client";
 import { fetchProfilesByIds, profileDisplayName, type ProfileContact } from "../api/profiles";
 import {
   abandonBountyClaim,
@@ -15,12 +20,14 @@ import {
   type DailyClaimUsage,
   ledgerReasonLabel,
   listMyClaims,
+  listMyActiveCheckouts,
   listOpenBountiesForGroup,
-  sumRegisteredHoursForClaim,
   type Bounty,
   type BountyClaim,
+  type DeviceExecutorAssignment,
   type ExecutorProfileView,
 } from "../api/bounties";
+import { isOfflineDeviceAssignmentId, toOfflineDeviceAssignmentId } from "../utils/deviceAssignmentId";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import {
@@ -52,28 +59,46 @@ export default function BountyExecutorPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [claimHours, setClaimHours] = useState<Record<string, string>>({});
   const [operatorsById, setOperatorsById] = useState<Record<string, ProfileContact>>({});
-  const [registeredByClaim, setRegisteredByClaim] = useState<Record<string, number>>({});
+  const [checkoutsByClaim, setCheckoutsByClaim] = useState<Record<string, DeviceExecutorAssignment>>({});
+  const [deviceLabels, setDeviceLabels] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setErr("");
     try {
       const gid = await fetchActiveGroupId();
       setGroupId(gid);
-      const [open, mine, prof, daily] = await Promise.all([
+      const [open, mine, prof, daily, checkouts] = await Promise.all([
         gid ? listOpenBountiesForGroup(gid) : Promise.resolve([]),
         listMyClaims(),
         fetchMyExecutorProfile(),
         fetchMyDailyClaimUsage().catch(() => null),
+        listMyActiveCheckouts(),
       ]);
       setOpenBounties(open);
       setMyClaims(mine);
-      const regMap: Record<string, number> = {};
-      await Promise.all(
-        mine.map(async (c) => {
-          regMap[c.id] = await sumRegisteredHoursForClaim(c.id);
-        })
-      );
-      setRegisteredByClaim(regMap);
+      const checkoutMap: Record<string, DeviceExecutorAssignment> = {};
+      for (const a of checkouts) {
+        if (a.bounty_claim_id) checkoutMap[a.bounty_claim_id] = a;
+      }
+      setCheckoutsByClaim(checkoutMap);
+      if (gid) {
+        try {
+          const [offline, online] = await Promise.all([
+            listManualTrackedDevices(gid),
+            listDevices({ scope: "own", limit: 500, offset: 0 }).then((r) => r.devices),
+          ]);
+          const labels: Record<string, string> = {};
+          for (const d of online) labels[d.device_id] = d.readable_name || d.device_id;
+          for (const m of offline) {
+            labels[toOfflineDeviceAssignmentId(m.public_code)] = `${formatManualTrackedDeviceLabel(m)} · ${m.public_code}`;
+          }
+          setDeviceLabels(labels);
+        } catch {
+          setDeviceLabels({});
+        }
+      } else {
+        setDeviceLabels({});
+      }
       const opIds = [
         ...new Set(
           mine.map((c) => c.bounties?.assigned_operator_id).filter((id): id is string => Boolean(id))
@@ -193,7 +218,7 @@ export default function BountyExecutorPage() {
       <PageHero
         eyebrow="数采执行"
         title="悬赏令"
-        description="按小时领取工时池，由运维审核计分并升段。"
+        description="按小时领取工时池；向运维借设备，归还后由运维按次结算入账。"
         accent="indigo"
         icon={<IconSparkles />}
         onRefresh={() => { setRefreshing(true); void load(); }}
@@ -214,7 +239,7 @@ export default function BountyExecutorPage() {
         <Link to="/wallet" className="font-semibold text-indigo-800 underline underline-offset-2 hover:text-indigo-950">
           我的钱包
         </Link>
-        ：查看可提现余额与结算明细（运维审核后按悬赏单价入账）。
+        ：查看可提现余额与按次结算明细（运维归还设备后当场入账）。
       </Alert>
 
       {!groupId && <Alert variant="warn">请先加入工作群后再接单。</Alert>}
@@ -307,21 +332,21 @@ export default function BountyExecutorPage() {
               {myClaims.map((c) => {
                 const title = c.bounties?.title ?? "悬赏单";
                 const rate = c.bounties?.points_per_hour ?? 1;
-                const uncompleted = Math.max(c.claimed_hours - c.executed_hours, 0);
-                const registered = registeredByClaim[c.id] ?? 0;
-                const progressHours = c.status === "completed" ? c.executed_hours : registered;
+                const uncompleted = Math.max(c.claimed_hours - Number(c.executed_hours), 0);
+                const executed = Number(c.executed_hours);
                 const progressPct =
                   c.claimed_hours > 0
-                    ? Math.min(100, Math.round((Math.min(progressHours, c.claimed_hours) / c.claimed_hours) * 100))
+                    ? Math.min(100, Math.round((Math.min(executed, c.claimed_hours) / c.claimed_hours) * 100))
                     : 0;
                 const progressLabel =
                   c.status === "completed"
-                    ? `已确认 ${c.executed_hours} / ${c.claimed_hours} 小时`
+                    ? `已结算 ${executed} / ${c.claimed_hours} 小时`
                     : c.status === "active"
-                      ? `运维登记 ${registered} / ${c.claimed_hours} 小时`
-                      : registered > 0
-                        ? `运维登记 ${registered} / ${c.claimed_hours} 小时`
+                      ? `已结算 ${executed} / ${c.claimed_hours} 小时`
+                      : executed > 0
+                        ? `已结算 ${executed} / ${c.claimed_hours} 小时`
                         : `领取 ${c.claimed_hours} 小时 · ${claimStatusLabel(c.status)}`;
+                const checkout = checkoutsByClaim[c.id];
                 return (
                   <li key={c.id} className="glass-panel rounded-2xl p-5">
                     <div className="flex flex-wrap justify-between gap-2">
@@ -357,6 +382,13 @@ export default function BountyExecutorPage() {
                       const op = opId ? operatorsById[opId] : undefined;
                       return (
                         <div className="mt-3 space-y-2">
+                          {checkout && (
+                            <p className="text-sm text-violet-900 bg-violet-50 rounded-lg px-3 py-2 mt-2">
+                              当前借出：
+                              {deviceLabels[checkout.device_id] ?? checkout.device_id}
+                              {isOfflineDeviceAssignmentId(checkout.device_id) ? "（离线）" : "（联网）"}
+                            </p>
+                          )}
                           {op && (
                             <p className="text-sm text-indigo-900 bg-indigo-50 rounded-lg px-3 py-2">
                               运维联系人：{profileDisplayName(op)}
@@ -364,7 +396,7 @@ export default function BountyExecutorPage() {
                             </p>
                           )}
                           <p className="text-xs text-gray-600">
-                            完成后由设备运维员审核计分，请勿自行标记完成；超时未审核部分仍可能按规则扣分。
+                            向运维借设备作业，归还后由运维录入小时并当场结算；请勿自行标记完成。
                           </p>
                           <UiButton variant="secondary" className="!text-red-600" disabled={busyId === c.id} onClick={() => void onAbandon(c)}>
                             放弃（约扣 {estimatePenaltyPoints(uncompleted, rate)} 分）

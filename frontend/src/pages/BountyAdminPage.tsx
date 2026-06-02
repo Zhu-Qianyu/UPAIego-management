@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchActiveGroupId, listGroupProfilesByRole } from "../api/groups";
+import { listPartyDemands, type PartyDemand } from "../api/operations";
 import { fetchProfilesByIds, profileDisplayName } from "../api/profiles";
 import {
   adminFailBountyClaim,
@@ -7,6 +8,7 @@ import {
   claimStatusLabel,
   closeBounty,
   listBountiesForGroup,
+  listBountyAllowedPartyDemands,
   listClaimsForBounty,
   publishBounty,
   type Bounty,
@@ -46,6 +48,9 @@ export default function BountyAdminPage() {
   const [publishBusy, setPublishBusy] = useState(false);
   const [deviceOperators, setDeviceOperators] = useState<{ id: string; label: string }[]>([]);
   const [assignedOperatorId, setAssignedOperatorId] = useState("");
+  const [partyDemands, setPartyDemands] = useState<PartyDemand[]>([]);
+  const [selectedPartyDemandIds, setSelectedPartyDemandIds] = useState<string[]>([]);
+  const [allowedByBounty, setAllowedByBounty] = useState<Record<string, string[]>>({});
 
   const loadClaims = useCallback(async (bountyId: string) => {
     const claims = await listClaimsForBounty(bountyId);
@@ -74,6 +79,21 @@ export default function BountyAdminPage() {
       }
       const rows = await listBountiesForGroup(gid);
       setBounties(rows);
+      const allowedEntries = await Promise.all(
+        rows.map(async (b) => {
+          try {
+            const allowed = await listBountyAllowedPartyDemands(b.id);
+            const labels = allowed.map(
+              (a) =>
+                `${a.client_company || a.title || "甲方"}${a.device_type ? ` · ${a.device_type}` : ""}`
+            );
+            return [b.id, labels] as const;
+          } catch {
+            return [b.id, [] as string[]] as const;
+          }
+        })
+      );
+      setAllowedByBounty(Object.fromEntries(allowedEntries));
     } catch (e: any) {
       setErr(e.message ?? "加载失败");
     } finally {
@@ -90,6 +110,8 @@ export default function BountyAdminPage() {
     if (!groupId) {
       setDeviceOperators([]);
       setAssignedOperatorId("");
+      setPartyDemands([]);
+      setSelectedPartyDemandIds([]);
       return;
     }
     void listGroupProfilesByRole(groupId, "device_operator").then((rows) => {
@@ -99,6 +121,12 @@ export default function BountyAdminPage() {
       }));
       setDeviceOperators(opts);
       setAssignedOperatorId((prev) => (prev && opts.some((o) => o.id === prev) ? prev : opts[0]?.id ?? ""));
+    });
+    void listPartyDemands(groupId).then((rows) => {
+      setPartyDemands(rows);
+      setSelectedPartyDemandIds((prev) =>
+        prev.length ? prev.filter((id) => rows.some((r) => r.id === id)) : rows.slice(0, 1).map((r) => r.id)
+      );
     });
   }, [groupId]);
 
@@ -123,7 +151,11 @@ export default function BountyAdminPage() {
       return;
     }
     if (!assignedOperatorId) {
-      setErr("请选择负责审核的设备运维员");
+      setErr("请选择负责结算的设备运维员");
+      return;
+    }
+    if (selectedPartyDemandIds.length === 0) {
+      setErr("请至少选择一种可用设备类型（甲方业务）");
       return;
     }
     setPublishBusy(true);
@@ -137,6 +169,7 @@ export default function BountyAdminPage() {
         completionDays: parseInt(completionDays, 10) as 1 | 2 | 3,
         description: description.trim() || undefined,
         assignedOperatorId,
+        partyDemandIds: selectedPartyDemandIds,
       });
       setTitle("");
       setDescription("");
@@ -194,7 +227,7 @@ export default function BountyAdminPage() {
       <PageHero
         eyebrow="平台管理"
         title="悬赏令管理"
-        description="发布工时池，执行员按小时领取；由设备运维员审核完成。"
+        description="发布工时池；指定运维员与可用设备类型（甲方业务）。"
         accent="amber"
         icon={<IconSparkles />}
         onRefresh={() => { setRefreshing(true); void load(); }}
@@ -215,7 +248,7 @@ export default function BountyAdminPage() {
       )}
       {err && <Alert variant="error">{err}</Alert>}
 
-      <Panel title="发布悬赏令" description="指定群内设备运维员作为执行员联系人" icon={<IconSparkles />}>
+      <Panel title="发布悬赏令" description="指定群内设备运维员与可借用的甲方设备类型" icon={<IconSparkles />}>
       <form onSubmit={onPublish} className="space-y-4">
         <div className="grid sm:grid-cols-2 gap-4">
           <label className="block">
@@ -283,6 +316,40 @@ export default function BountyAdminPage() {
               )}
             </select>
           </label>
+          <div className="block sm:col-span-2">
+            <span className={uiLabel}>可用设备类型（甲方业务，可多选）</span>
+            {partyDemands.length === 0 ? (
+              <p className="text-xs text-amber-700 mt-2">
+                当前群尚无甲方业务，请场景业务员先在「场景业务 → 甲方业务」中添加。
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200/80 p-3 bg-slate-50/50">
+                {partyDemands.map((pd) => {
+                  const checked = selectedPartyDemandIds.includes(pd.id);
+                  const label = `${pd.client_company?.trim() || pd.title?.trim() || "甲方"}${
+                    pd.device_type?.trim() ? ` · ${pd.device_type.trim()}` : ""
+                  }`;
+                  return (
+                    <li key={pd.id}>
+                      <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={checked}
+                          onChange={() => {
+                            setSelectedPartyDemandIds((prev) =>
+                              checked ? prev.filter((id) => id !== pd.id) : [...prev, pd.id]
+                            );
+                          }}
+                        />
+                        <span>{label}</span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </div>
         <label className="block">
           <span className={uiLabel}>说明（可选）</span>
@@ -292,7 +359,7 @@ export default function BountyAdminPage() {
             onChange={(e) => setDescription(e.target.value)}
           />
         </label>
-        <UiButton type="submit" disabled={!groupId || publishBusy}>
+        <UiButton type="submit" disabled={!groupId || publishBusy || partyDemands.length === 0}>
           {publishBusy ? "发布中…" : "发布悬赏令"}
         </UiButton>
       </form>
@@ -321,6 +388,11 @@ export default function BountyAdminPage() {
                         </span>
                       </div>
                       {b.description && <p className="text-sm text-gray-600 mt-1">{b.description}</p>}
+                      {allowedByBounty[b.id]?.length ? (
+                        <div className="mt-2 text-xs text-slate-500">
+                          可用类型：{allowedByBounty[b.id].join("；")}
+                        </div>
+                      ) : null}
                       <dl className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-gray-600">
                         <div>
                           <dt className="text-gray-400">总工时</dt>
