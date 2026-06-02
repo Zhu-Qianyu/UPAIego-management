@@ -11,7 +11,7 @@ import {
 import { fetchProfilesByIds, profileDisplayName } from "../api/profiles";
 import { ROLE_LABELS } from "../auth/roleLabels";
 import { formatPhoneDisplay } from "../utils/phoneAuth";
-import { CardList, CardListItem } from "../components/ui/PageLayout";
+import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
@@ -176,6 +176,21 @@ export default function AdminGroupPage() {
           {pending.length === 0 ? (
             <p className="text-sm text-gray-400">暂无待处理申请</p>
           ) : (
+            <ListViewSection storageKey="admin-pending-members" compact={
+              <CompactList>
+                {pending.map((m) => {
+                  const info = pendingProfiles[m.user_id];
+                  return (
+                    <CompactListRow
+                      key={m.id}
+                      primary={info?.name ?? m.user_id.slice(0, 8)}
+                      secondary={`${info?.role ?? "—"} · 手机 ${info?.phone ?? "—"}`}
+                      meta={new Date(m.created_at).toLocaleString()}
+                    />
+                  );
+                })}
+              </CompactList>
+            }>
             <CardList>
               {pending.map((m) => {
                 const info = pendingProfiles[m.user_id];
@@ -215,6 +230,7 @@ export default function AdminGroupPage() {
                 );
               })}
             </CardList>
+            </ListViewSection>
           )}
         </div>
       )}

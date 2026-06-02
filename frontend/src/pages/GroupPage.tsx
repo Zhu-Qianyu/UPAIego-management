@@ -15,7 +15,7 @@ import {
   type WorkGroup,
 } from "../api/groups";
 import { fetchProfilesByIds } from "../api/profiles";
-import { CardList, CardListItem } from "../components/ui/PageLayout";
+import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
@@ -409,10 +409,28 @@ export default function GroupPage() {
       </form>
 
       <div className="space-y-4">
-        <h2 className="text-sm font-semibold text-gray-700">话题列表</h2>
         {topics.length === 0 ? (
-          <p className="text-gray-400 text-sm">暂无话题</p>
+          <>
+            <h2 className="text-sm font-semibold text-gray-700">话题列表</h2>
+            <p className="text-gray-400 text-sm">暂无话题</p>
+          </>
         ) : (
+          <ListViewSection
+            storageKey="group-topics"
+            header={<h2 className="text-sm font-semibold text-gray-700">话题列表</h2>}
+            compact={
+              <CompactList>
+                {topics.map((t) => (
+                  <CompactListRow
+                    key={t.id}
+                    primary={t.title}
+                    secondary={t.body ?? undefined}
+                    meta={new Date(t.created_at).toLocaleString()}
+                  />
+                ))}
+              </CompactList>
+            }
+          >
           <CardList>
             {topics.map((t) => (
               <CardListItem key={t.id}>
@@ -437,6 +455,7 @@ export default function GroupPage() {
               </CardListItem>
             ))}
           </CardList>
+          </ListViewSection>
         )}
       </div>
     </div>

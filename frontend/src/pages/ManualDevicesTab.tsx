@@ -4,6 +4,7 @@ import {
   createManualTrackedDevice,
   deleteManualTrackedDevice,
   formatManualTrackedDeviceLabel,
+  labelExternalDeviceStatus,
   listManualTrackedDevices,
   listPartyDemands,
   updateManualTrackedDevice,
@@ -13,7 +14,7 @@ import {
   type PartyDemand,
 } from "../api/operations";
 import { fetchActiveGroupId } from "../api/groups";
-import { CardList, CardListItem } from "../components/ui/PageLayout";
+import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { openManualDevicesPrint } from "../utils/manualDevicesExport";
@@ -297,6 +298,21 @@ export default function ManualDevicesTab() {
       {rows.length === 0 ? (
         <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">暂无离线设备</p>
       ) : (
+        <ListViewSection
+          storageKey="manual-devices"
+          compact={
+            <CompactList>
+              {rows.map((r) => (
+                <CompactListRow
+                  key={`${r.id}-${r.updated_at}`}
+                  primary={formatManualTrackedDeviceLabel(r)}
+                  secondary={`登记编号 ${r.public_code}`}
+                  meta={labelExternalDeviceStatus(r.external_status)}
+                />
+              ))}
+            </CompactList>
+          }
+        >
         <CardList>
           {rows.map((r) => (
             <CardListItem key={`${r.id}-${r.updated_at}`}>
@@ -304,6 +320,7 @@ export default function ManualDevicesTab() {
             </CardListItem>
           ))}
         </CardList>
+        </ListViewSection>
       )}
     </div>
   );

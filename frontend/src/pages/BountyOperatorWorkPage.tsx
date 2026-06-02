@@ -34,7 +34,11 @@ import {
   Alert,
   CardList,
   CardListItem,
+  CompactList,
+  CompactListRow,
   EmptyState,
+  ListViewSection,
+  listCardInnerClass,
   IconClipboard,
   IconDevices,
   IconWrench,
@@ -309,6 +313,33 @@ export default function BountyOperatorWorkPage() {
       {workbenches.length === 0 ? (
         <EmptyState title="暂无进行中接单" description="执行员接单后会出现在此" icon={<IconClipboard />} />
       ) : (
+        <ListViewSection
+          storageKey="operator-active-claims"
+          compact={
+            <CompactList>
+              {workbenches.map((w) => {
+                const c = w.claim;
+                const title = c.bounties?.title ?? "悬赏单";
+                const executed = Number(c.executed_hours);
+                const remaining = Math.max(c.claimed_hours - executed, 0);
+                const deviceReturned = Boolean(c.device_returned_at);
+                const deviceLabel = w.checkout
+                  ? deviceLabelById[w.checkout.device_id] ?? w.checkout.device_id
+                  : deviceReturned
+                    ? "已归还"
+                    : "未借出";
+                return (
+                  <CompactListRow
+                    key={c.id}
+                    primary={`${title} · ${executorNames[c.executor_id] ?? c.executor_id.slice(0, 8)}`}
+                    secondary={`${claimStatusLabel(c.status)} · 已结 ${executed}/${c.claimed_hours}h · 剩余 ${remaining}h · ${deviceLabel}`}
+                    meta={formatDueCountdown(c.due_at)}
+                  />
+                );
+              })}
+            </CompactList>
+          }
+        >
         <CardList>
           {workbenches.map((w) => {
             const c = w.claim;
@@ -331,7 +362,7 @@ export default function BountyOperatorWorkPage() {
 
             return (
               <CardListItem key={c.id}>
-              <div className="glass-panel rounded-2xl p-5 space-y-4 h-full">
+              <div className={listCardInnerClass}>
                 <div className="flex flex-wrap justify-between gap-3">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
@@ -506,6 +537,7 @@ export default function BountyOperatorWorkPage() {
             );
           })}
         </CardList>
+        </ListViewSection>
       )}
     </PageShell>
   );

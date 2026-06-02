@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocation } from "react-router-dom";
 import { listDevices, harvestDevice, type Device } from "../api/client";
 import Spinner from "../components/Spinner";
-import { CardList, CardListItem } from "../components/ui/PageLayout";
+import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
 import RefreshStrip from "../components/RefreshStrip";
 import { useAuth } from "../auth/AuthContext";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
@@ -250,8 +250,32 @@ function ExecutorMapPageLive() {
             </div>
           )}
         </div>
-        <CardList as="div" className="max-h-[420px] overflow-y-auto pr-1 content-start">
-          {devices.length === 0 && <p className="text-sm text-gray-400 w-full">暂无设备</p>}
+        <ListViewSection
+          storageKey="executor-map-devices"
+          className="max-h-[420px] overflow-y-auto pr-1"
+          compact={
+            devices.length === 0 ? (
+              <p className="text-sm text-gray-400">暂无设备</p>
+            ) : (
+              <CompactList>
+                {devices.map((d) => {
+                  const r = storageRatio(d);
+                  const full = r >= 0.95;
+                  return (
+                    <CompactListRow
+                      key={d.device_id}
+                      primary={d.readable_name}
+                      secondary={d.device_id}
+                      meta={`${Math.round(r * 100)}% · ${Number(d.storage_used_mb) || 0}/${Number(d.storage_capacity_mb) || 1024} MB${full ? " · 可收菜" : ""}`}
+                    />
+                  );
+                })}
+              </CompactList>
+            )
+          }
+        >
+        <CardList as="div" className="content-start">
+          {devices.length === 0 && <p className="text-sm text-gray-400 col-span-full">暂无设备</p>}
           {devices.map((d) => {
             const r = storageRatio(d);
             const full = r >= 0.95;
@@ -290,6 +314,7 @@ function ExecutorMapPageLive() {
             );
           })}
         </CardList>
+        </ListViewSection>
       </div>
     </div>
   );

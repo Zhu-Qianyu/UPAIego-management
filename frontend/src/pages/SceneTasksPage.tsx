@@ -24,7 +24,7 @@ import {
   type SceneTaskAssignment,
 } from "../api/operations";
 import Spinner from "../components/Spinner";
-import { CardList, CardListItem } from "../components/ui/PageLayout";
+import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, routeViewCacheKeyExtra, writeRouteViewCache } from "../utils/routeViewCache";
 import { useAuth } from "../auth/AuthContext";
@@ -381,6 +381,25 @@ function PartyDemandsTab({
           添加甲方业务
         </button>
       </form>
+      <ListViewSection
+        storageKey="scene-party-demands"
+        compact={
+          <CompactList>
+            {rows.map((r) => (
+              <CompactListRow
+                key={r.id}
+                primary={r.client_company || r.title}
+                secondary={`设备类型：${r.device_type?.trim() || "—"} · ${labelSceneCategories(r.scene_categories)}`}
+                meta={
+                  r.total_hours_required != null
+                    ? `上限 ${r.max_hours_per_scene}h/场景 · 总计 ${r.total_hours_required}h`
+                    : `上限 ${r.max_hours_per_scene}h/场景 · 总计无限`
+                }
+              />
+            ))}
+          </CompactList>
+        }
+      >
       <CardList>
         {rows.map((r) => (
           <CardListItem key={r.id}>
@@ -539,6 +558,7 @@ function PartyDemandsTab({
           </CardListItem>
         ))}
       </CardList>
+      </ListViewSection>
     </div>
   );
 }
@@ -914,6 +934,21 @@ function ScenarioWorkstationsTab({
           {busy ? "上传中..." : "添加场景岗位"}
         </button>
       </form>
+      <ListViewSection
+        storageKey="scene-positions"
+        compact={
+          <CompactList>
+            {rows.map((r) => (
+              <CompactListRow
+                key={r.id}
+                primary={r.title}
+                secondary={r.process_description ?? undefined}
+                meta={`${labelSceneCategories(r.scene_categories)} · ${[r.address_province, r.address_city, r.address_district].filter(Boolean).join(" ")}`}
+              />
+            ))}
+          </CompactList>
+        }
+      >
       <CardList as="div">
         {rows.map((r) => (
           <CardListItem as="div" key={r.id}>
@@ -1034,6 +1069,7 @@ function ScenarioWorkstationsTab({
           </CardListItem>
         ))}
       </CardList>
+      </ListViewSection>
     </div>
   );
 }
@@ -1477,6 +1513,26 @@ function SceneTasksInner({
           </p>
         )}
 
+        <ListViewSection
+          storageKey="scene-tasks"
+          compact={
+            <CompactList>
+              {tasks.map((t) => {
+                const pos = t.scenario_position_id ? positions.get(t.scenario_position_id) : undefined;
+                const statusLabel =
+                  t.status === "draft" ? "草稿" : t.status === "published" ? "已发布" : "已关闭";
+                return (
+                  <CompactListRow
+                    key={t.id}
+                    primary={t.title}
+                    secondary={t.description ?? undefined}
+                    meta={`${statusLabel}${t.due_at ? ` · 截止 ${new Date(t.due_at).toLocaleString()}` : ""}${pos ? ` · ${labelSceneCategories(pos.scene_categories)}` : ""}`}
+                  />
+                );
+              })}
+            </CompactList>
+          }
+        >
         <CardList as="div">
           {tasks.map((t) => {
             const pos = t.scenario_position_id ? positions.get(t.scenario_position_id) : undefined;
@@ -1602,6 +1658,7 @@ function SceneTasksInner({
             );
           })}
         </CardList>
+        </ListViewSection>
       </div>
     </>
   );

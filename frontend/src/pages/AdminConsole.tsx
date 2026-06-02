@@ -13,7 +13,7 @@ import {
 } from "../api/adminContent";
 import { ROLE_LABELS } from "../auth/roleLabels";
 import Spinner from "../components/Spinner";
-import { CardList, CardListItem } from "../components/ui/PageLayout";
+import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 import { useAuth } from "../auth/AuthContext";
@@ -250,9 +250,28 @@ export default function AdminConsole() {
             </button>
           </form>
 
+          <ListViewSection
+            storageKey="admin-kpis"
+            compact={
+              kpis.length === 0 ? (
+                <p className="py-4 text-gray-400 text-sm">暂无 KPI</p>
+              ) : (
+                <CompactList>
+                  {kpis.map((k) => (
+                    <CompactListRow
+                      key={k.id}
+                      primary={listMetricTitle(k)}
+                      secondary={`目标 ${k.target_value ?? "—"} ${k.unit ?? ""}${k.notes ? ` · ${k.notes}` : ""}`}
+                      meta={`${ROLE_LABELS[k.target_role ?? "device_operator"]}${!isKpiActiveAt(k) ? " · 未生效" : ""}`}
+                    />
+                  ))}
+                </CompactList>
+              )
+            }
+          >
           <CardList>
             {kpis.length === 0 && (
-              <CardListItem className="max-w-none flex-[1_1_100%]">
+              <CardListItem className="col-span-full">
                 <p className="py-4 text-gray-400 text-sm w-full">暂无 KPI</p>
               </CardListItem>
             )}
@@ -293,6 +312,7 @@ export default function AdminConsole() {
               </CardListItem>
             ))}
           </CardList>
+          </ListViewSection>
         </section>
 
         <section className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6">
@@ -323,7 +343,22 @@ export default function AdminConsole() {
             </button>
           </form>
 
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">近期公告</h3>
+          <ListViewSection
+            storageKey="admin-messages"
+            header={<h3 className="text-sm font-semibold text-gray-700">近期公告</h3>}
+            compact={
+              <CompactList>
+                {messages.map((m) => (
+                  <CompactListRow
+                    key={m.id}
+                    primary={m.title}
+                    secondary={m.body}
+                    meta={new Date(m.created_at).toLocaleString()}
+                  />
+                ))}
+              </CompactList>
+            }
+          >
           <CardList className="max-h-80 overflow-y-auto">
             {messages.map((m) => (
               <CardListItem key={m.id}>
@@ -335,6 +370,7 @@ export default function AdminConsole() {
               </CardListItem>
             ))}
           </CardList>
+          </ListViewSection>
         </section>
       </div>
     </div>

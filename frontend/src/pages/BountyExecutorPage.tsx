@@ -34,7 +34,11 @@ import {
   Alert,
   CardList,
   CardListItem,
+  CompactList,
+  CompactListRow,
   EmptyState,
+  ListViewSection,
+  listCardInnerClass,
   IconClipboard,
   IconSparkles,
   PageHero,
@@ -268,6 +272,21 @@ export default function BountyExecutorPage() {
           {openBounties.length === 0 ? (
             <EmptyState title="暂无可接悬赏单" description="等待管理员发布新的工时池" icon={<IconSparkles />} />
           ) : (
+            <ListViewSection
+              storageKey="executor-open-bounties"
+              compact={
+                <CompactList>
+                  {openBounties.map((b) => (
+                    <CompactListRow
+                      key={b.id}
+                      primary={b.title}
+                      secondary={b.description ?? undefined}
+                      meta={`剩 ${b.remaining_hours}/${b.total_hours}h · ¥${Number(b.hourly_rate).toFixed(2)}/h · ${b.completion_days}天`}
+                    />
+                  ))}
+                </CompactList>
+              }
+            >
             <CardList>
               {openBounties.map((b) => {
                 const penalty = estimatePenaltyPoints(1, b.points_per_hour);
@@ -278,7 +297,7 @@ export default function BountyExecutorPage() {
                     : null;
                 return (
                   <CardListItem key={b.id}>
-                  <div className="glass-panel rounded-2xl p-5 space-y-4 h-full">
+                  <div className={listCardInnerClass}>
                     <div className="flex flex-wrap justify-between gap-2">
                       <div>
                         <h3 className="font-medium text-gray-900">{b.title}</h3>
@@ -323,6 +342,7 @@ export default function BountyExecutorPage() {
                 );
               })}
             </CardList>
+            </ListViewSection>
           )}
         </section>
       )}
@@ -332,6 +352,25 @@ export default function BountyExecutorPage() {
           {myClaims.length === 0 ? (
             <EmptyState title="尚无接单记录" description="在「可接单」页领取悬赏工时" icon={<IconClipboard />} />
           ) : (
+            <ListViewSection
+              storageKey="executor-my-claims"
+              compact={
+                <CompactList>
+                  {myClaims.map((c) => {
+                    const title = c.bounties?.title ?? "悬赏单";
+                    const executed = Number(c.executed_hours);
+                    return (
+                      <CompactListRow
+                        key={c.id}
+                        primary={title}
+                        secondary={`${claimStatusLabel(c.status)} · 已结 ${executed}/${c.claimed_hours}h`}
+                        meta={c.status === "active" ? formatDueCountdown(c.due_at) : new Date(c.due_at).toLocaleDateString()}
+                      />
+                    );
+                  })}
+                </CompactList>
+              }
+            >
             <CardList>
               {myClaims.map((c) => {
                 const title = c.bounties?.title ?? "悬赏单";
@@ -353,7 +392,7 @@ export default function BountyExecutorPage() {
                 const checkout = checkoutsByClaim[c.id];
                 return (
                   <CardListItem key={c.id}>
-                  <div className="glass-panel rounded-2xl p-5 h-full">
+                  <div className={`${listCardInnerClass} !space-y-0`}>
                     <div className="flex flex-wrap justify-between gap-2">
                       <div>
                         <h3 className="font-medium text-gray-900">{title}</h3>
@@ -422,6 +461,7 @@ export default function BountyExecutorPage() {
                 );
               })}
             </CardList>
+            </ListViewSection>
           )}
         </section>
       )}
@@ -493,10 +533,25 @@ export default function BountyExecutorPage() {
             {profile.ledger.length === 0 ? (
               <p className="text-sm text-gray-500 py-6 text-center border border-dashed rounded-xl">暂无流水</p>
             ) : (
+              <ListViewSection
+                storageKey="executor-tier-ledger"
+                compact={
+                  <CompactList>
+                    {profile.ledger.map((row) => (
+                      <CompactListRow
+                        key={row.id}
+                        primary={`${row.delta >= 0 ? "+" : ""}${row.delta} · ${ledgerReasonLabel(row.reason)}`}
+                        secondary={row.note ?? undefined}
+                        meta={`余额 ${row.balance_after} · ${new Date(row.created_at).toLocaleString()}`}
+                      />
+                    ))}
+                  </CompactList>
+                }
+              >
               <CardList>
                 {profile.ledger.map((row) => (
                   <CardListItem key={row.id}>
-                  <div className="glass-panel rounded-2xl px-4 py-3 text-sm h-full flex flex-col justify-between gap-2">
+                  <div className={`${listCardInnerClass} !p-4 !space-y-2 flex flex-col justify-between`}>
                     <div>
                       <span className={row.delta >= 0 ? "text-emerald-700" : "text-red-700"}>
                         {row.delta >= 0 ? "+" : ""}
@@ -512,6 +567,7 @@ export default function BountyExecutorPage() {
                   </CardListItem>
                 ))}
               </CardList>
+              </ListViewSection>
             )}
           </div>
         </section>

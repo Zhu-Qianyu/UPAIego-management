@@ -15,7 +15,11 @@ import {
   Alert,
   CardList,
   CardListItem,
+  CompactList,
+  CompactListRow,
   EmptyState,
+  ListViewSection,
+  listCardInnerClass,
   IconSparkles,
   PageHero,
   PageShell,
@@ -151,10 +155,25 @@ export default function ExecutorWalletPage() {
           {ledger.length === 0 ? (
             <EmptyState title="暂无流水" description="完成悬赏并由运维员入账后，将显示在此" icon={<IconSparkles />} />
           ) : (
+            <ListViewSection
+              storageKey="wallet-ledger"
+              compact={
+                <CompactList>
+                  {ledger.map((row) => (
+                    <CompactListRow
+                      key={row.id}
+                      primary={walletLedgerReasonLabel(row.reason)}
+                      secondary={row.note ?? undefined}
+                      meta={`${row.delta >= 0 ? "+" : ""}${formatCny(row.delta)} · 余额 ${formatCny(row.balance_after)} · ${new Date(row.created_at).toLocaleString()}`}
+                    />
+                  ))}
+                </CompactList>
+              }
+            >
             <CardList>
               {ledger.map((row) => (
                 <CardListItem key={row.id}>
-                <div className="rounded-xl bg-slate-50/90 ring-1 ring-slate-200/80 px-4 py-3 text-sm h-full flex flex-col justify-between gap-2">
+                <div className={`${listCardInnerClass} !p-4 !space-y-2 bg-slate-50/90 ring-1 ring-slate-200/80 flex flex-col justify-between`}>
                   <div>
                     <p className="font-medium text-slate-900">{walletLedgerReasonLabel(row.reason)}</p>
                     {row.note && <p className="text-xs text-slate-500 mt-0.5">{row.note}</p>}
@@ -173,6 +192,7 @@ export default function ExecutorWalletPage() {
                 </CardListItem>
               ))}
             </CardList>
+            </ListViewSection>
           )}
         </Panel>
       )}
@@ -182,10 +202,25 @@ export default function ExecutorWalletPage() {
           {lines.length === 0 ? (
             <EmptyState title="暂无结算单" description="运维员审核并入账后会生成明细" icon={<IconSparkles />} />
           ) : (
+            <ListViewSection
+              storageKey="wallet-settlements"
+              compact={
+                <CompactList>
+                  {lines.map((line) => (
+                    <CompactListRow
+                      key={line.id}
+                      primary={`+${formatCny(line.amount)}`}
+                      secondary={`确认 ${line.confirmed_hours} h × ${formatCny(line.hourly_rate_snapshot)}/h${line.operator_note ? ` · ${line.operator_note}` : ""}`}
+                      meta={new Date(line.settled_at).toLocaleString()}
+                    />
+                  ))}
+                </CompactList>
+              }
+            >
             <CardList>
               {lines.map((line) => (
                 <CardListItem key={line.id}>
-                <div className="rounded-xl bg-slate-50/90 ring-1 ring-slate-200/80 px-4 py-3 text-sm space-y-1 h-full">
+                <div className={`${listCardInnerClass} !p-4 !space-y-1 bg-slate-50/90 ring-1 ring-slate-200/80`}>
                   <div className="flex flex-wrap justify-between gap-2">
                     <span className="font-semibold text-slate-900">+{formatCny(line.amount)}</span>
                     <span className="text-xs text-slate-500">{new Date(line.settled_at).toLocaleString()}</span>
@@ -201,6 +236,7 @@ export default function ExecutorWalletPage() {
                 </CardListItem>
               ))}
             </CardList>
+            </ListViewSection>
           )}
         </Panel>
       )}

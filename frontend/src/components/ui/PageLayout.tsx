@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useState } from "react";
 
 export const uiInput =
   "mt-1.5 w-full rounded-xl border border-slate-200/90 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-400";
@@ -15,7 +16,11 @@ const heroGradients: Record<Accent, string> = {
 };
 
 export function PageShell({ children }: { children: ReactNode }) {
-  return <div className="page-shell max-w-[90rem] mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">{children}</div>;
+  return (
+    <div className="page-shell max-w-[90rem] mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 min-w-0 w-full box-border overflow-x-hidden">
+      {children}
+    </div>
+  );
 }
 
 export function PageHero({
@@ -214,10 +219,13 @@ export function EmptyState({
   );
 }
 
-/** 展示列表：收窄卡片宽度，横向自动换行 */
-export const cardListClass = "list-none flex flex-wrap gap-4 items-stretch m-0 p-0 w-full";
-export const cardListItemClass =
-  "list-none w-full min-w-[16rem] max-w-[22rem] flex-[1_1_18rem] min-h-0";
+/** 展示列表：网格布局，防止卡片溢出容器 */
+export const cardListClass =
+  "list-none grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 w-full min-w-0 max-w-full box-border m-0 p-0";
+export const cardListItemClass = "list-none min-w-0 max-w-full overflow-hidden box-border";
+/** 卡片内层容器，约束宽度避免 Panel 等内容撑破网格 */
+export const listCardInnerClass =
+  "glass-panel rounded-2xl p-5 space-y-4 h-full w-full min-w-0 max-w-full overflow-hidden box-border";
 
 export function CardList({
   children,
@@ -241,6 +249,130 @@ export function CardListItem({
   as?: "li" | "div";
 }) {
   return <Tag className={`${cardListItemClass}${className ? ` ${className}` : ""}`}>{children}</Tag>;
+}
+
+export type ListViewMode = "detail" | "compact";
+
+const LIST_VIEW_STORAGE_PREFIX = "upaiego-list-view:";
+
+export function useListViewMode(storageKey: string): [ListViewMode, (mode: ListViewMode) => void] {
+  const key = `${LIST_VIEW_STORAGE_PREFIX}${storageKey}`;
+  const [mode, setModeState] = useState<ListViewMode>(() => {
+    try {
+      const saved = localStorage.getItem(key);
+      return saved === "compact" ? "compact" : "detail";
+    } catch {
+      return "detail";
+    }
+  });
+  const setMode = (next: ListViewMode) => {
+    setModeState(next);
+    try {
+      localStorage.setItem(key, next);
+    } catch {
+      /* ignore */
+    }
+  };
+  return [mode, setMode];
+}
+
+export function ListViewToggle({
+  mode,
+  onChange,
+  className = "",
+}: {
+  mode: ListViewMode;
+  onChange: (mode: ListViewMode) => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`inline-flex shrink-0 rounded-lg bg-slate-100/90 p-0.5 ring-1 ring-slate-200/80 text-xs ${className}`}
+      role="group"
+      aria-label="列表展示方式"
+    >
+      <button
+        type="button"
+        onClick={() => onChange("detail")}
+        className={`rounded-md px-2.5 py-1.5 font-medium transition ${
+          mode === "detail" ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/80" : "text-slate-600 hover:text-slate-900"
+        }`}
+      >
+        详情卡片
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("compact")}
+        className={`rounded-md px-2.5 py-1.5 font-medium transition ${
+          mode === "compact" ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/80" : "text-slate-600 hover:text-slate-900"
+        }`}
+      >
+        文字列表
+      </button>
+    </div>
+  );
+}
+
+export function ListViewSection({
+  storageKey,
+  header,
+  className = "",
+  compact,
+  children,
+}: {
+  storageKey: string;
+  header?: ReactNode;
+  className?: string;
+  compact: ReactNode;
+  children: ReactNode;
+}) {
+  const [mode, setMode] = useListViewMode(storageKey);
+  return (
+    <div className={`min-w-0 w-full max-w-full box-border ${className}`}>
+      <div className={`flex flex-wrap items-center gap-2 mb-3 ${header ? "justify-between" : "justify-end"}`}>
+        {header ? <div className="min-w-0 flex-1">{header}</div> : null}
+        <ListViewToggle mode={mode} onChange={setMode} />
+      </div>
+      <div className="min-w-0 w-full max-w-full overflow-x-hidden">{mode === "detail" ? children : compact}</div>
+    </div>
+  );
+}
+
+export function CompactList({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <ul
+      className={`list-none m-0 p-0 w-full min-w-0 max-w-full rounded-xl ring-1 ring-slate-200/80 bg-white divide-y divide-slate-100 overflow-hidden box-border ${className}`}
+    >
+      {children}
+    </ul>
+  );
+}
+
+export function CompactListRow({
+  primary,
+  secondary,
+  meta,
+  actions,
+  className = "",
+}: {
+  primary: ReactNode;
+  secondary?: ReactNode;
+  meta?: ReactNode;
+  actions?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <li className={`px-3 py-2.5 min-w-0 max-w-full box-border ${className}`}>
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 min-w-0">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-slate-900 break-words">{primary}</p>
+          {secondary ? <p className="text-xs text-slate-500 mt-0.5 break-words">{secondary}</p> : null}
+        </div>
+        {meta ? <div className="text-xs text-slate-500 shrink-0 text-right max-w-[45%] break-words">{meta}</div> : null}
+      </div>
+      {actions ? <div className="mt-2 flex flex-wrap gap-2">{actions}</div> : null}
+    </li>
+  );
 }
 
 export function Alert({

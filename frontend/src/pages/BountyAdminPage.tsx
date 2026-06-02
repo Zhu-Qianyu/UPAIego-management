@@ -20,6 +20,10 @@ import {
   Alert,
   CardList,
   CardListItem,
+  CompactList,
+  CompactListRow,
+  ListViewSection,
+  listCardInnerClass,
   IconSparkles,
   PageHero,
   PageShell,
@@ -368,12 +372,37 @@ export default function BountyAdminPage() {
       </Panel>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-slate-900">
-          悬赏列表 <span className="text-slate-400 font-normal text-sm">（开放 {openCount}）</span>
-        </h2>
         {bounties.length === 0 ? (
-          <p className="text-sm text-gray-500 py-8 text-center border border-dashed rounded-xl">暂无悬赏令</p>
+          <>
+            <h2 className="text-lg font-semibold text-slate-900">
+              悬赏列表 <span className="text-slate-400 font-normal text-sm">（开放 {openCount}）</span>
+            </h2>
+            <p className="text-sm text-gray-500 py-8 text-center border border-dashed rounded-xl">暂无悬赏令</p>
+          </>
         ) : (
+          <ListViewSection
+            storageKey="admin-bounties"
+            header={
+              <h2 className="text-lg font-semibold text-slate-900">
+                悬赏列表 <span className="text-slate-400 font-normal text-sm">（开放 {openCount}）</span>
+              </h2>
+            }
+            compact={
+              <CompactList>
+                {bounties.map((b) => {
+                  const claimedHours = b.total_hours - b.remaining_hours;
+                  return (
+                    <CompactListRow
+                      key={b.id}
+                      primary={b.title}
+                      secondary={b.description ?? undefined}
+                      meta={`${bountyStatusLabel(b.status)} · 剩 ${b.remaining_hours}/${b.total_hours}h · 已领 ${claimedHours}h`}
+                    />
+                  );
+                })}
+              </CompactList>
+            }
+          >
           <CardList>
             {bounties.map((b) => {
               const claims = claimsByBounty[b.id] ?? [];
@@ -381,7 +410,7 @@ export default function BountyAdminPage() {
               const claimedHours = b.total_hours - b.remaining_hours;
               return (
                 <CardListItem key={b.id}>
-                <div className="glass-panel overflow-hidden rounded-2xl h-full">
+                <div className={`${listCardInnerClass} !p-0 overflow-hidden`}>
                   <div className="p-4 flex flex-wrap gap-3 items-start justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -485,6 +514,7 @@ export default function BountyAdminPage() {
               );
             })}
           </CardList>
+          </ListViewSection>
         )}
       </section>
     </PageShell>
