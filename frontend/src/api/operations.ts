@@ -365,7 +365,7 @@ export async function listManualTrackedDevices(groupId: string): Promise<ManualT
   return (data ?? []) as ManualTrackedDevice[];
 }
 
-/** 当前账号在 RLS 下可见的全部外部设备登记（管理员 fleet 总览等）。 */
+/** 当前账号在 RLS 下可见的全部离线设备登记（管理员 fleet 总览等）。 */
 export async function listAllManualTrackedDevices(): Promise<ManualTrackedDevice[]> {
   const { data, error } = await supabase
     .from(MTD)
@@ -386,7 +386,7 @@ function manualTrackedRowMatchesQuery(row: ManualTrackedDevice, q: string): bool
   return false;
 }
 
-/** 按登记编号、内部 UUID、简称或展示类型筛选外部设备；fleet 为全量可见范围，own 为当前工作群。 */
+/** 按登记编号、系统 UUID、简称或展示类型筛选离线设备；fleet 为全量可见范围，own 为当前工作群。 */
 export async function searchManualTrackedDevices(
   query: string,
   opts: { scope: "own" | "fleet"; groupId: string | null }

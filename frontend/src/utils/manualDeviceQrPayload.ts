@@ -4,10 +4,10 @@ import {
   type ManualTrackedDevice,
 } from "../api/operations";
 
-/** 外部设备贴签二维码：纯文本，扫码后直接显示登记信息（非网址）。 */
+/** 离线设备贴签二维码：纯文本，扫码后直接显示登记信息（非网址）。 */
 export function buildManualTrackedDeviceQrText(d: ManualTrackedDevice): string {
   return [
-    "UPAIEGO外部设备",
+    "UPAIEGO离线设备",
     `登记编号：${d.public_code}`,
     `设备：${formatManualTrackedDeviceLabel(d)}`,
     `内部ID：${d.id}`,

@@ -49,7 +49,7 @@ export async function buildManualDevicesExportHtml(
 <div class="scene-export-wrap">
   <h1>${escapeHtml(docTitle)}</h1>
   <div class="sub">${escapeHtml(subtitle)} · 导出时间 ${escapeHtml(when)} · 共 0 条</div>
-  <p style="font-size:12px">暂无外部设备。</p>
+  <p style="font-size:12px">暂无离线设备。</p>
 </div>`;
   }
 

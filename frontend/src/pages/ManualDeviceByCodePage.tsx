@@ -130,8 +130,8 @@ export default function ManualDeviceByCodePage() {
 
   return (
     <div className="max-w-lg mx-auto py-8 space-y-6">
-      <h1 className="text-xl font-bold text-gray-900">外部设备</h1>
-      <p className="text-sm text-gray-500 -mt-4">无法连接本站心跳的设备，由运维据现场或人员反馈维护状态。</p>
+      <h1 className="text-xl font-bold text-gray-900">离线设备</h1>
+      <p className="text-sm text-gray-500 -mt-4">无法连接本站心跳的离线设备，由运维据现场或人员反馈维护状态。</p>
       <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
         <p className="font-medium text-gray-900">{formatManualTrackedDeviceLabel(row)}</p>
         <div className="space-y-2">

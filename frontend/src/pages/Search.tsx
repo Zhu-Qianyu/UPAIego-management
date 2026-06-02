@@ -91,7 +91,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="设备 ID、名称、序列号、备注，或外部设备登记编号 / UUID / 设备简称…"
+          placeholder="设备 ID、名称、序列号、备注，或离线设备登记编号 / UUID / 设备简称…"
           className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
         <button
@@ -108,12 +108,12 @@ export default function Search({ embedded }: { embedded?: boolean }) {
       {!loading && total !== null && (
         <>
           <p className="text-sm text-gray-500 mb-4">
-            在线设备 {total} 条；外部设备 {manualResults.length} 条
+            联网设备 {total} 条；离线设备 {manualResults.length} 条
           </p>
 
           {results.length === 0 && manualResults.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
-              没有匹配的设备或外部设备。
+              没有匹配的设备或离线设备。
             </div>
           ) : (
             <>
@@ -145,7 +145,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
                     .sort((a, b) => onlineDeviceAttentionRank(b, nowMs) - onlineDeviceAttentionRank(a, nowMs))
                     .map((d) => (
                     <tr key={d.device_id} className="hover:bg-indigo-50/40 transition-colors">
-                      <td className="px-4 py-3 text-xs text-gray-500">在线</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">联网</td>
                       <td className="px-4 py-3 font-medium text-indigo-700">{d.readable_name}</td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-500">{d.device_id}</td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-500">{d.serial_id ?? "-"}</td>
@@ -171,7 +171,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
 
             {manualResults.length > 0 && (
               <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/80 shadow-sm">
-                <p className="text-xs font-semibold text-slate-700 px-4 py-2 border-b border-slate-200">外部设备</p>
+                <p className="text-xs font-semibold text-slate-700 px-4 py-2 border-b border-slate-200">离线设备</p>
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-100/80">
                     <tr>

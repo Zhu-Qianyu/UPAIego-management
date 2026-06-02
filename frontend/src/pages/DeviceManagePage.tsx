@@ -44,7 +44,7 @@ export default function DeviceManagePage() {
     <div>
       <h1 className="text-2xl font-bold text-gray-900 mb-2">设备管理</h1>
       <p className="text-sm text-gray-500 mb-6">
-        <strong>注册设备</strong>页包含在线注册与<strong>外部设备</strong>登记；<strong>搜索</strong>支持按设备 ID、外部设备登记编号等查找；管理员可在此查看<strong>全量在线设备</strong>。
+        <strong>注册设备</strong>页包含<strong>联网设备</strong>注册与<strong>离线设备</strong>登记；<strong>搜索</strong>支持按设备 ID、离线设备登记编号等查找；管理员可在此查看<strong>全量联网设备</strong>。
       </p>
 
       <div

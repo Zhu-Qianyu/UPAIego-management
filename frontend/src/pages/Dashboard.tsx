@@ -167,7 +167,10 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
             {listScope === "fleet" ? "全平台设备总览" : "设备总览"}
           </h1>
           <p className="text-xs text-gray-500 mt-1 max-w-xl">
-            在线设备列表已优先展示<strong>心跳离线</strong>、<strong>非 active 状态</strong>与<strong>待校准/需重校准</strong>项；外部设备优先展示<strong>返厂维修</strong>、<strong>异常</strong>，其次为正常。
+            联网设备列表已优先展示<strong>心跳离线</strong>、<strong>非 active 状态</strong>与<strong>待校准/需重校准</strong>项；离线设备优先展示<strong>返厂维修</strong>、<strong>异常</strong>，其次为正常。
+            {listScope !== "fleet" && (
+              <> 离线设备仅展示<strong>当前工作群</strong>内登记。</>
+            )}
           </p>
           {listScope === "fleet" && (
             <p className="text-xs text-gray-500 mt-1 max-w-xl">
@@ -176,11 +179,11 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
           )}
         </div>
         <span className="text-sm text-gray-500 shrink-0 text-right">
-          在线 <span className="font-semibold text-gray-800">{total}</span> 台
+          联网 <span className="font-semibold text-gray-800">{total}</span> 台
           {manualRows.length > 0 && (
             <>
               {" "}
-              · 外部设备 <span className="font-semibold text-slate-800">{manualRows.length}</span> 台
+              · 离线设备 <span className="font-semibold text-slate-800">{manualRows.length}</span> 台
             </>
           )}
         </span>
@@ -305,7 +308,7 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
           {manualRows.length > 0 && (
             <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/90 shadow-sm">
               <p className="text-xs font-semibold text-slate-800 px-4 py-2 border-b border-slate-200 bg-slate-100/80">
-                外部设备（无法连接本站）
+                离线设备（无法连接本站）
               </p>
               <table className="min-w-full divide-y divide-slate-200 text-sm bg-white">
                 <thead className="bg-slate-50">

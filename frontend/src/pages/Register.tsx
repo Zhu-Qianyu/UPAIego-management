@@ -97,12 +97,12 @@ export default function Register({ embedded }: { embedded?: boolean }) {
       {embedded && <h2 className="sr-only">注册新设备</h2>}
 
       <p className="text-sm text-gray-500 mb-4">
-        你可以选填设备序列号（CPU Serial），可通过 CLI 获取：&nbsp;
+        注册可接入本站心跳的<strong>联网设备</strong>。你可以选填设备序列号（CPU Serial），可通过 CLI 获取：&nbsp;
         <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">python cli.py detect --port /dev/ttyUSB0</code>
       </p>
 
       <div className="bg-white rounded-2xl shadow-sm border border-indigo-100 p-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">设备信息</h2>
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">联网设备信息</h2>
         <p className="text-xs text-gray-400 mb-4">
           系统会自动生成唯一设备 ID 和设备名称。
         </p>
@@ -139,9 +139,9 @@ export default function Register({ embedded }: { embedded?: boolean }) {
       </div>
 
       <div className="mt-10 pt-8 border-t border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">外部设备（无法连接本站）</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">离线设备（无法连接本站）</h2>
         <p className="text-sm text-gray-500 mb-4">
-          第三方设备无法接入本站心跳时，在此登记为<strong>外部设备</strong>：系统分配<strong>登记编号与二维码</strong>，类型由<strong>甲方业务 + 设备简称</strong>组成；可在详情页或此处更新运行状态。
+          无法接入本站心跳时，在此登记为<strong>离线设备</strong>：系统分配<strong>登记编号与二维码</strong>，类型由<strong>甲方业务 + 设备简称</strong>组成；可在详情页或此处更新运行状态。仅显示与登记<strong>本工作群</strong>内的离线设备。
         </p>
         <ManualDevicesTab />
       </div>
