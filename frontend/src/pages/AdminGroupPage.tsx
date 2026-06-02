@@ -122,7 +122,7 @@ export default function AdminGroupPage() {
   if (loading && owned === undefined) return <Spinner />;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8">
+    <div className="w-full min-w-0 space-y-8">
       <RefreshStrip active={refreshing} />
       <GroupTabs />
       <div>
@@ -196,7 +196,7 @@ export default function AdminGroupPage() {
                 const info = pendingProfiles[m.user_id];
                 return (
                 <CardListItem key={m.id}>
-                <div className="rounded-xl border border-gray-200 bg-white p-4 h-full flex flex-wrap items-center justify-between gap-2">
+                <div className="rounded-xl border border-gray-200 bg-white p-4 h-full w-full min-w-0 overflow-hidden box-border flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-sm font-medium text-gray-900">{info?.name ?? m.user_id.slice(0, 8)}</p>
                     <p className="text-xs text-gray-600 mt-0.5">

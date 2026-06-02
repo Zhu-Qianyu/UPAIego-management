@@ -205,7 +205,7 @@ function ExecutorMapPageLive() {
   if (loading && devices.length === 0) return <Spinner />;
 
   return (
-    <div>
+    <div className="w-full min-w-0">
       <RefreshStrip active={refreshing} />
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>

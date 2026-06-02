@@ -403,7 +403,7 @@ export default function App() {
           email={session?.user?.email}
         />
 
-        <main className="max-w-7xl mx-auto w-full min-w-0 px-4 sm:px-6 lg:px-8 py-8 flex-1">
+        <main className="max-w-[90rem] mx-auto w-full min-w-0 flex-1 overflow-x-hidden box-border px-4 sm:px-6 lg:px-8 py-8">
         <PendingApprovalGate>
         <GroupStatusBanner />
         <KpiBanner />

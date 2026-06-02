@@ -156,7 +156,7 @@ export default function DeviceDetail() {
   if (!device) return <p className="text-center text-gray-500 py-12">{error || "未找到设备"}</p>;
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto w-full min-w-0">
       <RefreshStrip active={refreshing} />
       <button onClick={() => navigate("/")} className="text-sm text-indigo-600 hover:underline mb-4 inline-block">
         &larr; 返回设备总览

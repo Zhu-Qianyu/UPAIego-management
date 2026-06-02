@@ -307,7 +307,7 @@ export default function GroupPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8">
+    <div className="w-full min-w-0 space-y-8">
       <RefreshStrip active={refreshing} />
       <GroupTabs />
       <div>
@@ -434,7 +434,7 @@ export default function GroupPage() {
           <CardList>
             {topics.map((t) => (
               <CardListItem key={t.id}>
-              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm h-full">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm h-full w-full min-w-0 overflow-hidden box-border">
                 <div className="flex justify-between gap-3">
                   <div>
                     <p className="font-medium text-gray-900">{t.title}</p>

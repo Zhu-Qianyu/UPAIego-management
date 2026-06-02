@@ -159,7 +159,7 @@ export default function Dashboard({ listScopeOverride }: DashboardProps = {}) {
   }
 
   return (
-    <div>
+    <div className="w-full min-w-0">
       <RefreshStrip active={refreshing} />
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div>

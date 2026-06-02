@@ -336,7 +336,7 @@ export default function BountyAdminPage() {
                     pd.device_type?.trim() ? ` · ${pd.device_type.trim()}` : ""
                   }`;
                   return (
-                    <li key={pd.id} className="min-w-[12rem] max-w-xs flex-[1_1_14rem]">
+                    <li key={pd.id} className="min-w-0">
                       <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
                         <input
                           type="checkbox"

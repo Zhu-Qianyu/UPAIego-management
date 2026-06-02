@@ -41,7 +41,7 @@ export default function Register({ embedded }: { embedded?: boolean }) {
 
   if (registered) {
     return (
-      <div className={embedded ? "max-w-lg" : "max-w-lg mx-auto"}>
+      <div className={embedded ? "w-full min-w-0 max-w-lg" : "max-w-lg mx-auto"}>
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center">
           <div className="text-green-600 text-5xl mb-4">&#10003;</div>
           <h2 className="text-xl font-bold text-gray-900 mb-1">设备注册成功</h2>
@@ -92,7 +92,7 @@ export default function Register({ embedded }: { embedded?: boolean }) {
   }
 
   return (
-    <div className={embedded ? "max-w-2xl" : "max-w-2xl mx-auto"}>
+    <div className={embedded ? "w-full min-w-0" : "max-w-2xl mx-auto"}>
       {!embedded && <h1 className="text-2xl font-bold text-gray-900 mb-6">注册新设备</h1>}
       {embedded && <h2 className="sr-only">注册新设备</h2>}
 

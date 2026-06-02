@@ -68,7 +68,7 @@ function ManualTrackedDeviceRow({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row gap-4 h-full">
+    <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row gap-4 h-full w-full min-w-0 max-w-full overflow-hidden box-border">
       <div className="shrink-0 flex flex-col items-center gap-1">
         {qr ? (
           <img src={qr} alt="" className="w-40 h-40 object-contain rounded-lg border border-gray-100 bg-white" />
@@ -227,7 +227,7 @@ export default function ManualDevicesTab() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <RefreshStrip active={refreshing} />
       <p className="text-sm text-gray-600">
         <strong>离线设备</strong>指无法接入本站心跳的设备，由<strong>设备运维员</strong>据现场或人员反馈维护。

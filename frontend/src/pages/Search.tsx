@@ -83,7 +83,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
   }
 
   return (
-    <div>
+    <div className="w-full min-w-0">
       {!embedded && <h1 className="text-2xl font-bold text-gray-900 mb-6">搜索设备</h1>}
       {embedded && <h2 className="sr-only">搜索设备</h2>}
 

@@ -157,7 +157,7 @@ export default function AdminConsole() {
   if (loading) return <Spinner />;
 
   return (
-    <div>
+    <div className="w-full min-w-0">
       <RefreshStrip active={refreshing} />
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">管理员工作台</h1>
@@ -277,7 +277,7 @@ export default function AdminConsole() {
             )}
             {kpis.map((k) => (
               <CardListItem key={k.id}>
-              <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm h-full flex justify-between gap-3">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm h-full w-full min-w-0 overflow-hidden box-border flex justify-between gap-3">
                 <div>
                   <p className="font-medium text-gray-900">{listMetricTitle(k)}</p>
                   <p className="text-xs mt-1">

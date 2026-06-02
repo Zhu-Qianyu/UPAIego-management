@@ -268,7 +268,7 @@ function PartyDemandsTab({
   if (loading && rows.length === 0) return <Spinner />;
 
   return (
-    <div className="space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <RefreshStrip active={refreshing} />
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-gray-500">列表打印（含设备快照图，打印前会等待图片加载）：</span>
@@ -403,7 +403,7 @@ function PartyDemandsTab({
       <CardList>
         {rows.map((r) => (
           <CardListItem key={r.id}>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 h-full w-full">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 h-full w-full min-w-0 overflow-hidden box-border">
             {editingId === r.id ? (
               <form onSubmit={onSaveEdit} className="space-y-3">
                 <p className="text-xs font-medium text-gray-700">编辑甲方业务</p>
@@ -839,7 +839,7 @@ function ScenarioWorkstationsTab({
   if (loading && rows.length === 0) return <Spinner />;
 
   return (
-    <div className="space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <RefreshStrip active={refreshing} />
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-gray-500">列表打印（含工位现场快照图，打印前会等待图片加载）：</span>
@@ -952,7 +952,7 @@ function ScenarioWorkstationsTab({
       <CardList as="div">
         {rows.map((r) => (
           <CardListItem as="div" key={r.id}>
-          <div className="relative rounded-xl border border-gray-200 overflow-hidden h-full w-full">
+          <div className="relative rounded-xl border border-gray-200 overflow-hidden h-full w-full min-w-0 box-border">
             <ScenarioRow row={r} />
             <div className="absolute top-2 right-2 flex gap-1">
               <button
@@ -1396,7 +1396,7 @@ function SceneTasksInner({
   return (
     <>
       <RefreshStrip active={refreshing} />
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="w-full min-w-0 space-y-6">
         <div>
           <h2 className="text-lg font-bold text-gray-900">场景任务</h2>
           <p className="text-sm text-gray-500 mt-1">
@@ -1540,7 +1540,7 @@ function SceneTasksInner({
             return (
               <CardListItem as="div" key={t.id}>
               <div
-                className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm h-full w-full"
+                className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm h-full w-full min-w-0 box-border"
               >
                 <div className="p-4 flex flex-col sm:flex-row gap-3 sm:items-start sm:justify-between">
                   <div className="flex-1 min-w-0">
@@ -1760,7 +1760,7 @@ export default function SceneTasksPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <RefreshStrip active={refreshing} />
       <div>
         <h1 className="text-2xl font-bold text-gray-900">{isExecutorView ? "场景采集任务" : "场景业务"}</h1>

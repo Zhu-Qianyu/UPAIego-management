@@ -41,7 +41,7 @@ export default function DeviceManagePage() {
   );
 
   return (
-    <div>
+    <div className="w-full min-w-0">
       <h1 className="text-2xl font-bold text-gray-900 mb-2">设备管理</h1>
       <p className="text-sm text-gray-500 mb-6">
         <strong>注册设备</strong>页包含<strong>联网设备</strong>注册与<strong>离线设备</strong>登记；<strong>搜索</strong>支持按设备 ID、离线设备登记编号等查找；管理员可在此查看<strong>全量联网设备</strong>。
@@ -100,6 +100,7 @@ export default function DeviceManagePage() {
 
       <section
         role="tabpanel"
+        className="w-full min-w-0"
         aria-labelledby={`tab-${tab === "fleet" ? "fleet" : tab === "search" ? "search" : "register"}`}
       >
         {tab === "register" && <Register embedded />}

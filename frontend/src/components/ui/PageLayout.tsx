@@ -17,7 +17,7 @@ const heroGradients: Record<Accent, string> = {
 
 export function PageShell({ children }: { children: ReactNode }) {
   return (
-    <div className="page-shell max-w-[90rem] mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 min-w-0 w-full box-border overflow-x-hidden">
+    <div className="page-shell max-w-[90rem] mx-auto w-full min-w-0 space-y-6 box-border overflow-x-hidden">
       {children}
     </div>
   );
