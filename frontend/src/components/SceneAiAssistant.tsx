@@ -10,6 +10,8 @@ import {
 } from "../api/sceneAgent";
 import { labelSceneCategories } from "../utils/sceneCategories";
 
+const BOT_NAME = "aitebot";
+
 type UiMessage = {
   id: string;
   role: "user" | "assistant";
@@ -18,21 +20,35 @@ type UiMessage = {
   proposals?: AgentProposal[];
 };
 
+type InputMode = "text" | "voice";
+type VoiceLang = "zh-CN" | "en-US";
+
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
+  const w = window as Window & {
+    SpeechRecognition?: new () => SpeechRecognition;
+    webkitSpeechRecognition?: new () => SpeechRecognition;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
 export default function SceneAiAssistant() {
   const enabled = sceneAiFeatureEnabled();
   const [open, setOpen] = useState(false);
   const [groupId, setGroupId] = useState<string | null>(null);
+  const [inputMode, setInputMode] = useState<InputMode>("text");
+  const [voiceLang, setVoiceLang] = useState<VoiceLang>("zh-CN");
+  const [listening, setListening] = useState(false);
   const [messages, setMessages] = useState<UiMessage[]>(() => [
     {
       id: "welcome",
       role: "assistant",
       text: enabled
-        ? "你好，我是场景业务智能助手（豆包视觉模型）。你可以发大场景全景图、各岗位现场图，并用口语描述；我会整理录入方案，确认后帮你写入系统。我不会删除任何数据。"
-        : "智能助手尚未启用。请设置 VITE_SCENE_AI_ENABLED=true，并在 Supabase 部署 scene-ai-agent（配置 ARK_API_KEY + ARK_MODEL，见 docs/SCENE_AI_AGENT_SETUP.md）。",
+        ? `你好，我是 ${BOT_NAME}。你可以发文字或语音、上传大场景/岗位现场图，我会整理录入方案；确认后帮你写入系统，不会删除任何数据。`
+        : `${BOT_NAME} 尚未启用。请联系管理员配置 scene-ai-agent（ARK_API_KEY + ARK_MODEL）。`,
     },
   ]);
   const [input, setInput] = useState("");
@@ -44,6 +60,9 @@ export default function SceneAiAssistant() {
   const [nextImageIndex, setNextImageIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  const speechSupported = useMemo(() => getSpeechRecognitionCtor() !== null, []);
 
   useEffect(() => {
     if (!open) return;
@@ -55,6 +74,20 @@ export default function SceneAiAssistant() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
+
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (inputMode === "text") {
+      recognitionRef.current?.stop();
+      setListening(false);
+    }
+  }, [inputMode]);
 
   const imageByIndex = useMemo(() => {
     const m = new Map<number, File>();
@@ -93,15 +126,57 @@ export default function SceneAiAssistant() {
     });
   };
 
+  const toggleVoiceInput = () => {
+    if (!speechSupported) {
+      setErr("当前浏览器不支持语音输入，请改用文字输入");
+      setInputMode("text");
+      return;
+    }
+    const Ctor = getSpeechRecognitionCtor();
+    if (!Ctor) return;
+
+    if (listening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      return;
+    }
+
+    const rec = new Ctor();
+    recognitionRef.current = rec;
+    rec.lang = voiceLang;
+    rec.interimResults = true;
+    rec.continuous = false;
+
+    rec.onstart = () => {
+      setListening(true);
+      setErr("");
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => {
+      setListening(false);
+      setErr("语音识别失败，请检查麦克风权限或改用文字输入");
+    };
+    rec.onresult = (event: SpeechRecognitionEvent) => {
+      let transcript = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        transcript += event.results[i][0].transcript;
+      }
+      if (transcript.trim()) {
+        setInput((prev) => (prev ? `${prev}${transcript}` : transcript));
+      }
+    };
+
+    rec.start();
+  };
+
   async function onSend() {
     const text = input.trim();
     if (!text && pendingImages.length === 0) return;
     if (!enabled) {
-      setErr("智能助手未启用");
+      setErr(`${BOT_NAME} 未启用`);
       return;
     }
     if (!groupId) {
-      setErr("请先加入并激活工作群后再使用智能助手");
+      setErr("请先加入并激活工作群后再使用 aitebot");
       return;
     }
     setErr("");
@@ -145,7 +220,7 @@ export default function SceneAiAssistant() {
         {
           id: uid(),
           role: "assistant",
-          text: "抱歉，这次没能处理你的请求。请检查网络、登录状态，或确认 Edge Function 已部署。",
+          text: "抱歉，这次没能处理你的请求。请检查网络、登录状态，或稍后再试。",
         },
       ]);
     } finally {
@@ -187,147 +262,215 @@ export default function SceneAiAssistant() {
           type="button"
           onClick={() => setOpen(true)}
           className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-2xl text-white shadow-lg ring-4 ring-indigo-100 hover:bg-indigo-700 hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          aria-label="打开场景智能助手"
-          title="场景智能助手"
+          aria-label={`打开 ${BOT_NAME}`}
+          title={BOT_NAME}
         >
           <span aria-hidden>🤖</span>
         </button>
       )}
 
       {open && (
-        <div className="fixed bottom-5 right-5 z-50 flex h-[min(640px,calc(100vh-2rem))] w-[min(420px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-2xl">
-          <header className="flex items-center justify-between border-b border-indigo-100 bg-indigo-50/80 px-4 py-3">
-            <div>
-              <p className="font-semibold text-indigo-950">场景智能助手</p>
-              <p className="text-xs text-indigo-700/80">只增不改 · 不删除数据</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-white"
-            >
-              收起
-            </button>
-          </header>
-
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3 bg-slate-50/50">
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[92%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
-                    m.role === "user"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-white border border-gray-200 text-gray-800"
-                  }`}
-                >
-                  {m.text}
-                  {m.imagePreviews?.length ? (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {m.imagePreviews.map((src) => (
-                        <img key={src} src={src} alt="" className="h-14 w-14 object-cover rounded border border-white/30" />
-                      ))}
-                    </div>
-                  ) : null}
-                  {m.proposals?.length ? (
-                    <ProposalCards
-                      proposals={m.proposals}
-                      disabled={executing}
-                      onConfirm={() => void onConfirmProposals(m.proposals!)}
-                    />
-                  ) : null}
+        <>
+          <button
+            type="button"
+            aria-label="关闭 aitebot"
+            className="fixed inset-0 z-40 bg-black/25"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            className="fixed bottom-0 left-0 right-0 z-50 flex h-[33.333vh] min-h-[300px] max-h-[520px] flex-col overflow-hidden border-t border-indigo-200 bg-white shadow-[0_-12px_40px_rgba(15,23,42,0.18)] animate-[slideUp_0.25s_ease-out]"
+            role="dialog"
+            aria-label={BOT_NAME}
+          >
+            <header className="flex shrink-0 items-center justify-between border-b border-indigo-100 bg-gradient-to-r from-indigo-50 to-white px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-lg text-white">
+                  🤖
+                </span>
+                <div>
+                  <p className="font-semibold text-indigo-950 tracking-wide">{BOT_NAME}</p>
+                  <p className="text-xs text-indigo-700/80">只增不改 · 不删除数据</p>
                 </div>
               </div>
-            ))}
-            {busy && (
-              <p className="text-xs text-gray-500 px-1">正在分析图片与描述…</p>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-white border border-transparent hover:border-gray-200"
+              >
+                收起
+              </button>
+            </header>
+
+            <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3 bg-slate-50/60">
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
+                      m.role === "user"
+                        ? "bg-indigo-600 text-white"
+                        : "bg-white border border-gray-200 text-gray-800"
+                    }`}
+                  >
+                    {m.text}
+                    {m.imagePreviews?.length ? (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {m.imagePreviews.map((src) => (
+                          <img key={src} src={src} alt="" className="h-14 w-14 object-cover rounded border border-white/30" />
+                        ))}
+                      </div>
+                    ) : null}
+                    {m.proposals?.length ? (
+                      <ProposalCards
+                        proposals={m.proposals}
+                        disabled={executing}
+                        onConfirm={() => void onConfirmProposals(m.proposals!)}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+              {busy && <p className="text-xs text-gray-500 px-1">{BOT_NAME} 正在思考…</p>}
+            </div>
+
+            {err && <p className="shrink-0 px-4 py-1 text-xs text-red-600 bg-red-50">{err}</p>}
+
+            {pendingImages.length > 0 && (
+              <div className="shrink-0 border-t border-gray-100 px-4 py-2 bg-white">
+                <p className="text-xs text-gray-500 mb-1">待发送图片 ({pendingImages.length})</p>
+                <div className="flex flex-wrap gap-2">
+                  {pendingImages.map((img) => (
+                    <div key={img.index} className="relative">
+                      <img src={img.previewUrl} alt="" className="h-12 w-12 object-cover rounded border" />
+                      <span className="absolute -top-1 -left-1 text-[10px] bg-gray-800 text-white px-1 rounded">
+                        {img.hint === "macro" ? "景" : img.hint === "position" ? "岗" : img.index}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeImage(img.index)}
+                        className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] rounded-full w-4 h-4"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
-          </div>
 
-          {err && <p className="px-3 py-1 text-xs text-red-600 bg-red-50">{err}</p>}
-
-          {pendingImages.length > 0 && (
-            <div className="border-t border-gray-100 px-3 py-2 bg-white">
-              <p className="text-xs text-gray-500 mb-1">待发送图片 ({pendingImages.length})</p>
-              <div className="flex flex-wrap gap-2">
-                {pendingImages.map((img) => (
-                  <div key={img.index} className="relative">
-                    <img src={img.previewUrl} alt="" className="h-12 w-12 object-cover rounded border" />
-                    <span className="absolute -top-1 -left-1 text-[10px] bg-gray-800 text-white px-1 rounded">
-                      {img.hint === "macro" ? "景" : img.hint === "position" ? "岗" : img.index}
-                    </span>
+            <footer className="shrink-0 border-t border-gray-200 px-4 py-3 space-y-2 bg-white">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-gray-500">输入</span>
+                <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setInputMode("text")}
+                    className={`px-3 py-1 ${inputMode === "text" ? "bg-indigo-600 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+                  >
+                    文字
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInputMode("voice")}
+                    className={`px-3 py-1 ${inputMode === "voice" ? "bg-indigo-600 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+                  >
+                    语音
+                  </button>
+                </div>
+                {inputMode === "voice" && (
+                  <>
+                    <select
+                      value={voiceLang}
+                      onChange={(e) => setVoiceLang(e.target.value as VoiceLang)}
+                      className="rounded border border-gray-300 px-2 py-1"
+                    >
+                      <option value="zh-CN">中文</option>
+                      <option value="en-US">English</option>
+                    </select>
                     <button
                       type="button"
-                      onClick={() => removeImage(img.index)}
-                      className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] rounded-full w-4 h-4"
+                      disabled={!speechSupported || busy}
+                      onClick={toggleVoiceInput}
+                      className={`rounded-lg px-3 py-1 font-medium ${
+                        listening
+                          ? "bg-red-600 text-white animate-pulse"
+                          : "border border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                      } disabled:opacity-50`}
                     >
-                      ×
+                      {listening ? "聆听中…" : "开始说话"}
                     </button>
-                  </div>
-                ))}
+                  </>
+                )}
+                <span className="text-gray-300">|</span>
+                <select
+                  value={imageHint}
+                  onChange={(e) => setImageHint(e.target.value as typeof imageHint)}
+                  className="rounded border border-gray-300 px-2 py-1"
+                >
+                  <option value="unknown">图片·自动</option>
+                  <option value="macro">大场景全景</option>
+                  <option value="position">小岗位现场</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50"
+                >
+                  上传图片
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    onPickFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
               </div>
-            </div>
-          )}
 
-          <footer className="border-t border-gray-200 p-3 space-y-2 bg-white">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="text-gray-500">附件类型</span>
-              <select
-                value={imageHint}
-                onChange={(e) => setImageHint(e.target.value as typeof imageHint)}
-                className="rounded border border-gray-300 px-2 py-1"
-              >
-                <option value="unknown">自动</option>
-                <option value="macro">大场景全景</option>
-                <option value="position">小岗位现场</option>
-              </select>
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50"
-              >
-                添加图片
-              </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  onPickFiles(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-            </div>
-            <div className="flex gap-2">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="描述现场情况，或问如何使用系统…"
-                rows={2}
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm resize-none"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void onSend();
+              <div className="flex gap-2">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={
+                    inputMode === "voice"
+                      ? "点击「开始说话」录入，或在此编辑识别结果…"
+                      : `向 ${BOT_NAME} 提问或描述现场…`
                   }
-                }}
-              />
-              <button
-                type="button"
-                disabled={busy || !enabled}
-                onClick={() => void onSend()}
-                className="self-end px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium disabled:opacity-50"
-              >
-                发送
-              </button>
-            </div>
-          </footer>
-        </div>
+                  rows={2}
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm resize-none"
+                  onKeyDown={(e) => {
+                    if (inputMode === "text" && e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void onSend();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={busy || !enabled}
+                  onClick={() => void onSend()}
+                  className="self-end px-5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium disabled:opacity-50"
+                >
+                  发送
+                </button>
+              </div>
+            </footer>
+          </div>
+        </>
       )}
+
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(100%); opacity: 0.6; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
     </>
   );
 }
