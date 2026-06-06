@@ -1,43 +1,79 @@
-/** 豆小秘 — 小女生形象头像 */
+/** 豆小秘 — 可爱人类女生头像（非机器人） */
 export default function DouXiaoMiAvatar({
-  className = "h-8 w-8",
+  className = "",
   size = "md",
 }: {
   className?: string;
   size?: "sm" | "md" | "lg";
 }) {
   const dim = size === "sm" ? "h-7 w-7" : size === "lg" ? "h-14 w-14" : "h-8 w-8";
-  const cls = className || dim;
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-rose-100 to-pink-50 ring-2 ring-white shadow-sm ${cls}`}
-      aria-hidden
+      className={`inline-flex shrink-0 overflow-hidden rounded-full bg-gradient-to-b from-sky-100 via-rose-50 to-pink-100 ring-2 ring-white shadow-sm ${dim} ${className}`}
+      role="img"
+      aria-label="豆小秘"
     >
-      <svg viewBox="0 0 64 64" className="h-full w-full" fill="none">
-        <circle cx="32" cy="32" r="32" fill="#FFE4EC" />
+      <svg viewBox="0 0 100 100" className="h-full w-full" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {/* 背景 */}
+        <rect width="100" height="100" fill="#FFF0F3" />
+
+        {/* 长发 */}
         <path
-          d="M10 38c4-14 14-22 22-22s18 8 22 22c-6 2-14 4-22 4s-16-2-22-4z"
-          fill="#5C4033"
+          d="M18 58c-2-22 10-38 32-38s34 16 32 38c-8 18-22 28-32 28S26 76 18 58z"
+          fill="#3D2314"
         />
         <path
-          d="M14 28c2-8 10-14 18-14s16 6 18 14c-4 6-10 10-18 10S18 34 14 28z"
-          fill="#6B4423"
+          d="M22 52c0-20 8-32 22-34 14 2 22 14 22 34-6 14-14 22-22 22s-16-8-22-22z"
+          fill="#4A2F1F"
         />
-        <ellipse cx="32" cy="36" rx="14" ry="16" fill="#FFDAB9" />
-        <ellipse cx="24" cy="38" rx="2.2" ry="2.8" fill="#3D2314" />
-        <ellipse cx="40" cy="38" rx="2.2" ry="2.8" fill="#3D2314" />
-        <circle cx="25" cy="37" r="0.8" fill="#fff" opacity="0.7" />
-        <circle cx="41" cy="37" r="0.8" fill="#fff" opacity="0.7" />
-        <path d="M28 44 Q32 47 36 44" stroke="#E57373" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-        <ellipse cx="20" cy="42" rx="3" ry="1.8" fill="#FFB6C1" opacity="0.55" />
-        <ellipse cx="44" cy="42" rx="3" ry="1.8" fill="#FFB6C1" opacity="0.55" />
+        {/* 侧发 */}
+        <path d="M16 48c-4 12-2 28 8 36 2-10 0-24-8-36z" fill="#3D2314" />
+        <path d="M84 48c4 12 2 28-8 36-2-10 0-24 8-36z" fill="#3D2314" />
+
+        {/* 脸 */}
+        <ellipse cx="50" cy="54" rx="24" ry="26" fill="#FAD0B8" />
+        <ellipse cx="50" cy="56" rx="21" ry="22" fill="#FFDBC4" />
+
+        {/* 刘海 */}
         <path
-          d="M18 22c2-6 8-10 14-10s12 4 14 10"
-          stroke="#6B4423"
-          strokeWidth="2"
+          d="M26 38c4-10 12-16 24-16s20 6 24 16c-6-4-14-6-24-6s-18 2-24 6z"
+          fill="#3D2314"
+        />
+        <path d="M34 36c2-6 8-10 16-10s14 4 16 10c-4-2-10-3-16-3s-12 1-16 3z" fill="#4A2F1F" />
+
+        {/* 蝴蝶结 */}
+        <ellipse cx="62" cy="30" rx="5" ry="3.5" fill="#FF8FAB" />
+        <ellipse cx="72" cy="30" rx="5" ry="3.5" fill="#FF8FAB" />
+        <circle cx="67" cy="30" r="2.2" fill="#FF6B9D" />
+
+        {/* 眉毛 */}
+        <path d="M38 48c3-2 7-2 10 0" stroke="#8B5E4A" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M52 48c3-2 7-2 10 0" stroke="#8B5E4A" strokeWidth="1.6" strokeLinecap="round" />
+
+        {/* 眼睛 */}
+        <ellipse cx="40" cy="54" rx="4.5" ry="5.5" fill="#2C1810" />
+        <ellipse cx="60" cy="54" rx="4.5" ry="5.5" fill="#2C1810" />
+        <circle cx="41.5" cy="52.5" r="1.6" fill="#fff" />
+        <circle cx="61.5" cy="52.5" r="1.6" fill="#fff" />
+        <circle cx="39" cy="55.5" r="0.9" fill="#fff" opacity="0.45" />
+
+        {/* 腮红 */}
+        <ellipse cx="32" cy="60" rx="4.5" ry="2.8" fill="#FF9EB5" opacity="0.45" />
+        <ellipse cx="68" cy="60" rx="4.5" ry="2.8" fill="#FF9EB5" opacity="0.45" />
+
+        {/* 嘴 */}
+        <path
+          d="M44 66c3 3 9 3 12 0"
+          stroke="#E57373"
+          strokeWidth="1.8"
           strokeLinecap="round"
+          fill="none"
         />
+
+        {/* 衣领 */}
+        <path d="M34 82h32l-6 10H40l-6-10z" fill="#FFFFFF" />
+        <path d="M42 82l8 10 8-10" stroke="#FFD6E0" strokeWidth="1.2" fill="none" />
       </svg>
     </span>
   );
