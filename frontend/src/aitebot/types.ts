@@ -32,11 +32,25 @@ export type AgentGroupRulesResult = {
   error?: string;
 };
 
+export type AgentPendingBroadcast = {
+  title: string;
+  body: string;
+  target_roles: string[];
+  category?: string;
+};
+
+export type AgentPendingGroupRules = {
+  mode: "append" | "replace" | "clear";
+  content: string;
+};
+
 export type AgentResponsePayload = {
   assistant_message: string;
   proposals: unknown[];
   questions: string[];
   actions?: AgentAction[];
+  pending_broadcast?: AgentPendingBroadcast | null;
+  pending_group_rules?: AgentPendingGroupRules | null;
   broadcast_result?: AgentBroadcastResult | null;
   group_rules_result?: AgentGroupRulesResult | null;
 };

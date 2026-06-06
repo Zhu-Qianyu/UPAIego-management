@@ -29,9 +29,10 @@ fi
 
 grep -E '^(AI_PROVIDER|ARK_API_KEY|ARK_MODEL|ARK_BASE_URL)=' .env | sed 's/ARK_API_KEY=.*/ARK_API_KEY=***/'
 
-sudo docker-compose up -d functions
+sudo docker rm -f supabase-edge-functions 2>/dev/null || true
+sudo docker-compose up -d --no-deps functions
 sleep 4
-sudo docker-compose restart functions kong
+sudo docker-compose restart kong
 
 curl -s -o /dev/null -w "scene-ai-agent OPTIONS HTTP %{http_code}\n" \
   -X OPTIONS "http://127.0.0.1:8000/functions/v1/scene-ai-agent"

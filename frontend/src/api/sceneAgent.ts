@@ -6,7 +6,16 @@ import {
   uploadWorkstationSnapshot,
   type SceneMacroSite,
 } from "./operations";
-import type { AgentAction, AitebotPageContext, AgentResponsePayload, AgentBroadcastResult, AgentGroupRulesResult } from "../aitebot/types";
+import type {
+  AgentAction,
+  AitebotPageContext,
+  AgentResponsePayload,
+  AgentBroadcastResult,
+  AgentGroupRulesResult,
+  AgentPendingBroadcast,
+  AgentPendingGroupRules,
+} from "../aitebot/types";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import type { SceneCategoryKey } from "../utils/sceneCategories";
 import { SCENE_CATEGORY_KEYS } from "../utils/sceneCategories";
@@ -56,6 +65,8 @@ export type AgentResponse = {
   proposals: AgentProposal[];
   questions: string[];
   actions: AgentAction[];
+  pending_broadcast: AgentPendingBroadcast | null;
+  pending_group_rules: AgentPendingGroupRules | null;
   broadcast_result: AgentBroadcastResult | null;
   group_rules_result: AgentGroupRulesResult | null;
 };
@@ -68,6 +79,24 @@ export type PendingImage = {
 };
 
 const FN = "scene-ai-agent";
+const MAX_CHAT_TURNS = 24;
+
+async function readFunctionInvokeError(error: unknown, data: unknown): Promise<string> {
+  if (data && typeof data === "object" && "error" in data) {
+    const msg = (data as { error?: unknown }).error;
+    if (typeof msg === "string" && msg.trim()) return msg.trim();
+  }
+  if (error instanceof FunctionsHttpError) {
+    try {
+      const body = (await error.context.json()) as { error?: unknown };
+      if (typeof body?.error === "string" && body.error.trim()) return body.error.trim();
+    } catch {
+      // response body may not be JSON
+    }
+  }
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  return "调用智能助手失败";
+}
 
 function isSceneAiEnabled(): boolean {
   const v = import.meta.env.VITE_SCENE_AI_ENABLED;
@@ -112,7 +141,7 @@ export async function sendSceneAgentMessage(args: {
 
   const { data, error } = await supabase.functions.invoke(FN, {
     body: {
-      messages: args.messages,
+      messages: args.messages.slice(-MAX_CHAT_TURNS),
       images: imagePayload,
       groupId: args.groupId,
       existingMacros: args.existingMacros ?? [],
@@ -121,7 +150,7 @@ export async function sendSceneAgentMessage(args: {
   });
 
   if (error) {
-    throw new Error(error.message || "调用智能助手失败");
+    throw new Error(await readFunctionInvokeError(error, data));
   }
 
   const payload = data as AgentResponsePayload & { error?: string };
@@ -134,9 +163,90 @@ export async function sendSceneAgentMessage(args: {
     proposals: normalizeProposals(payload.proposals),
     questions: payload.questions ?? [],
     actions: normalizeActions(payload.actions),
+    pending_broadcast: normalizePendingBroadcast(payload.pending_broadcast),
+    pending_group_rules: normalizePendingGroupRules(payload.pending_group_rules),
     broadcast_result: payload.broadcast_result ?? null,
     group_rules_result: payload.group_rules_result ?? null,
   };
+}
+
+export async function executeAgentBroadcast(
+  groupId: string,
+  spec: AgentPendingBroadcast
+): Promise<AgentBroadcastResult> {
+  const targetRoles = spec.target_roles[0] === "all" ? null : spec.target_roles;
+  const { data, error } = await supabase.rpc("send_agent_group_broadcast", {
+    p_group_id: groupId,
+    p_title: spec.title,
+    p_body: spec.body,
+    p_target_roles: targetRoles,
+    p_category: spec.category ?? "notice",
+  });
+  if (error) return { ok: false, error: error.message };
+  const row = data as Record<string, unknown> | null;
+  return {
+    ok: true,
+    sent_count: typeof row?.sent_count === "number" ? row.sent_count : Number(row?.sent_count ?? 0),
+    broadcast_id: row?.broadcast_id != null ? String(row.broadcast_id) : undefined,
+    target_roles: Array.isArray(row?.target_roles) ? (row!.target_roles as string[]) : spec.target_roles,
+  };
+}
+
+export async function executeAgentGroupRules(
+  groupId: string,
+  spec: AgentPendingGroupRules
+): Promise<AgentGroupRulesResult> {
+  const { data, error } = await supabase.rpc("upsert_agent_group_rules", {
+    p_group_id: groupId,
+    p_mode: spec.mode,
+    p_content: spec.content,
+  });
+  if (error) return { ok: false, error: error.message };
+  const row = data as Record<string, unknown> | null;
+  return {
+    ok: true,
+    mode: row?.mode != null ? String(row.mode) : spec.mode,
+    rules_length: typeof row?.rules_length === "number" ? row.rules_length : Number(row?.rules_length ?? 0),
+    preview: row?.preview != null ? String(row.preview) : undefined,
+  };
+}
+
+function normalizePendingBroadcast(raw: unknown): AgentPendingBroadcast | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const title = String(o.title ?? "").trim();
+  const body = String(o.body ?? "").trim();
+  const targetRoles = normalizeBroadcastRoles(o.target_roles);
+  if (!title || !body || !targetRoles) return null;
+  return {
+    title,
+    body,
+    target_roles: targetRoles,
+    category: o.category != null ? String(o.category) : undefined,
+  };
+}
+
+function normalizePendingGroupRules(raw: unknown): AgentPendingGroupRules | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const mode = String(o.mode ?? "").trim().toLowerCase();
+  if (mode !== "append" && mode !== "replace" && mode !== "clear") return null;
+  const content = String(o.content ?? "").trim();
+  if (mode !== "clear" && !content) return null;
+  return { mode, content: content.slice(0, 4000) };
+}
+
+function normalizeBroadcastRoles(raw: unknown): string[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const out: string[] = [];
+  for (const r of raw) {
+    const s = String(r).trim();
+    if (s === "all") return ["all"];
+    if (["admin", "device_operator", "scene_operator", "collection_executor"].includes(s) && !out.includes(s)) {
+      out.push(s);
+    }
+  }
+  return out.length ? out : null;
 }
 
 function normalizeActions(raw: unknown): AgentAction[] {

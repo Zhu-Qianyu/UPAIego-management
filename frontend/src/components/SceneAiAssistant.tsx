@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { fetchActiveGroupId } from "../api/groups";
 import {
   appendAgentChatMessage,
@@ -15,6 +15,8 @@ import {
   type AgentInboxMessage,
 } from "../api/agentInbox";
 import {
+  executeAgentBroadcast,
+  executeAgentGroupRules,
   executeAgentProposals,
   loadMacrosForAgent,
   sceneAiFeatureEnabled,
@@ -22,6 +24,7 @@ import {
   type AgentProposal,
   type PendingImage,
 } from "../api/sceneAgent";
+import type { AgentAction, AgentPendingBroadcast, AgentPendingGroupRules } from "../aitebot/types";
 import { labelSceneCategories } from "../utils/sceneCategories";
 import { useAitebot } from "../aitebot/AitebotContext";
 import { useAuth } from "../auth/AuthContext";
@@ -38,6 +41,10 @@ type UiMessage = {
   quote?: AgentMessageQuote;
   imagePreviews?: string[];
   proposals?: AgentProposal[];
+  pendingBroadcast?: AgentPendingBroadcast;
+  pendingGroupRules?: AgentPendingGroupRules;
+  pendingActions?: AgentAction[];
+  confirmDone?: boolean;
   inboxId?: string;
 };
 
@@ -56,7 +63,6 @@ const QUICK_TOPICS_BY_ROLE: Record<UserRole, { icon: string; label: string; prom
     { icon: "📅", label: "采集排班", prompt: "帮我打开采集排班，并说明发布排班前要准备什么。" },
     { icon: "✨", label: "新场景", prompt: "我们在评估一个新场景，是否适合采集？" },
     { icon: "📋", label: "采集流程", prompt: "请说明从甲方业务、岗位到排班发布的流程。" },
-    { icon: "📢", label: "通知执行员", prompt: "帮我起草一条通知发给所有数采执行员。" },
   ],
   device_operator: [
     { icon: "🔧", label: "运维工作台", prompt: "带我打开运维工作台，说明悬赏借还设备流程。" },
@@ -71,19 +77,26 @@ const QUICK_TOPICS_BY_ROLE: Record<UserRole, { icon: string; label: string; prom
   ],
 };
 
+function describeAction(action: AgentAction): string {
+  if (action.type === "toast") return action.message;
+  if (action.type === "refresh") return action.target === "scene" ? "刷新场景" : "刷新页面";
+  if (action.label) return action.label;
+  return action.type === "navigate" ? action.path : action.tab;
+}
+
 function welcomeMessage(enabled: boolean, role: UserRole): UiMessage {
   const roleLabel = ROLE_LABELS[role];
   const roleHints: Record<UserRole, string> = {
-    admin: "你可以让我通知全员或指定角色，也可以用「定为群规定：…」写入本群制度（全员豆小秘都会遵守），还可以带路管理台与场景业务。",
-    scene_operator: "我可以帮你梳理甲方业务与排班，并向数采执行员群发通知；本群规定我会遵守，有录入方案时会请你确认后再写入。",
-    device_operator: "我可以带你处理设备登记、运维工作台与悬赏借还流程；本群规定我会遵守。",
-    collection_executor: "我可以帮你看排班打卡、悬赏接单与钱包；本群规定我会遵守，有群通知时会在收件箱提醒你。",
+    admin: "我是您的职场小秘书，发通知、改群规定、带路前都会先请示您。群发通知仅管理员可用，发之前我会问「那我发通知啦？」",
+    scene_operator: "我是您的职场小秘书，可帮您梳理甲方业务与排班；本群规定我会遵守。群发通知请联系管理员。",
+    device_operator: "我是您的职场小秘书，可带您处理设备与运维流程；有事我会先问您可不可以再做。",
+    collection_executor: "我是您的职场小秘书，可帮看排班、悬赏与钱包；本群规定我会遵守。",
   };
   return {
     id: "welcome",
     role: "assistant",
     text: enabled
-      ? `你好，我是 ${BOT_NAME}，本工作群的智能体。你当前是「${roleLabel}」。${roleHints[role]}`
+      ? `你好，我是 ${BOT_NAME}，您工作群的智能体小秘书。您当前是「${roleLabel}」。${roleHints[role]}`
       : `${BOT_NAME} 尚未启用，请联系管理员配置 scene-ai-agent。`,
   };
 }
@@ -277,6 +290,7 @@ export default function SceneAiAssistant() {
   const fileRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const snapScrollRef = useRef(true);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const holdTranscriptRef = useRef("");
   const shownInboxIdsRef = useRef<Set<string>>(new Set());
@@ -371,9 +385,23 @@ export default function SceneAiAssistant() {
     void pullInboxIntoChat(groupId);
   }, [open, groupId, pullInboxIntoChat]);
 
+  const scrollToBottom = useCallback((instant = false) => {
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      el.scrollTo({ top: el.scrollHeight, behavior: instant ? "auto" : "smooth" });
+    });
+  }, []);
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, busy]);
+    if (open) snapScrollRef.current = true;
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    scrollToBottom(snapScrollRef.current || historyLoading);
+    snapScrollRef.current = false;
+  }, [open, messages, busy, historyLoading, scrollToBottom]);
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -539,10 +567,84 @@ export default function SceneAiAssistant() {
     setQuotedMessage(q);
     setInputMode("text");
     setExtraOpen(false);
-    window.setTimeout(() => {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-    }, 50);
   }, []);
+
+  const patchMessage = useCallback((msgId: string, patch: Partial<UiMessage>) => {
+    setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, ...patch } : m)));
+  }, []);
+
+  const appendAssistantLine = useCallback(
+    async (text: string) => {
+      if (!groupId) return;
+      const msg = await saveChatMessage(groupId, "assistant", text, { source: "chat" });
+      setMessages((prev) => [...prev, msg]);
+    },
+    [groupId]
+  );
+
+  async function onConfirmBroadcast(msgId: string, spec: AgentPendingBroadcast) {
+    if (!groupId) return;
+    const result = await executeAgentBroadcast(groupId, spec);
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+        const next: UiMessage = { ...m, confirmDone: true, pendingBroadcast: undefined };
+        if (result.ok) {
+          next.text = `${m.text}\n\n📢 已发送到 ${result.sent_count ?? 0} 人账户收件箱。`;
+        }
+        return next;
+      })
+    );
+    if (!result.ok) {
+      await appendAssistantLine(`通知没能发出去：${result.error ?? "未知错误"}，您看要不要再试？`);
+    }
+  }
+
+  async function onConfirmGroupRules(msgId: string, spec: AgentPendingGroupRules) {
+    if (!groupId) return;
+    const result = await executeAgentGroupRules(groupId, spec);
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+        const next: UiMessage = { ...m, confirmDone: true, pendingGroupRules: undefined };
+        if (result.ok) {
+          next.text = `${m.text}\n\n📜 本群规定已更新（全员生效，共 ${result.rules_length ?? 0} 字）。`;
+        }
+        return next;
+      })
+    );
+    if (!result.ok) {
+      await appendAssistantLine(`群规定没能保存：${result.error ?? "未知错误"}。`);
+    }
+  }
+
+  function onConfirmActions(msgId: string, actions: AgentAction[]) {
+    const summaries = executeActions(actions);
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+        let text = m.text;
+        if (summaries.length > 0) text += `\n\n⚡ 已执行：${summaries.join("；")}`;
+        return { ...m, confirmDone: true, pendingActions: undefined, text };
+      })
+    );
+  }
+
+  function onDeclinePending(msgId: string, kind: "broadcast" | "rules" | "actions") {
+    patchMessage(msgId, {
+      confirmDone: true,
+      pendingBroadcast: undefined,
+      pendingGroupRules: undefined,
+      pendingActions: undefined,
+    });
+    void appendAssistantLine(
+      kind === "broadcast"
+        ? "好的，那这次通知先不发了。您改主意了随时跟我说～"
+        : kind === "rules"
+          ? "好的，群规定先不改动。需要时再吩咐我～"
+          : "好的，那我们先不操作啦。有需要您再叫我～"
+    );
+  }
 
   async function onSend(overrideText?: string) {
     const text = (overrideText ?? input).trim();
@@ -586,42 +688,23 @@ export default function SceneAiAssistant() {
         pageContext,
       });
 
-      let actionNote = "";
-      if (res.actions.length > 0) {
-        const summaries = executeActions(res.actions);
-        if (summaries.length > 0) actionNote = `\n\n⚡ 已执行：${summaries.join("；")}`;
-      }
-
-      let broadcastNote = "";
-      if (res.broadcast_result) {
-        if (res.broadcast_result.ok) {
-          broadcastNote = `\n\n📢 已发送到 ${res.broadcast_result.sent_count ?? 0} 人账户收件箱。`;
-        } else if (res.broadcast_result.error) {
-          broadcastNote = `\n\n⚠️ 群发失败：${res.broadcast_result.error}`;
-        }
-      }
-
-      let rulesNote = "";
-      if (res.group_rules_result) {
-        if (res.group_rules_result.ok) {
-          rulesNote = `\n\n📜 本群规定已更新（全员豆小秘生效，共 ${res.group_rules_result.rules_length ?? 0} 字）。`;
-        } else if (res.group_rules_result.error) {
-          rulesNote = `\n\n⚠️ 群规定保存失败：${res.group_rules_result.error}`;
-        }
-      }
-
       const assistantText =
-        res.assistant_message +
-        (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : "") +
-        actionNote +
-        broadcastNote +
-        rulesNote;
+        res.assistant_message + (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : "");
 
       const assistantMsg = await saveChatMessage(groupId, "assistant", assistantText, {
         proposals: res.proposals.length ? res.proposals : undefined,
         source: "chat",
       });
-      setMessages((prev) => [...prev, assistantMsg]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          ...assistantMsg,
+          proposals: res.proposals.length ? res.proposals : undefined,
+          pendingBroadcast: res.pending_broadcast ?? undefined,
+          pendingGroupRules: res.pending_group_rules ?? undefined,
+          pendingActions: res.actions.length ? res.actions : undefined,
+        },
+      ]);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "发送失败");
       const failText = "抱歉，这次没能处理你的请求。请检查网络或稍后再试。";
@@ -825,13 +908,52 @@ export default function SceneAiAssistant() {
                           ))}
                         </div>
                       ) : null}
-                      {m.proposals?.length ? (
-                        <ProposalCards
-                          proposals={m.proposals}
-                          disabled={executing}
-                          onConfirm={() => void onConfirmProposals(m.proposals!)}
-                        />
-                      ) : null}
+                    {m.proposals?.length ? (
+                      <ProposalCards
+                        proposals={m.proposals}
+                        disabled={executing}
+                        onConfirm={() => void onConfirmProposals(m.proposals!)}
+                      />
+                    ) : null}
+                    {!m.confirmDone && m.pendingBroadcast ? (
+                      <PendingConfirmBar
+                        prompt="那我发通知啦？"
+                        detail={
+                          <div className="text-xs text-gray-600 space-y-1">
+                            <p className="font-medium text-gray-800">{m.pendingBroadcast.title}</p>
+                            <p className="line-clamp-3 whitespace-pre-wrap">{m.pendingBroadcast.body}</p>
+                          </div>
+                        }
+                        onOk={() => void onConfirmBroadcast(m.id, m.pendingBroadcast!)}
+                        onDecline={() => onDeclinePending(m.id, "broadcast")}
+                      />
+                    ) : null}
+                    {!m.confirmDone && m.pendingGroupRules ? (
+                      <PendingConfirmBar
+                        prompt="这样写入群规定可以吗？"
+                        detail={
+                          <p className="text-xs text-gray-600 line-clamp-4 whitespace-pre-wrap">
+                            {m.pendingGroupRules.mode === "clear"
+                              ? "（清空全部群规定）"
+                              : m.pendingGroupRules.content}
+                          </p>
+                        }
+                        onOk={() => void onConfirmGroupRules(m.id, m.pendingGroupRules!)}
+                        onDecline={() => onDeclinePending(m.id, "rules")}
+                      />
+                    ) : null}
+                    {!m.confirmDone && m.pendingActions?.length ? (
+                      <PendingConfirmBar
+                        prompt="这样可以吗？"
+                        detail={
+                          <p className="text-xs text-gray-600">
+                            {m.pendingActions.map((a) => describeAction(a)).join("；")}
+                          </p>
+                        }
+                        onOk={() => void onConfirmActions(m.id, m.pendingActions!)}
+                        onDecline={() => onDeclinePending(m.id, "actions")}
+                      />
+                    ) : null}
                     </div>
                     {m.id !== "welcome" && (
                       <button
@@ -1081,6 +1203,41 @@ export default function SceneAiAssistant() {
         }
       `}</style>
     </>
+  );
+}
+
+function PendingConfirmBar({
+  prompt,
+  detail,
+  onOk,
+  onDecline,
+}: {
+  prompt: string;
+  detail?: ReactNode;
+  onOk: () => void;
+  onDecline: () => void;
+}) {
+  return (
+    <div className="mt-3 pt-2 border-t border-gray-100 space-y-2">
+      <p className="text-xs font-medium text-rose-600">{prompt}</p>
+      {detail}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={onOk}
+          className="flex-1 rounded-full bg-[#1a1a1a] py-2 text-xs font-medium text-white"
+        >
+          可以
+        </button>
+        <button
+          type="button"
+          onClick={onDecline}
+          className="flex-1 rounded-full border border-gray-300 bg-white py-2 text-xs font-medium text-gray-700"
+        >
+          不行
+        </button>
+      </div>
+    </div>
   );
 }
 
