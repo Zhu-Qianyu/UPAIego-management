@@ -5,7 +5,9 @@ import {
   clearAgentChatHistory,
   listAgentChatMessages,
   searchAgentChatMessages,
+  updateAgentChatMessage,
   type AgentChatMessageRow,
+  type AgentChatMetadata,
   type AgentMessageQuote,
 } from "../api/agentChat";
 import {
@@ -124,13 +126,51 @@ function inboxToUiMessage(msg: AgentInboxMessage): UiMessage {
 }
 
 function chatRowToUiMessage(row: AgentChatMessageRow): UiMessage {
+  const meta = row.metadata;
+  const confirmDone = meta.confirm_done === true;
   return {
     id: row.id,
     role: row.role,
     text: row.content,
-    quote: row.metadata.quote,
-    inboxId: row.metadata.inbox_id,
+    quote: meta.quote,
+    inboxId: meta.inbox_id,
+    confirmDone: confirmDone || undefined,
+    pendingBroadcast: !confirmDone ? meta.pending_broadcast : undefined,
+    pendingGroupRules: !confirmDone ? meta.pending_group_rules : undefined,
+    pendingFormFills:
+      !confirmDone && meta.pending_form_fills?.length ? meta.pending_form_fills : undefined,
+    pendingActions: !confirmDone && meta.pending_actions?.length ? meta.pending_actions : undefined,
   };
+}
+
+function buildAssistantChatMetadata(args: {
+  pendingBroadcast?: AgentPendingBroadcast;
+  pendingGroupRules?: AgentPendingGroupRules;
+  pendingFormFills?: AgentPendingFormFill[];
+  pendingActions?: AgentAction[];
+  confirmDone?: boolean;
+}): AgentChatMetadata {
+  const confirmDone = args.confirmDone ?? false;
+  return {
+    source: "chat",
+    confirm_done: confirmDone,
+    ...(args.pendingBroadcast && !confirmDone ? { pending_broadcast: args.pendingBroadcast } : {}),
+    ...(args.pendingGroupRules && !confirmDone ? { pending_group_rules: args.pendingGroupRules } : {}),
+    ...(args.pendingFormFills?.length && !confirmDone
+      ? { pending_form_fills: args.pendingFormFills }
+      : {}),
+    ...(args.pendingActions?.length && !confirmDone ? { pending_actions: args.pendingActions } : {}),
+  };
+}
+
+function uiMessageToChatMetadata(m: UiMessage): AgentChatMetadata {
+  return buildAssistantChatMetadata({
+    pendingBroadcast: m.pendingBroadcast,
+    pendingGroupRules: m.pendingGroupRules,
+    pendingFormFills: m.pendingFormFills,
+    pendingActions: m.pendingActions,
+    confirmDone: m.confirmDone,
+  });
 }
 
 function quoteFromMessage(m: UiMessage): AgentMessageQuote | null {
@@ -181,15 +221,30 @@ async function saveChatMessage(
   groupId: string,
   role: "user" | "assistant",
   content: string,
-  metadata?: {
-    inbox_id?: string;
-    source?: "inbox" | "chat";
-    quote?: AgentMessageQuote;
-  }
+  metadata?: AgentChatMetadata
 ): Promise<UiMessage> {
   const row = await appendAgentChatMessage({ groupId, role, content, metadata });
   if (row) return chatRowToUiMessage(row);
-  return { id: uid(), role, text: content, quote: metadata?.quote };
+  return {
+    id: uid(),
+    role,
+    text: content,
+    quote: metadata?.quote,
+    confirmDone: metadata?.confirm_done,
+    pendingBroadcast: metadata?.pending_broadcast,
+    pendingGroupRules: metadata?.pending_group_rules,
+    pendingFormFills: metadata?.pending_form_fills,
+    pendingActions: metadata?.pending_actions,
+  };
+}
+
+async function persistUiMessage(msg: UiMessage): Promise<void> {
+  if (msg.id === "welcome") return;
+  await updateAgentChatMessage({
+    messageId: msg.id,
+    content: msg.text,
+    metadata: uiMessageToChatMetadata(msg),
+  });
 }
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
@@ -589,10 +644,6 @@ export default function SceneAiAssistant() {
     setExtraOpen(false);
   }, []);
 
-  const patchMessage = useCallback((msgId: string, patch: Partial<UiMessage>) => {
-    setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, ...patch } : m)));
-  }, []);
-
   const appendAssistantLine = useCallback(
     async (text: string) => {
       if (!groupId) return;
@@ -605,6 +656,7 @@ export default function SceneAiAssistant() {
   async function onConfirmBroadcast(msgId: string, spec: AgentPendingBroadcast) {
     if (!groupId) return;
     const result = await executeAgentBroadcast(groupId, spec);
+    let nextMsg: UiMessage | null = null;
     setMessages((prev) =>
       prev.map((m) => {
         if (m.id !== msgId) return m;
@@ -612,9 +664,11 @@ export default function SceneAiAssistant() {
         if (result.ok) {
           next.text = `${m.text}\n\n📢 已发送到 ${result.sent_count ?? 0} 人账户收件箱。`;
         }
+        nextMsg = next;
         return next;
       })
     );
+    if (nextMsg) void persistUiMessage(nextMsg);
     if (!result.ok) {
       await appendAssistantLine(`通知没能发出去：${result.error ?? "未知错误"}，您看要不要再试？`);
     }
@@ -623,6 +677,7 @@ export default function SceneAiAssistant() {
   async function onConfirmGroupRules(msgId: string, spec: AgentPendingGroupRules) {
     if (!groupId) return;
     const result = await executeAgentGroupRules(groupId, spec);
+    let nextMsg: UiMessage | null = null;
     setMessages((prev) =>
       prev.map((m) => {
         if (m.id !== msgId) return m;
@@ -630,9 +685,11 @@ export default function SceneAiAssistant() {
         if (result.ok) {
           next.text = `${m.text}\n\n📜 本群规定已更新（全员生效，共 ${result.rules_length ?? 0} 字）。`;
         }
+        nextMsg = next;
         return next;
       })
     );
+    if (nextMsg) void persistUiMessage(nextMsg);
     if (!result.ok) {
       await appendAssistantLine(`群规定没能保存：${result.error ?? "未知错误"}。`);
     }
@@ -660,15 +717,19 @@ export default function SceneAiAssistant() {
     ]);
     const needsSceneRefresh = specs.some((s) => sceneForms.has(s.form));
 
+    let nextMsg: UiMessage | null = null;
     setMessages((prev) =>
       prev.map((m) => {
         if (m.id !== msgId) return m;
         let text = m.text;
         if (result.summaries.length) text += `\n\n✅ ${result.summaries.join("；")}`;
         if (result.errors.length) text += `\n\n⚠️ ${result.errors.join("；")}`;
-        return { ...m, confirmDone: true, pendingFormFills: undefined, text };
+        const next = { ...m, confirmDone: true, pendingFormFills: undefined, text };
+        nextMsg = next;
+        return next;
       })
     );
+    if (nextMsg) void persistUiMessage(nextMsg);
     clearFormFillImagesForMessage(msgId);
 
     if (needsSceneRefresh && result.summaries.length) {
@@ -681,14 +742,18 @@ export default function SceneAiAssistant() {
 
   function onConfirmActions(msgId: string, actions: AgentAction[]) {
     const summaries = executeActions(actions);
+    let nextMsg: UiMessage | null = null;
     setMessages((prev) =>
       prev.map((m) => {
         if (m.id !== msgId) return m;
         let text = m.text;
         if (summaries.length > 0) text += `\n\n⚡ 已执行：${summaries.join("；")}`;
-        return { ...m, confirmDone: true, pendingActions: undefined, text };
+        const next = { ...m, confirmDone: true, pendingActions: undefined, text };
+        nextMsg = next;
+        return next;
       })
     );
+    if (nextMsg) void persistUiMessage(nextMsg);
   }
 
   function onSelfServicePending(
@@ -707,13 +772,23 @@ export default function SceneAiAssistant() {
       broadcast: ctx.broadcast ?? null,
       groupRules: ctx.groupRules ?? null,
     });
-    patchMessage(msgId, {
-      confirmDone: true,
-      pendingBroadcast: undefined,
-      pendingGroupRules: undefined,
-      pendingFormFills: undefined,
-      pendingActions: undefined,
-    });
+    let nextMsg: UiMessage | null = null;
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+        const next: UiMessage = {
+          ...m,
+          confirmDone: true,
+          pendingBroadcast: undefined,
+          pendingGroupRules: undefined,
+          pendingFormFills: undefined,
+          pendingActions: undefined,
+        };
+        nextMsg = next;
+        return next;
+      })
+    );
+    if (nextMsg) void persistUiMessage(nextMsg);
     if (kind === "forms") clearFormFillImagesForMessage(msgId);
 
     if (navActions.length) {
@@ -770,11 +845,17 @@ export default function SceneAiAssistant() {
       const assistantText =
         res.assistant_message + (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : "");
 
-      const assistantMsg = await saveChatMessage(groupId, "assistant", assistantText, {
-        source: "chat",
-      });
       const formFills = res.pending_form_fills;
       const pendingActions = formFills.length ? [] : res.actions;
+
+      const assistantMsg = await saveChatMessage(groupId, "assistant", assistantText, {
+        ...buildAssistantChatMetadata({
+          pendingBroadcast: res.pending_broadcast ?? undefined,
+          pendingGroupRules: res.pending_group_rules ?? undefined,
+          pendingFormFills: formFills.length ? formFills : undefined,
+          pendingActions: pendingActions.length ? pendingActions : undefined,
+        }),
+      });
 
       setMessages((prev) => [
         ...prev,

@@ -1,4 +1,10 @@
 import { supabase } from "./supabase";
+import type { AgentPendingFormFill } from "../aitebot/agentFormTypes";
+import type {
+  AgentAction,
+  AgentPendingBroadcast,
+  AgentPendingGroupRules,
+} from "../aitebot/types";
 import type { AgentProposal } from "./sceneAgent";
 
 export type AgentChatMessageRow = {
@@ -17,7 +23,15 @@ export type AgentMessageQuote = {
   text: string;
 };
 
-export type AgentChatMetadata = {
+export type AgentChatPendingMetadata = {
+  pending_broadcast?: AgentPendingBroadcast;
+  pending_group_rules?: AgentPendingGroupRules;
+  pending_form_fills?: AgentPendingFormFill[];
+  pending_actions?: AgentAction[];
+  confirm_done?: boolean;
+};
+
+export type AgentChatMetadata = AgentChatPendingMetadata & {
   proposals?: AgentProposal[];
   inbox_id?: string;
   source?: "inbox" | "chat";
@@ -28,6 +42,14 @@ const TABLE = "agent_chat_messages";
 
 function isMissingTableError(message: string): boolean {
   return message.includes("does not exist") || message.includes("Could not find");
+}
+
+function isMissingUpdatePolicyError(message: string): boolean {
+  return (
+    message.includes("permission denied") ||
+    message.includes("42501") ||
+    message.includes("new row violates row-level security")
+  );
 }
 
 export async function searchAgentChatMessages(args: {
@@ -97,6 +119,28 @@ export async function appendAgentChatMessage(args: {
     throw new Error(error.message);
   }
   return normalizeRow(data);
+}
+
+export async function updateAgentChatMessage(args: {
+  messageId: string;
+  content: string;
+  metadata: AgentChatMetadata;
+}): Promise<boolean> {
+  const { error } = await supabase
+    .from(TABLE)
+    .update({
+      content: args.content,
+      metadata: args.metadata,
+    })
+    .eq("id", args.messageId);
+
+  if (error) {
+    if (isMissingTableError(error.message) || isMissingUpdatePolicyError(error.message)) {
+      return false;
+    }
+    throw new Error(error.message);
+  }
+  return true;
 }
 
 export async function clearAgentChatHistory(groupId: string): Promise<void> {

@@ -223,7 +223,8 @@ function parseGroupRulesUpdate(raw: unknown, callerRole: string): GroupRulesUpda
 
 async function fetchGroupRules(
   supabase: ReturnType<typeof createClient>,
-  groupId: string
+  groupId: string,
+  brief: boolean
 ): Promise<string> {
   const { data, error } = await supabase
     .from("agent_group_rules")
@@ -233,6 +234,11 @@ async function fetchGroupRules(
 
   if (error || !data?.rules_text?.trim()) {
     return "（尚未配置本群规定；管理员可通过对话「定为群规定」写入，写入后全员豆小秘遵守。）";
+  }
+
+  if (brief) {
+    const at = data.updated_at ? String(data.updated_at).slice(0, 19) : "";
+    return `【本群已生效规定 — 全员须遵守】已配置（${data.rules_text.trim().length} 字${at ? `，最近更新 ${at}` : ""}；涉及制度或群规定时会注入全文）`;
   }
 
   const text = String(data.rules_text).trim();
@@ -339,6 +345,66 @@ function parseFormFills(raw: unknown, callerRole: string): FormFillSpec[] {
   return out;
 }
 
+function needsFormContext(turns: ChatTurn[]): boolean {
+  const recentUser = turns
+    .filter((m) => m.role === "user")
+    .slice(-3)
+    .map((m) => m.content)
+    .join("\n");
+  return /添加|创建|登记|填写|录入|更新|修改|甲方|大场景|小岗位|离线设备|排班|悬赏|发布|设备类型|公司名/i.test(
+    recentUser
+  );
+}
+
+function needsGroupRulesDetail(turns: ChatTurn[]): boolean {
+  const recentUser = turns
+    .filter((m) => m.role === "user")
+    .slice(-2)
+    .map((m) => m.content)
+    .join("\n");
+  return /群规定|本群规定|制度|定为群规定|查看.*规定/i.test(recentUser);
+}
+
+function buildAgentPayload(args: {
+  parsed: Record<string, unknown>;
+  role: string;
+  lastUserText: string;
+  rawAssistantFallback?: string;
+}) {
+  const { parsed, role, lastUserText, rawAssistantFallback } = args;
+  const broadcastSpec = parseBroadcast(parsed.broadcast, role);
+  const rulesUpdate = parseGroupRulesUpdate(parsed.group_rules_update, role);
+  const llmFormFills = parseFormFills(parsed.form_fills, role);
+  const formFills = llmFormFills.length ? llmFormFills : inferFormFillsFromUserText(lastUserText, role);
+
+  let assistantMessage =
+    String(parsed.assistant_message ?? "").trim() ||
+    rawAssistantFallback?.trim() ||
+    "我在呢～您刚才说的我没听清，能再说一遍吗？";
+  if (formFills.length && !llmFormFills.length) {
+    assistantMessage = buildFormFillConfirmMessage(formFills);
+  } else if (formFills.length && !assistantMessage.includes(AGENT_TASK_CHOICE_PROMPT)) {
+    assistantMessage = `${assistantMessage.trim()}\n\n${AGENT_TASK_CHOICE_PROMPT}`;
+  }
+
+  let actions = Array.isArray(parsed.actions) ? parsed.actions : [];
+  if (formFills.length) {
+    actions = stripActionsWhenFormFills(actions);
+  }
+
+  return {
+    assistant_message: assistantMessage,
+    proposals: [] as unknown[],
+    questions: Array.isArray(parsed.questions) ? parsed.questions : [],
+    actions,
+    pending_broadcast: broadcastSpec,
+    pending_group_rules: rulesUpdate,
+    pending_form_fills: formFills.length ? formFills : null,
+    broadcast_result: null,
+    group_rules_result: null,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });
@@ -409,9 +475,13 @@ Deno.serve(async (req) => {
 
   const pc = body.pageContext;
   const chatTurns = (body.messages ?? []).slice(-24);
+  const includeFormContext = needsFormContext(chatTurns);
+  const includeGroupRulesDetail = needsGroupRulesDetail(chatTurns);
   const memberSummary = await fetchGroupMemberSummary(supabase, body.groupId);
-  const formContext = await fetchFormContext(supabase, body.groupId);
-  const groupRulesBlock = await fetchGroupRules(supabase, body.groupId);
+  const formContext = includeFormContext
+    ? await fetchFormContext(supabase, body.groupId)
+    : "【业务 ID 列表】用户未涉及录入/创建时省略；需要引用甲方/场景 ID 时请说明具体名称。";
+  const groupRulesBlock = await fetchGroupRules(supabase, body.groupId, !includeGroupRulesDetail);
   const roleLabel = ROLE_LABELS[role] ?? role;
   const displayName = profile?.display_name?.trim() || "用户";
 
@@ -483,54 +553,51 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "AI 未返回有效内容" }, 502);
   }
 
+  const usage = aiJson?.usage;
+  if (usage && typeof usage === "object") {
+    console.log(
+      "scene-ai-agent usage",
+      JSON.stringify({
+        prompt_tokens: usage.prompt_tokens,
+        completion_tokens: usage.completion_tokens,
+        form_context: includeFormContext,
+        group_rules_full: includeGroupRulesDetail,
+      })
+    );
+  }
+
+  const lastUserText = [...chatTurns].reverse().find((m) => m.role === "user")?.content ?? "";
   const jsonText = extractJsonObject(raw);
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    return jsonResponse({
+    console.warn("scene-ai-agent JSON parse failed, infer fallback");
+    const fallbackParsed: Record<string, unknown> = {
       assistant_message: raw,
-      proposals: [],
       questions: [],
       actions: [],
-      broadcast_result: null,
-      group_rules_result: null,
-      pending_broadcast: null,
-      pending_group_rules: null,
-      pending_form_fills: null,
-    });
+      form_fills: [],
+      broadcast: null,
+      group_rules_update: null,
+    };
+    return jsonResponse(
+      buildAgentPayload({
+        parsed: fallbackParsed,
+        role,
+        lastUserText,
+        rawAssistantFallback: raw,
+      })
+    );
   }
 
-  const broadcastSpec = parseBroadcast(parsed.broadcast, role);
-  const rulesUpdate = parseGroupRulesUpdate(parsed.group_rules_update, role);
-  const llmFormFills = parseFormFills(parsed.form_fills, role);
-  const lastUserText = [...chatTurns].reverse().find((m) => m.role === "user")?.content ?? "";
-  const formFills = llmFormFills.length ? llmFormFills : inferFormFillsFromUserText(lastUserText, role);
-
-  let assistantMessage =
-    String(parsed.assistant_message ?? "").trim() || "我在呢～您刚才说的我没听清，能再说一遍吗？";
-  if (formFills.length && !llmFormFills.length) {
-    assistantMessage = buildFormFillConfirmMessage(formFills);
-  } else if (formFills.length && !assistantMessage.includes(AGENT_TASK_CHOICE_PROMPT)) {
-    assistantMessage = `${assistantMessage.trim()}\n\n${AGENT_TASK_CHOICE_PROMPT}`;
-  }
-
-  let actions = Array.isArray(parsed.actions) ? parsed.actions : [];
-  if (formFills.length) {
-    actions = stripActionsWhenFormFills(actions);
-  }
-
-  return jsonResponse({
-    assistant_message: assistantMessage,
-    proposals: [],
-    questions: Array.isArray(parsed.questions) ? parsed.questions : [],
-    actions,
-    pending_broadcast: broadcastSpec,
-    pending_group_rules: rulesUpdate,
-    pending_form_fills: formFills.length ? formFills : null,
-    broadcast_result: null,
-    group_rules_result: null,
-  });
+  return jsonResponse(
+    buildAgentPayload({
+      parsed,
+      role,
+      lastUserText,
+    })
+  );
   } catch (e) {
     console.error("scene-ai-agent unhandled:", e);
     const msg = e instanceof Error ? e.message : String(e);

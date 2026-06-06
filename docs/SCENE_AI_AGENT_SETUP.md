@@ -83,10 +83,11 @@ VITE_SUPABASE_ANON_KEY=...
 
 - **全群服务**：`admin` / `scene_operator` / `device_operator` / `collection_executor` 均可对话（须已加入 active 工作群）
 - **分角色**：系统注入当前用户角色、页面与群内成员概况；回答与跳转按角色定制
-- **群发收件箱**：管理员可对全员或指定角色群发（如「通知所有人明天放假」）；场景业务员可向数采执行员群发排班通知
+- **群发收件箱**：**仅 admin** 可经豆小秘发起全员或指定角色群发（如「通知所有人明天放假」）；执行 `docs/AGENT_INBOX_MIGRATION.sql` 与 `docs/AGENT_BROADCAST_ADMIN_ONLY.sql`
 - **数据库**：在 Supabase SQL Editor 执行 **`docs/AGENT_INBOX_MIGRATION.sql`**（表 `agent_inbox_messages` + RPC `send_agent_group_broadcast`）
 - 用户登录后右下角豆小秘头像显示未读角标；打开面板可查看群通知
 - **聊天记录**：执行 **`docs/AGENT_CHAT_HISTORY_MIGRATION.sql`**（表 `agent_chat_messages`）；每人每群对话持久保存，刷新/重新打开可继续查看
+- **待办确认持久化**：执行 **`docs/AGENT_CHAT_UPDATE_MIGRATION.sql`**（允许 UPDATE metadata）；刷新后面「直接帮我干 / 跳转页面」确认条不丢失
 - **本群规定**：执行 **`docs/AGENT_GROUP_RULES_MIGRATION.sql`**；管理员口头写入的群制度入库，**全员**豆小秘对话时自动加载并优先遵守
 
 ## 7. 安全边界
