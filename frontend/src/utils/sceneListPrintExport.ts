@@ -1,4 +1,4 @@
-import type { PartyDemand, ScenarioPosition, SceneTaskAssignment } from "../api/operations";
+import type { PartyDemand, ScenarioPosition, SceneMacroSite, SceneTaskAssignment } from "../api/operations";
 import { getSnapshotPublicUrl } from "../api/operations";
 import type { SceneTask } from "../api/scenes";
 import { labelSceneCategories } from "./sceneCategories";
@@ -61,6 +61,10 @@ function sharedPrintStyles(): string {
   .scene-export-wrap .subtable th,
   .scene-export-wrap .subtable td { border: 1px solid #999; padding: 4px 5px; vertical-align: top; word-break: break-word; }
   .scene-export-wrap .subtable th { background: #eaeaea; text-align: left; font-weight: 600; }
+  .scene-export-wrap .macro-block { margin-bottom: 22px; page-break-inside: avoid; }
+  .scene-export-wrap .macro-block h2 { font-size: 14px; margin: 0 0 8px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+  .scene-export-wrap .macro-meta { font-size: 11px; color: #333; margin: 0 0 10px; line-height: 1.55; }
+  .scene-export-wrap .macro-meta p { margin: 0 0 4px; }
   @media print {
     @page { size: A4 landscape; margin: 10mm; }
     .scene-export-wrap { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
@@ -184,6 +188,135 @@ export async function buildScenarioPositionsPrintHtml(
     </thead>
     <tbody>${tbody}</tbody>
   </table>
+</div>`;
+}
+
+export type SceneMacroPrintFields = {
+  positionInfo: boolean;
+  locationInfo: boolean;
+  contactInfo: boolean;
+};
+
+function formatSceneAddress(
+  province: string | null | undefined,
+  city: string | null | undefined,
+  district: string | null | undefined,
+  detail: string | null | undefined
+): string {
+  const base = [province, city, district].filter((x) => x?.trim()).join(" ");
+  const d = detail?.trim();
+  return (d ? `${base} ${d}` : base).trim() || "—";
+}
+
+export async function buildMacroScenesPrintHtml(
+  docTitle: string,
+  subtitle: string,
+  macros: SceneMacroSite[],
+  positionsByMacroId: Map<string, ScenarioPosition[]>,
+  fields: SceneMacroPrintFields
+): Promise<string> {
+  const when = fmtZhDateTime(new Date().toISOString());
+  const posImgStyle =
+    "max-width:120px;max-height:90px;object-fit:contain;display:block;margin:0 auto;border:1px solid #ccc";
+  const panoImgStyle =
+    "max-width:180px;max-height:120px;object-fit:contain;display:block;border:1px solid #ccc;margin-bottom:8px";
+
+  const fieldLabels = [
+    fields.positionInfo ? "岗位信息" : null,
+    fields.locationInfo ? "位置信息" : null,
+    fields.contactInfo ? "联系人信息" : null,
+  ]
+    .filter(Boolean)
+    .join("、");
+
+  const sections = await Promise.all(
+    macros.map(async (macro) => {
+      const positions = positionsByMacroId.get(macro.id) ?? [];
+      const metaParts: string[] = [];
+
+      if (fields.contactInfo) {
+        metaParts.push(
+          `<p><strong>联系人</strong>：${escapeHtml(macro.contact_name?.trim() || "—")} · ${escapeHtml(macro.contact_phone?.trim() || "—")}</p>`
+        );
+      }
+      if (fields.locationInfo) {
+        metaParts.push(
+          `<p><strong>大场景地址</strong>：${escapeHtml(formatSceneAddress(macro.address_province, macro.address_city, macro.address_district, macro.address_detail))}</p>`
+        );
+      }
+
+      let panoramaHtml = "";
+      if (macro.panorama_path?.trim()) {
+        panoramaHtml = await snapshotImgCell(macro.panorama_path, panoImgStyle);
+      }
+
+      let tableHtml = "";
+      if (fields.positionInfo) {
+        const headers: string[] = ["<th style=\"width:36px;text-align:center\">序号</th>"];
+        headers.push("<th style=\"width:120px\">现场快照</th>");
+        headers.push("<th>小岗位</th>");
+        headers.push("<th>具体描述</th>");
+        headers.push("<th>场景大类</th>");
+        if (fields.locationInfo) {
+          headers.push("<th>小岗位地址</th>");
+        }
+
+        if (positions.length === 0) {
+          tableHtml = `<p class="macro-meta">该大场景下暂无小岗位。</p>`;
+        } else {
+          const tbody = (
+            await Promise.all(
+              positions.map(async (r, i) => {
+                const snap = await snapshotImgCell(r.snapshot_path, posImgStyle);
+                const cells: string[] = [
+                  `<td style="text-align:center">${i + 1}</td>`,
+                  `<td style="text-align:center;vertical-align:middle">${snap}</td>`,
+                  `<td>${escapeHtml(r.title.trim() || "—")}</td>`,
+                  `<td>${escapeHtml(r.process_description?.trim() || "—")}</td>`,
+                  `<td>${escapeHtml(labelSceneCategories(r.scene_categories))}</td>`,
+                ];
+                if (fields.locationInfo) {
+                  cells.push(
+                    `<td>${escapeHtml(formatSceneAddress(r.address_province, r.address_city, r.address_district, r.address_detail))}</td>`
+                  );
+                }
+                return `<tr>${cells.join("")}</tr>`;
+              })
+            )
+          ).join("");
+          tableHtml = `<table class="subtable"><thead><tr>${headers.join("")}</tr></thead><tbody>${tbody}</tbody></table>`;
+        }
+      } else if (fields.locationInfo && positions.length > 0) {
+        const tbody = positions
+          .map(
+            (r, i) =>
+              `<tr><td style="text-align:center">${i + 1}</td><td>${escapeHtml(r.title.trim() || "—")}</td><td>${escapeHtml(formatSceneAddress(r.address_province, r.address_city, r.address_district, r.address_detail))}</td></tr>`
+          )
+          .join("");
+        tableHtml = `<table class="subtable"><thead><tr><th style="width:36px">序号</th><th>小岗位</th><th>小岗位地址</th></tr></thead><tbody>${tbody}</tbody></table>`;
+      }
+
+      return `<section class="macro-block">
+  <h2>${escapeHtml(macro.title.trim() || "—")}</h2>
+  ${panoramaHtml}
+  ${metaParts.length ? `<div class="macro-meta">${metaParts.join("")}</div>` : ""}
+  ${tableHtml}
+</section>`;
+    })
+  );
+
+  const body =
+    macros.length === 0
+      ? `<p style="text-align:center;color:#666">未选择大场景</p>`
+      : sections.join("");
+
+  return `
+<style>${sharedPrintStyles()}
+</style>
+<div class="scene-export-wrap">
+  <h1>${escapeHtml(docTitle)}</h1>
+  <div class="sub">${escapeHtml(subtitle)} · 导出时间 ${escapeHtml(when)} · 共 ${macros.length} 个大场景 · 打印项：${escapeHtml(fieldLabels || "—")}</div>
+  ${body}
 </div>`;
 }
 

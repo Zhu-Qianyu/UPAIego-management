@@ -41,9 +41,10 @@ import {
   type SceneCategoryKey,
 } from "../utils/sceneCategories";
 import {
+  buildMacroScenesPrintHtml,
   buildPartyDemandsPrintHtml,
-  buildScenarioPositionsPrintHtml,
   openSceneListPrint,
+  type SceneMacroPrintFields,
 } from "../utils/sceneListPrintExport";
 
 type Tab = "tasks" | "demands" | "stations";
@@ -816,6 +817,11 @@ function MacroSiteRow({ row }: { row: SceneMacroSite }) {
           {[row.address_province, row.address_city, row.address_district].filter(Boolean).join(" ")}
           {row.address_detail ? ` ${row.address_detail}` : ""}
         </p>
+        {(row.contact_name?.trim() || row.contact_phone?.trim()) && (
+          <p className="text-xs text-gray-600 mt-1">
+            联系人：{row.contact_name?.trim() || "—"} · {row.contact_phone?.trim() || "—"}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -834,14 +840,14 @@ function ScenarioWorkstationsTab({
   const [refreshing, setRefreshing] = useState(false);
   const loadedOnceRef = useRef(false);
 
-  const macroMap = useMemo(() => new Map(macros.map((m) => [m.id, m])), [macros]);
-
   const [macroTitle, setMacroTitle] = useState("");
   const [macroDesc, setMacroDesc] = useState("");
   const [macroProvince, setMacroProvince] = useState("");
   const [macroCity, setMacroCity] = useState("");
   const [macroDistrict, setMacroDistrict] = useState("");
   const [macroDetail, setMacroDetail] = useState("");
+  const [macroContactName, setMacroContactName] = useState("");
+  const [macroContactPhone, setMacroContactPhone] = useState("");
   const [macroPanoramaFile, setMacroPanoramaFile] = useState<File | null>(null);
   const [macroBusy, setMacroBusy] = useState(false);
   const [editingMacroId, setEditingMacroId] = useState<string | null>(null);
@@ -851,10 +857,18 @@ function ScenarioWorkstationsTab({
   const [eMacroCity, setEMacroCity] = useState("");
   const [eMacroDistrict, setEMacroDistrict] = useState("");
   const [eMacroDetail, setEMacroDetail] = useState("");
+  const [eMacroContactName, setEMacroContactName] = useState("");
+  const [eMacroContactPhone, setEMacroContactPhone] = useState("");
   const [eMacroPanoramaFile, setEMacroPanoramaFile] = useState<File | null>(null);
   const [eMacroBusy, setEMacroBusy] = useState(false);
   const macroBatch = useBatchSelection();
   const [macroBatchDeleting, setMacroBatchDeleting] = useState(false);
+  const [printFields, setPrintFields] = useState<SceneMacroPrintFields>({
+    positionInfo: true,
+    locationInfo: true,
+    contactInfo: true,
+  });
+  const [printBusy, setPrintBusy] = useState(false);
   const macroIds = useMemo(() => macros.map((m) => m.id), [macros]);
 
   const positionsByMacro = useMemo(() => {
@@ -966,6 +980,8 @@ function ScenarioWorkstationsTab({
     setEMacroCity(m.address_city);
     setEMacroDistrict(m.address_district);
     setEMacroDetail(m.address_detail ?? "");
+    setEMacroContactName(m.contact_name ?? "");
+    setEMacroContactPhone(m.contact_phone ?? "");
     setEMacroPanoramaFile(null);
   }
 
@@ -976,11 +992,21 @@ function ScenarioWorkstationsTab({
       setErr("请填写大场景的省、市、区（县）");
       return;
     }
+    if (!eMacroContactName.trim()) {
+      setErr("请填写场景联系人姓名");
+      return;
+    }
+    if (!eMacroContactPhone.trim()) {
+      setErr("请填写场景联系人电话");
+      return;
+    }
     setEMacroBusy(true);
     try {
       const patch: Parameters<typeof updateSceneMacroSite>[1] = {
         title: eMacroTitle.trim(),
         description: eMacroDesc.trim() || null,
+        contact_name: eMacroContactName.trim(),
+        contact_phone: eMacroContactPhone.trim(),
         address_province: eMacroProvince.trim(),
         address_city: eMacroCity.trim(),
         address_district: eMacroDistrict.trim(),
@@ -1015,6 +1041,14 @@ function ScenarioWorkstationsTab({
       setErr("请上传大场景全景图");
       return;
     }
+    if (!macroContactName.trim()) {
+      setErr("请填写场景联系人姓名");
+      return;
+    }
+    if (!macroContactPhone.trim()) {
+      setErr("请填写场景联系人电话");
+      return;
+    }
     setErr("");
     setMacroBusy(true);
     try {
@@ -1024,6 +1058,8 @@ function ScenarioWorkstationsTab({
         title: macroTitle.trim(),
         description: macroDesc.trim() || undefined,
         panorama_path: path,
+        contact_name: macroContactName.trim(),
+        contact_phone: macroContactPhone.trim(),
         address_province: macroProvince.trim(),
         address_city: macroCity.trim(),
         address_district: macroDistrict.trim(),
@@ -1035,6 +1071,8 @@ function ScenarioWorkstationsTab({
       setMacroCity("");
       setMacroDistrict("");
       setMacroDetail("");
+      setMacroContactName("");
+      setMacroContactPhone("");
       setMacroPanoramaFile(null);
       await load();
     } catch (err: unknown) {
@@ -1058,6 +1096,34 @@ function ScenarioWorkstationsTab({
       setErr(ex instanceof Error ? ex.message : "批量删除大场景失败");
     } finally {
       setMacroBatchDeleting(false);
+    }
+  }
+
+  async function onPrintSelectedMacros() {
+    if (macroBatch.count === 0) {
+      setErr("请先在大场景列表中勾选要打印的大场景");
+      return;
+    }
+    if (!printFields.positionInfo && !printFields.locationInfo && !printFields.contactInfo) {
+      setErr("请至少选择一项打印信息");
+      return;
+    }
+    setErr("");
+    setPrintBusy(true);
+    try {
+      const selected = macros.filter((m) => macroBatch.isSelected(m.id));
+      const html = await buildMacroScenesPrintHtml(
+        "大场景打印列表",
+        `工作群 ${groupId}`,
+        selected,
+        positionsByMacro,
+        printFields
+      );
+      openSceneListPrint(html);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "无法打开打印窗口");
+    } finally {
+      setPrintBusy(false);
     }
   }
 
@@ -1343,33 +1409,8 @@ function ScenarioWorkstationsTab({
   return (
     <div className="w-full min-w-0 space-y-6">
       <RefreshStrip active={refreshing} />
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-gray-500">小岗位列表打印（含现场快照，打印前会等待图片加载）：</span>
-        <button
-          type="button"
-          onClick={() => {
-            void (async () => {
-              setErr("");
-              try {
-                const html = await buildScenarioPositionsPrintHtml(
-                  "场景岗位列表",
-                  `工作群 ${groupId}`,
-                  rows,
-                  macroMap
-                );
-                openSceneListPrint(html);
-              } catch (e: unknown) {
-                setErr(e instanceof Error ? e.message : "无法打开打印窗口");
-              }
-            })();
-          }}
-          className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm bg-white hover:bg-gray-50"
-        >
-          打印小岗位列表
-        </button>
-      </div>
       <p className="text-sm text-gray-500">
-        先<strong>添加大场景</strong>（含全景图），再在各<strong>大场景卡片内</strong>维护下属小岗位与现场快照。
+        先<strong>添加大场景</strong>（含全景图与联系人），再在各<strong>大场景卡片内</strong>维护下属小岗位；打印时在大场景列表中多选后配置打印项。
       </p>
 
       <section className="space-y-3">
@@ -1418,6 +1459,22 @@ function ScenarioWorkstationsTab({
             onChange={(e) => setMacroDetail(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              required
+              placeholder="场景联系人姓名（必填）"
+              value={macroContactName}
+              onChange={(e) => setMacroContactName(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+            <input
+              required
+              placeholder="场景联系人电话（必填）"
+              value={macroContactPhone}
+              onChange={(e) => setMacroContactPhone(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">全景图（必填）</label>
             <input
@@ -1448,6 +1505,50 @@ function ScenarioWorkstationsTab({
           deleting={macroBatchDeleting}
           deleteLabel="删除选中大场景"
         />
+        {macros.length > 0 && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50/90 px-3 py-3 space-y-3">
+            <p className="text-sm text-slate-700">
+              打印：先勾选大场景（已选 <strong>{macroBatch.count}</strong> / {macros.length}），再选择打印信息并打印。
+            </p>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={printFields.positionInfo}
+                  onChange={(e) => setPrintFields((p) => ({ ...p, positionInfo: e.target.checked }))}
+                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                岗位信息
+              </label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={printFields.locationInfo}
+                  onChange={(e) => setPrintFields((p) => ({ ...p, locationInfo: e.target.checked }))}
+                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                位置信息
+              </label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={printFields.contactInfo}
+                  onChange={(e) => setPrintFields((p) => ({ ...p, contactInfo: e.target.checked }))}
+                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                联系人信息
+              </label>
+            </div>
+            <button
+              type="button"
+              disabled={printBusy || macroBatch.count === 0}
+              onClick={() => void onPrintSelectedMacros()}
+              className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+            >
+              {printBusy ? "生成中…" : "打印选中大场景"}
+            </button>
+          </div>
+        )}
         {macros.length === 0 ? (
           <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">
             暂无大场景，请先在上方添加。
@@ -1515,6 +1616,22 @@ function ScenarioWorkstationsTab({
                               onChange={(e) => setEMacroDetail(e.target.value)}
                               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
                             />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <input
+                                required
+                                placeholder="场景联系人姓名"
+                                value={eMacroContactName}
+                                onChange={(e) => setEMacroContactName(e.target.value)}
+                                className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                              />
+                              <input
+                                required
+                                placeholder="场景联系人电话"
+                                value={eMacroContactPhone}
+                                onChange={(e) => setEMacroContactPhone(e.target.value)}
+                                className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                              />
+                            </div>
                             <div>
                               <p className="text-xs text-gray-500 mb-1">当前全景图</p>
                               <MacroPanoramaSnapshot snapshotPath={m.panorama_path} />

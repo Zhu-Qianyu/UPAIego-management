@@ -33,6 +33,8 @@ export interface SceneMacroSite {
   description: string | null;
   panorama_bucket: string | null;
   panorama_path: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
   address_province: string;
   address_city: string;
   address_district: string;
@@ -178,6 +180,8 @@ export async function createSceneMacroSite(row: {
   title: string;
   description?: string;
   panorama_path: string;
+  contact_name: string;
+  contact_phone: string;
   address_province: string;
   address_city: string;
   address_district: string;
@@ -193,6 +197,8 @@ export async function createSceneMacroSite(row: {
       description: row.description?.trim() || null,
       panorama_path: row.panorama_path,
       panorama_bucket: SNAPSHOT_BUCKET,
+      contact_name: row.contact_name.trim(),
+      contact_phone: row.contact_phone.trim(),
       address_province: row.address_province.trim(),
       address_city: row.address_city.trim(),
       address_district: row.address_district.trim(),
@@ -211,6 +217,8 @@ export async function updateSceneMacroSite(
     title: string;
     description: string | null;
     panorama_path: string;
+    contact_name: string;
+    contact_phone: string;
     address_province: string;
     address_city: string;
     address_district: string;
@@ -226,6 +234,8 @@ export async function updateSceneMacroSite(
     payload.panorama_path = patch.panorama_path;
     payload.panorama_bucket = SNAPSHOT_BUCKET;
   }
+  if (patch.contact_name !== undefined) payload.contact_name = patch.contact_name.trim();
+  if (patch.contact_phone !== undefined) payload.contact_phone = patch.contact_phone.trim();
   if (patch.address_province !== undefined) payload.address_province = patch.address_province.trim();
   if (patch.address_city !== undefined) payload.address_city = patch.address_city.trim();
   if (patch.address_district !== undefined) payload.address_district = patch.address_district.trim();
