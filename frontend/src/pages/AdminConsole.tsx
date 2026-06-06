@@ -1,52 +1,71 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
-import {
-  listKpis,
-  upsertKpi,
-  deleteKpi,
-  createAdminMessage,
-  listAdminMessages,
-  isKpiActiveAt,
-  type KpiRow,
-  type AdminMessageRow,
-  type KpiTargetRole,
-} from "../api/adminContent";
-import { ROLE_LABELS } from "../auth/roleLabels";
+import { Link, useLocation } from "react-router-dom";
+import { fetchAdminDashboardStats, type AdminDashboardStats } from "../api/adminDashboard";
+import { fetchOwnedWorkGroup, type WorkGroup } from "../api/groups";
+import { formatCny } from "../api/settlement";
 import Spinner from "../components/Spinner";
-import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
+import { PageHero, PageShell } from "../components/ui/PageLayout";
 import RefreshStrip from "../components/RefreshStrip";
-import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 import { useAuth } from "../auth/AuthContext";
-import { KPI_METRIC_BY_ROLE, labelForMetricId, metricIdForRole, parseKpiMetricId } from "../api/kpiMetrics";
+import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 
-const KPI_TARGET_ROLES: KpiTargetRole[] = ["device_operator", "scene_operator", "collection_executor"];
+type AdminDashboardCacheV1 = { v: 1; owned: WorkGroup | null; stats: AdminDashboardStats | null };
 
-function kpiMetricHint(role: KpiTargetRole): string {
-  switch (role) {
-    case "device_operator":
-      return "目标为百分比数值（如 95 表示 95% 完好率）；单位可填 %。";
-    case "scene_operator":
-      return "目标为场景个数（非草稿任务数）；单位可填 个 等。";
-    case "collection_executor":
-      return "目标为数据量数字，与右侧单位一致（如单位填 MB 则累计已用存储 MB）。";
-    default:
-      return "";
-  }
+function formatHours(h: number): string {
+  if (!Number.isFinite(h)) return "0";
+  return h % 1 === 0 ? String(h) : h.toFixed(2);
 }
 
-function listMetricTitle(k: KpiRow): string {
-  const mid = parseKpiMetricId(k.title);
-  return mid ? labelForMetricId(mid) : k.title;
+function formatIncome(amount: number | null): string {
+  if (amount == null) return "—";
+  return formatCny(amount);
 }
 
-function kpiRangeLabel(k: KpiRow): string {
-  if (!k.valid_from && !k.valid_until) return "起止：未设置（始终有效）";
-  const one = (s: string | null) =>
-    s ? new Date(s).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }) : "—";
-  return `起止：${one(k.valid_from)} ～ ${one(k.valid_until)}`;
+function StatCard({
+  label,
+  value,
+  hint,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "default" | "cost" | "income";
+}) {
+  const ring =
+    tone === "cost"
+      ? "ring-rose-100 bg-rose-50/80"
+      : tone === "income"
+        ? "ring-emerald-100 bg-emerald-50/80"
+        : "ring-indigo-100 bg-white";
+  const valueClass =
+    tone === "cost" ? "text-rose-700" : tone === "income" ? "text-emerald-700" : "text-indigo-950";
+  return (
+    <div className={`rounded-2xl ring-1 ${ring} p-5 shadow-sm min-w-0`}>
+      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
+      <p className={`mt-2 text-2xl font-bold tabular-nums ${valueClass}`}>{value}</p>
+      {hint && <p className="mt-1 text-xs text-slate-500 leading-relaxed">{hint}</p>}
+    </div>
+  );
 }
 
-type AdminConsoleCacheV1 = { v: 1; kpis: KpiRow[]; messages: AdminMessageRow[] };
+function FinancePeriodRow({
+  label,
+  cost,
+  income,
+}: {
+  label: string;
+  cost: number;
+  income: number | null;
+}) {
+  return (
+    <tr className="border-t border-slate-100">
+      <td className="py-3 pr-4 text-sm font-medium text-slate-700">{label}</td>
+      <td className="py-3 px-4 text-sm text-right tabular-nums text-rose-700">{formatCny(cost)}</td>
+      <td className="py-3 pl-4 text-sm text-right tabular-nums text-emerald-700">{formatIncome(income)}</td>
+    </tr>
+  );
+}
 
 export default function AdminConsole() {
   const { session } = useAuth();
@@ -56,43 +75,39 @@ export default function AdminConsole() {
     [session?.user?.id, location.pathname]
   );
 
-  const [kpis, setKpis] = useState<KpiRow[]>([]);
-  const [messages, setMessages] = useState<AdminMessageRow[]>([]);
+  const [owned, setOwned] = useState<WorkGroup | null | undefined>(undefined);
+  const [stats, setStats] = useState<AdminDashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState("");
 
-  const [kTarget, setKTarget] = useState("");
-  const [kUnit, setKUnit] = useState("");
-  const [kNotes, setKNotes] = useState("");
-  const [kRole, setKRole] = useState<KpiTargetRole>("device_operator");
-  const [kValidFrom, setKValidFrom] = useState("");
-  const [kValidUntil, setKValidUntil] = useState("");
-
-  const [mTitle, setMTitle] = useState("");
-  const [mBody, setMBody] = useState("");
-
   useLayoutEffect(() => {
     if (!cacheKey) return;
-    const snap = readRouteViewCache<AdminConsoleCacheV1>(cacheKey);
+    const snap = readRouteViewCache<AdminDashboardCacheV1>(cacheKey);
     if (!snap || snap.v !== 1) return;
-    setKpis(snap.kpis);
-    setMessages(snap.messages);
+    setOwned(snap.owned);
+    setStats(snap.stats);
     setLoading(false);
   }, [cacheKey]);
 
   const refresh = useCallback(async () => {
-    const stale = cacheKey ? readRouteViewCache<AdminConsoleCacheV1>(cacheKey) : null;
+    const stale = cacheKey ? readRouteViewCache<AdminDashboardCacheV1>(cacheKey) : null;
     if (stale) setRefreshing(true);
     else setLoading(true);
     setErr("");
     try {
-      const [k, msg] = await Promise.all([listKpis(), listAdminMessages(30)]);
-      setKpis(k);
-      setMessages(msg);
-      if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, kpis: k, messages: msg });
-    } catch (e: any) {
-      setErr(e.message ?? "加载失败");
+      const g = await fetchOwnedWorkGroup();
+      setOwned(g);
+      if (!g) {
+        setStats(null);
+        if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, owned: null, stats: null });
+        return;
+      }
+      const next = await fetchAdminDashboardStats(g.id);
+      setStats(next);
+      if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, owned: g, stats: next });
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "加载失败");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -103,276 +118,160 @@ export default function AdminConsole() {
     void refresh();
   }, [refresh]);
 
-  async function handleAddKpi(e: React.FormEvent) {
-    e.preventDefault();
-    setErr("");
-    if (kValidFrom.trim() !== "" && kValidUntil.trim() !== "") {
-      const a = new Date(kValidFrom).getTime();
-      const b = new Date(kValidUntil).getTime();
-      if (Number.isFinite(a) && Number.isFinite(b) && a > b) {
-        setErr("考核开始时间不能晚于结束时间");
-        return;
-      }
-    }
-    try {
-      const targetNum = Number(kTarget);
-      if (kTarget.trim() === "" || !Number.isFinite(targetNum) || targetNum <= 0) {
-        setErr("目标值须为大于 0 的数字");
-        return;
-      }
-      await upsertKpi({
-        title: metricIdForRole(kRole),
-        target_value: targetNum,
-        unit: kUnit.trim() || null,
-        notes: kNotes.trim() || null,
-        target_role: kRole,
-        valid_from: kValidFrom.trim() === "" ? null : new Date(kValidFrom).toISOString(),
-        valid_until: kValidUntil.trim() === "" ? null : new Date(kValidUntil).toISOString(),
-      });
-      setKTarget("");
-      setKUnit("");
-      setKNotes("");
-      setKRole("device_operator");
-      setKValidFrom("");
-      setKValidUntil("");
-      await refresh();
-    } catch (e: any) {
-      setErr(e.message ?? "保存 KPI 失败");
-    }
-  }
+  if (loading && !stats) return <Spinner />;
 
-  async function handlePostMessage(e: React.FormEvent) {
-    e.preventDefault();
-    setErr("");
-    try {
-      await createAdminMessage(mTitle.trim(), mBody.trim());
-      setMTitle("");
-      setMBody("");
-      await refresh();
-    } catch (e: any) {
-      setErr(e.message ?? "发布留言失败");
-    }
-  }
-
-  if (loading) return <Spinner />;
+  const finance = stats?.finance;
 
   return (
-    <div className="w-full min-w-0">
+    <PageShell>
       <RefreshStrip active={refreshing} />
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">管理员工作台</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          左侧菜单可打开其它功能页；注册/搜索与全量设备列表请用「设备管理」内的各标签页。
-        </p>
-      </div>
+      <PageHero
+        eyebrow="管理员"
+        title="数据看板"
+        description="汇总本工作群的甲方业务、设备规模、采量与收支（按北京时间周 / 月 / 年统计）。"
+        accent="indigo"
+        onRefresh={() => void refresh()}
+        refreshing={refreshing}
+        footer={
+          owned ? (
+            <p className="text-sm text-white/85">
+              工作群：<span className="font-semibold">{owned.display_name}</span>
+              <span className="mx-2 opacity-60">·</span>
+              群组号 <code className="rounded bg-white/15 px-1.5 py-0.5 text-xs">{owned.invite_code}</code>
+            </p>
+          ) : undefined
+        }
+      />
 
       {err && (
-        <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{err}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{err}</div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        <section className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">KPI 设置</h2>
-          <p className="text-xs text-gray-500 mb-4">
-            每个角色仅对应一项固定指标（不可自定义名称）；目标值须为大于 0 的数字以便计算完成进度；单位可按业务习惯填写。
-          </p>
+      {!owned && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+          尚未创建工作群。请先在{" "}
+          <Link to="/group/manage" className="font-semibold underline underline-offset-2">
+            群组管理
+          </Link>{" "}
+          中创建，再查看业务数据。
+        </div>
+      )}
 
-          <form onSubmit={handleAddKpi} className="space-y-3 mb-6">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">适用角色</label>
-              <select
-                value={kRole}
-                onChange={(e) => setKRole(e.target.value as KpiTargetRole)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+      {owned && stats && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <StatCard label="甲方业务" value={String(stats.party_demand_count)} hint="本群已维护的甲方需求" />
+            <StatCard
+              label="设备总数"
+              value={String(stats.device_count)}
+              hint="联网设备 + 离线登记设备（本群可见范围）"
+            />
+            <StatCard
+              label="本年执行员成本"
+              value={formatCny(finance?.cost_year ?? 0)}
+              hint="已结算发放给数采执行员的金额"
+              tone="cost"
+            />
+            <StatCard
+              label="本年收入估算"
+              value={formatIncome(finance?.income_year ?? null)}
+              hint={
+                finance?.income_configured
+                  ? "按各业务甲方单价 × 已采工时估算"
+                  : "请在场景业务 → 甲方业务中配置客户单价"
+              }
+              tone="income"
+            />
+          </div>
+
+          <section className="rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h2 className="text-lg font-semibold text-slate-900">收支概览</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                成本为执行员结算支出；收入为甲方单价 × 数采登记工时（场景累计工时计入总量，暂不按周月拆分）。
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[28rem] text-left">
+                <thead>
+                  <tr className="bg-slate-50/80 text-xs uppercase tracking-wider text-slate-500">
+                    <th className="py-3 pr-4 pl-5 font-semibold">周期</th>
+                    <th className="py-3 px-4 font-semibold text-right">成本（执行员）</th>
+                    <th className="py-3 pl-4 pr-5 font-semibold text-right">收入估算（甲方）</th>
+                  </tr>
+                </thead>
+                <tbody className="px-5">
+                  <FinancePeriodRow label="本周" cost={finance?.cost_week ?? 0} income={finance?.income_week ?? null} />
+                  <FinancePeriodRow label="本月" cost={finance?.cost_month ?? 0} income={finance?.income_month ?? null} />
+                  <FinancePeriodRow label="本年" cost={finance?.cost_year ?? 0} income={finance?.income_year ?? null} />
+                  <FinancePeriodRow label="累计" cost={finance?.cost_total ?? 0} income={finance?.income_total ?? null} />
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">各甲方业务采量</h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  工时来自设备数采登记；「场景累计」为场景任务填报工时（无分周月明细）。
+                </p>
+              </div>
+              <Link
+                to="/scene"
+                className="text-xs font-medium text-indigo-600 hover:text-indigo-800 underline underline-offset-2"
               >
-                {KPI_TARGET_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {ROLE_LABELS[r]}
-                  </option>
-                ))}
-              </select>
+                管理甲方业务 →
+              </Link>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2.5 text-sm">
-              <p className="text-xs font-medium text-gray-600 mb-1">指标（系统自动绑定）</p>
-              <p className="font-semibold text-gray-900">{KPI_METRIC_BY_ROLE[kRole].label}</p>
-              <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{kpiMetricHint(kRole)}</p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">考核开始（可选）</label>
-                <input
-                  type="datetime-local"
-                  value={kValidFrom}
-                  onChange={(e) => setKValidFrom(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
+            {stats.party_demands.length === 0 ? (
+              <p className="px-5 py-8 text-sm text-slate-400">暂无甲方业务，请先在场景业务中添加。</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[48rem] text-left text-sm">
+                  <thead>
+                    <tr className="bg-slate-50/80 text-xs uppercase tracking-wider text-slate-500">
+                      <th className="py-3 pr-3 pl-5 font-semibold">甲方业务</th>
+                      <th className="py-3 px-2 font-semibold text-right">设备</th>
+                      <th className="py-3 px-2 font-semibold text-right">本周 h</th>
+                      <th className="py-3 px-2 font-semibold text-right">本月 h</th>
+                      <th className="py-3 px-2 font-semibold text-right">本年 h</th>
+                      <th className="py-3 px-2 font-semibold text-right">场景累计 h</th>
+                      <th className="py-3 px-2 font-semibold text-right">累计 h</th>
+                      <th className="py-3 px-2 font-semibold text-right">甲方单价</th>
+                      <th className="py-3 pl-2 pr-5 font-semibold text-right">累计收入估</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.party_demands.map((row) => (
+                      <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50/50">
+                        <td className="py-3 pr-3 pl-5 font-medium text-slate-900 min-w-[10rem]">{row.label}</td>
+                        <td className="py-3 px-2 text-right tabular-nums text-slate-600">{row.device_count}</td>
+                        <td className="py-3 px-2 text-right tabular-nums">{formatHours(row.hours_week)}</td>
+                        <td className="py-3 px-2 text-right tabular-nums">{formatHours(row.hours_month)}</td>
+                        <td className="py-3 px-2 text-right tabular-nums">{formatHours(row.hours_year)}</td>
+                        <td className="py-3 px-2 text-right tabular-nums text-slate-500">
+                          {row.scene_hours_total > 0 ? formatHours(row.scene_hours_total) : "—"}
+                        </td>
+                        <td className="py-3 px-2 text-right tabular-nums font-medium">{formatHours(row.hours_total)}</td>
+                        <td className="py-3 px-2 text-right tabular-nums text-slate-600">
+                          {row.client_hourly_rate != null && row.client_hourly_rate > 0
+                            ? `${formatCny(row.client_hourly_rate)}/h`
+                            : "—"}
+                        </td>
+                        <td className="py-3 pl-2 pr-5 text-right tabular-nums text-emerald-700">
+                          {formatIncome(row.income_total)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">考核结束（可选）</label>
-                <input
-                  type="datetime-local"
-                  value={kValidUntil}
-                  onChange={(e) => setKValidUntil(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <input
-                required
-                type="number"
-                min={0.0001}
-                step="any"
-                placeholder="目标值（必填，正数）"
-                value={kTarget}
-                onChange={(e) => setKTarget(e.target.value)}
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-              <input
-                placeholder="单位（可选）"
-                value={kUnit}
-                onChange={(e) => setKUnit(e.target.value)}
-                className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <textarea
-              placeholder="备注说明"
-              value={kNotes}
-              onChange={(e) => setKNotes(e.target.value)}
-              rows={2}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
-            >
-              添加 / 更新 KPI
-            </button>
-          </form>
-
-          <ListViewSection
-            storageKey="admin-kpis"
-            compact={
-              kpis.length === 0 ? (
-                <p className="py-4 text-gray-400 text-sm">暂无 KPI</p>
-              ) : (
-                <CompactList>
-                  {kpis.map((k) => (
-                    <CompactListRow
-                      key={k.id}
-                      primary={listMetricTitle(k)}
-                      secondary={`目标 ${k.target_value ?? "—"} ${k.unit ?? ""}${k.notes ? ` · ${k.notes}` : ""}`}
-                      meta={`${ROLE_LABELS[k.target_role ?? "device_operator"]}${!isKpiActiveAt(k) ? " · 未生效" : ""}`}
-                    />
-                  ))}
-                </CompactList>
-              )
-            }
-          >
-          <CardList>
-            {kpis.length === 0 && (
-              <CardListItem className="col-span-full">
-                <p className="py-4 text-gray-400 text-sm w-full">暂无 KPI</p>
-              </CardListItem>
             )}
-            {kpis.map((k) => (
-              <CardListItem key={k.id}>
-              <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm h-full w-full min-w-0 overflow-hidden box-border flex justify-between gap-3">
-                <div>
-                  <p className="font-medium text-gray-900">{listMetricTitle(k)}</p>
-                  <p className="text-xs mt-1">
-                    <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-gray-700">
-                      {ROLE_LABELS[k.target_role ?? "device_operator"]}
-                    </span>
-                    {!isKpiActiveAt(k) && (
-                      <span className="ml-2 text-amber-700">（当前不在有效期内）</span>
-                    )}
-                  </p>
-                  <p className="text-gray-500 text-xs mt-1">
-                    目标：{k.target_value ?? "—"} {k.unit ?? ""}
-                    {k.notes ? ` · ${k.notes}` : ""}
-                  </p>
-                  <p className="text-gray-500 text-xs mt-0.5">{kpiRangeLabel(k)}</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    更新于 {new Date(k.updated_at).toLocaleString()}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!confirm("删除该 KPI？")) return;
-                    await deleteKpi(k.id);
-                    await refresh();
-                  }}
-                  className="text-red-600 text-xs shrink-0 h-fit"
-                >
-                  删除
-                </button>
-              </div>
-              </CardListItem>
-            ))}
-          </CardList>
-          </ListViewSection>
-        </section>
-
-        <section className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">全员留言</h2>
-          <p className="text-xs text-gray-500 mb-4">发布后所有角色登录即可在顶部公告区看到。</p>
-
-          <form onSubmit={handlePostMessage} className="space-y-3 mb-8">
-            <input
-              required
-              placeholder="标题"
-              value={mTitle}
-              onChange={(e) => setMTitle(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-            <textarea
-              required
-              placeholder="正文"
-              value={mBody}
-              onChange={(e) => setMBody(e.target.value)}
-              rows={4}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700"
-            >
-              发布公告
-            </button>
-          </form>
-
-          <ListViewSection
-            storageKey="admin-messages"
-            header={<h3 className="text-sm font-semibold text-gray-700">近期公告</h3>}
-            compact={
-              <CompactList>
-                {messages.map((m) => (
-                  <CompactListRow
-                    key={m.id}
-                    primary={m.title}
-                    secondary={m.body}
-                    meta={new Date(m.created_at).toLocaleString()}
-                  />
-                ))}
-              </CompactList>
-            }
-          >
-          <CardList className="max-h-80 overflow-y-auto">
-            {messages.map((m) => (
-              <CardListItem key={m.id}>
-              <div className="rounded-lg border border-gray-100 p-3 bg-gray-50/80 h-full">
-                <p className="font-medium text-gray-900">{m.title}</p>
-                <p className="text-gray-600 mt-1 whitespace-pre-wrap">{m.body}</p>
-                <p className="text-xs text-gray-400 mt-2">{new Date(m.created_at).toLocaleString()}</p>
-              </div>
-              </CardListItem>
-            ))}
-          </CardList>
-          </ListViewSection>
-        </section>
-      </div>
-    </div>
+          </section>
+        </>
+      )}
+    </PageShell>
   );
 }

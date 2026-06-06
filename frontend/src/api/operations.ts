@@ -19,6 +19,8 @@ export interface PartyDemand {
   total_hours_required: number | null;
   max_hours_per_scene: number;
   scene_categories: string[];
+  /** 甲方结算单价（元/小时），用于管理员收入估算 */
+  client_hourly_rate?: number | null;
   created_by: string;
   created_at: string;
 }
@@ -71,6 +73,7 @@ export async function createPartyDemand(row: {
   max_hours_per_scene: number;
   scene_categories: string[];
   requirement_summary?: string;
+  client_hourly_rate?: number | null;
 }): Promise<PartyDemand> {
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) throw new Error("未登录");
@@ -88,6 +91,9 @@ export async function createPartyDemand(row: {
       scene_categories: row.scene_categories,
       requirement_summary: row.requirement_summary?.trim() || null,
       created_by: u.id,
+      ...(row.client_hourly_rate != null && row.client_hourly_rate > 0
+        ? { client_hourly_rate: row.client_hourly_rate }
+        : {}),
     })
     .select()
     .single();
@@ -105,6 +111,7 @@ export type PartyDemandUpdatePatch = Partial<{
   scene_categories: string[];
   device_snapshot_bucket: string;
   device_snapshot_path: string;
+  client_hourly_rate: number | null;
 }>;
 
 export async function updatePartyDemand(id: string, patch: PartyDemandUpdatePatch): Promise<void> {
@@ -124,6 +131,7 @@ export async function updatePartyDemand(id: string, patch: PartyDemandUpdatePatc
   if (patch.scene_categories !== undefined) payload.scene_categories = patch.scene_categories;
   if (patch.device_snapshot_bucket !== undefined) payload.device_snapshot_bucket = patch.device_snapshot_bucket;
   if (patch.device_snapshot_path !== undefined) payload.device_snapshot_path = patch.device_snapshot_path;
+  if (patch.client_hourly_rate !== undefined) payload.client_hourly_rate = patch.client_hourly_rate;
   if (Object.keys(payload).length === 0) return;
   const { error } = await supabase.from(PD).update(payload).eq("id", id);
   if (error) throw new Error(error.message);

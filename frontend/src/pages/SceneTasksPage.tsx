@@ -83,6 +83,7 @@ function PartyDemandsTab({
   const [totalUnlimited, setTotalUnlimited] = useState(true);
   const [totalHours, setTotalHours] = useState("");
   const [maxPerScene, setMaxPerScene] = useState("8");
+  const [clientRate, setClientRate] = useState("");
   const [catTags, setCatTags] = useState<SceneCategoryKey[]>(["industrial"]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCompany, setEditCompany] = useState("");
@@ -92,6 +93,7 @@ function PartyDemandsTab({
   const [editTotalUnlimited, setEditTotalUnlimited] = useState(true);
   const [editTotalHours, setEditTotalHours] = useState("");
   const [editMaxPerScene, setEditMaxPerScene] = useState("8");
+  const [editClientRate, setEditClientRate] = useState("");
   const [editCatTags, setEditCatTags] = useState<SceneCategoryKey[]>(["industrial"]);
   const loadedOnceRef = useRef(false);
 
@@ -138,6 +140,9 @@ function PartyDemandsTab({
     setEditTotalUnlimited(r.total_hours_required == null);
     setEditTotalHours(r.total_hours_required != null ? String(r.total_hours_required) : "");
     setEditMaxPerScene(String(r.max_hours_per_scene));
+    setEditClientRate(
+      r.client_hourly_rate != null && r.client_hourly_rate > 0 ? String(r.client_hourly_rate) : ""
+    );
     setEditCatTags(normalizeDemandCatTags(r.scene_categories));
     setEditDeviceFile(null);
     setErr("");
@@ -178,6 +183,15 @@ function PartyDemandsTab({
       setErr("请至少选择一个场景大类（可重复）");
       return;
     }
+    let clientHourlyRate: number | null = null;
+    if (editClientRate.trim() !== "") {
+      const rate = Number(editClientRate);
+      if (!Number.isFinite(rate) || rate < 0) {
+        setErr("甲方单价须为非负数");
+        return;
+      }
+      clientHourlyRate = rate;
+    }
     try {
       const company = editCompany.trim();
       const patch: PartyDemandUpdatePatch = {
@@ -188,6 +202,7 @@ function PartyDemandsTab({
         total_hours_required: total,
         max_hours_per_scene: maxH,
         scene_categories: [...editCatTags],
+        client_hourly_rate: clientHourlyRate,
       };
       if (editDeviceFile) {
         const { path, bucket } = await uploadPartyDeviceSnapshot(groupId, editDeviceFile);
@@ -236,6 +251,15 @@ function PartyDemandsTab({
       setErr("请至少选择一个场景大类（可重复）");
       return;
     }
+    let clientHourlyRate: number | null = null;
+    if (clientRate.trim() !== "") {
+      const rate = Number(clientRate);
+      if (!Number.isFinite(rate) || rate < 0) {
+        setErr("甲方单价须为非负数");
+        return;
+      }
+      clientHourlyRate = rate;
+    }
     try {
       const { path, bucket } = await uploadPartyDeviceSnapshot(groupId, deviceFile);
       await createPartyDemand({
@@ -249,6 +273,7 @@ function PartyDemandsTab({
         max_hours_per_scene: maxH,
         scene_categories: [...catTags],
         requirement_summary: summary.trim() || undefined,
+        client_hourly_rate: clientHourlyRate,
       });
       await syncSceneTaskAssignments(groupId);
       setClientCompany("");
@@ -258,6 +283,7 @@ function PartyDemandsTab({
       setTotalUnlimited(true);
       setTotalHours("");
       setMaxPerScene("8");
+      setClientRate("");
       setCatTags(["industrial"]);
       await load();
     } catch (e: unknown) {
@@ -342,6 +368,18 @@ function PartyDemandsTab({
             required
             value={maxPerScene}
             onChange={(e) => setMaxPerScene(e.target.value.replace(/\D/g, ""))}
+            className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">甲方结算单价（元/小时，可选，用于管理员看板收入估算）</label>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            placeholder="例如 120"
+            value={clientRate}
+            onChange={(e) => setClientRate(e.target.value)}
             className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
@@ -463,6 +501,18 @@ function PartyDemandsTab({
                     required
                     value={editMaxPerScene}
                     onChange={(e) => setEditMaxPerScene(e.target.value.replace(/\D/g, ""))}
+                    className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">甲方结算单价（元/小时，可选）</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    placeholder="留空表示未配置"
+                    value={editClientRate}
+                    onChange={(e) => setEditClientRate(e.target.value)}
                     className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   />
                 </div>
