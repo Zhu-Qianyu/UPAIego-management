@@ -10,8 +10,9 @@ import {
 } from "../api/sceneAgent";
 import { labelSceneCategories } from "../utils/sceneCategories";
 import { useAitebot } from "../aitebot/AitebotContext";
+import DouXiaoMiAvatar from "./DouXiaoMiAvatar";
 
-const BOT_NAME = "aitebot";
+const BOT_NAME = "豆小秘";
 
 type UiMessage = {
   id: string;
@@ -241,7 +242,7 @@ export default function SceneAiAssistant() {
       return;
     }
     if (!groupId) {
-      setErr("请先加入并激活工作群后再使用 aitebot");
+      setErr(`请先加入并激活工作群后再使用${BOT_NAME}`);
       return;
     }
     setErr("");
@@ -334,11 +335,11 @@ export default function SceneAiAssistant() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#1a1a1a] text-2xl text-white shadow-lg hover:bg-black hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-gray-400"
-          aria-label={`打开 ${BOT_NAME}`}
+          className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg ring-2 ring-rose-100 hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-rose-300 overflow-hidden"
+          aria-label={`打开${BOT_NAME}`}
           title={BOT_NAME}
         >
-          <span aria-hidden>🤖</span>
+          <DouXiaoMiAvatar size="lg" className="h-14 w-14 ring-0 shadow-none" />
         </button>
       )}
 
@@ -346,7 +347,7 @@ export default function SceneAiAssistant() {
         <>
           <button
             type="button"
-            aria-label="关闭 aitebot"
+            aria-label={`关闭${BOT_NAME}`}
             className="fixed inset-0 z-40 bg-black/20"
             onClick={() => setOpen(false)}
           />
@@ -357,9 +358,7 @@ export default function SceneAiAssistant() {
           >
             <header className="flex shrink-0 items-center justify-between border-b border-gray-200/80 bg-white px-4 py-2.5">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1a1a1a] text-base text-white">
-                  🤖
-                </span>
+                <DouXiaoMiAvatar size="md" />
                 <div>
                   <p className="font-semibold text-gray-900">{BOT_NAME}</p>
                   <p className="text-xs text-gray-500">
@@ -382,11 +381,7 @@ export default function SceneAiAssistant() {
             <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4">
               {messages.map((m) => (
                 <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                  {m.role === "assistant" && (
-                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1a1a1a] text-xs text-white">
-                      🤖
-                    </span>
-                  )}
+                  {m.role === "assistant" && <DouXiaoMiAvatar size="sm" className="mt-0.5" />}
                   <div
                     className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap ${
                       m.role === "user"
