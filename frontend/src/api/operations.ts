@@ -31,6 +31,8 @@ export interface SceneMacroSite {
   group_id: string;
   title: string;
   description: string | null;
+  panorama_bucket: string | null;
+  panorama_path: string | null;
   address_province: string;
   address_city: string;
   address_district: string;
@@ -175,6 +177,7 @@ export async function createSceneMacroSite(row: {
   group_id: string;
   title: string;
   description?: string;
+  panorama_path: string;
   address_province: string;
   address_city: string;
   address_district: string;
@@ -188,6 +191,8 @@ export async function createSceneMacroSite(row: {
       group_id: row.group_id,
       title: row.title.trim(),
       description: row.description?.trim() || null,
+      panorama_path: row.panorama_path,
+      panorama_bucket: SNAPSHOT_BUCKET,
       address_province: row.address_province.trim(),
       address_city: row.address_city.trim(),
       address_district: row.address_district.trim(),
@@ -205,6 +210,7 @@ export async function updateSceneMacroSite(
   patch: Partial<{
     title: string;
     description: string | null;
+    panorama_path: string;
     address_province: string;
     address_city: string;
     address_district: string;
@@ -215,6 +221,10 @@ export async function updateSceneMacroSite(
   if (patch.title !== undefined) payload.title = patch.title.trim();
   if (patch.description !== undefined) {
     payload.description = patch.description === null ? null : patch.description.trim() || null;
+  }
+  if (patch.panorama_path !== undefined) {
+    payload.panorama_path = patch.panorama_path;
+    payload.panorama_bucket = SNAPSHOT_BUCKET;
   }
   if (patch.address_province !== undefined) payload.address_province = patch.address_province.trim();
   if (patch.address_city !== undefined) payload.address_city = patch.address_city.trim();
@@ -289,6 +299,22 @@ export async function uploadPartyDeviceSnapshot(
   const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
   const safe = ["jpg", "jpeg", "png", "webp"].includes(ext) ? ext : "jpg";
   const name = `${groupId}/party-device/${crypto.randomUUID()}.${safe}`;
+  const { error: upErr } = await supabase.storage.from(SNAPSHOT_BUCKET).upload(name, file, {
+    cacheControl: "3600",
+    upsert: false,
+  });
+  if (upErr) throw new Error(upErr.message);
+  return { path: name, bucket: SNAPSHOT_BUCKET };
+}
+
+/** 大场景全景图：与工位快照同一 bucket。 */
+export async function uploadMacroPanoramaSnapshot(
+  groupId: string,
+  file: File
+): Promise<{ path: string; bucket: string }> {
+  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const safe = ["jpg", "jpeg", "png", "webp"].includes(ext) ? ext : "jpg";
+  const name = `${groupId}/macro-panorama/${crypto.randomUUID()}.${safe}`;
   const { error: upErr } = await supabase.storage.from(SNAPSHOT_BUCKET).upload(name, file, {
     cacheControl: "3600",
     upsert: false,

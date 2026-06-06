@@ -21,6 +21,7 @@ import {
   listSceneMacroSites,
   uploadWorkstationSnapshot,
   uploadPartyDeviceSnapshot,
+  uploadMacroPanoramaSnapshot,
   type PartyDemand,
   type PartyDemandUpdatePatch,
   type ScenarioPosition,
@@ -744,15 +745,79 @@ function scenarioCategoriesToRecord(cats: string[]): Record<SceneCategoryKey, bo
   return rec;
 }
 
+function MacroPanoramaSnapshot({ snapshotPath }: { snapshotPath: string | null | undefined }) {
+  const pathKey = snapshotPath?.trim() ?? "";
+  const [src, setSrc] = useState<string | null>(null);
+  const [loadErr, setLoadErr] = useState(false);
+
+  useEffect(() => {
+    if (!pathKey) {
+      setSrc(null);
+      setLoadErr(false);
+      return;
+    }
+    let cancel = false;
+    setSrc(null);
+    setLoadErr(false);
+    getSnapshotPublicUrl(pathKey)
+      .then((u) => {
+        if (!cancel) setSrc(u);
+      })
+      .catch(() => {
+        if (!cancel) setLoadErr(true);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [pathKey]);
+
+  if (!pathKey) {
+    return (
+      <div className="w-full max-w-xs sm:w-52 shrink-0 min-h-[8rem] flex items-center justify-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg px-2 text-center">
+        暂无全景图
+      </div>
+    );
+  }
+  if (loadErr) {
+    return (
+      <div className="w-full max-w-xs sm:w-52 shrink-0 min-h-[8rem] flex items-center justify-center text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 text-center">
+        无法加载全景图
+      </div>
+    );
+  }
+  if (!src) {
+    return (
+      <div className="w-full max-w-xs sm:w-52 shrink-0 h-36 flex items-center justify-center text-xs text-gray-400 border border-gray-100 rounded-lg bg-gray-50">
+        加载全景图…
+      </div>
+    );
+  }
+  return (
+    <div className="shrink-0 w-full max-w-xs sm:w-52">
+      <a href={src} target="_blank" rel="noopener noreferrer" className="block group">
+        <img
+          src={src}
+          alt="大场景全景图"
+          className="w-full h-36 object-cover rounded-lg border border-gray-100 group-hover:opacity-95"
+        />
+        <span className="text-xs text-indigo-600 mt-1 inline-block group-hover:underline">新标签页打开原图</span>
+      </a>
+    </div>
+  );
+}
+
 function MacroSiteRow({ row }: { row: SceneMacroSite }) {
   return (
-    <div className="p-4 space-y-1">
-      <p className="font-medium text-gray-900">{row.title}</p>
-      {row.description && <p className="text-sm text-gray-600 whitespace-pre-wrap">{row.description}</p>}
-      <p className="text-xs text-gray-500">
-        {[row.address_province, row.address_city, row.address_district].filter(Boolean).join(" ")}
-        {row.address_detail ? ` ${row.address_detail}` : ""}
-      </p>
+    <div className="p-4 flex flex-col sm:flex-row gap-4">
+      <MacroPanoramaSnapshot snapshotPath={row.panorama_path} />
+      <div className="flex-1 min-w-0 space-y-1">
+        <p className="font-medium text-gray-900">{row.title}</p>
+        {row.description && <p className="text-sm text-gray-600 whitespace-pre-wrap">{row.description}</p>}
+        <p className="text-xs text-gray-500">
+          {[row.address_province, row.address_city, row.address_district].filter(Boolean).join(" ")}
+          {row.address_detail ? ` ${row.address_detail}` : ""}
+        </p>
+      </div>
     </div>
   );
 }
@@ -778,6 +843,7 @@ function ScenarioWorkstationsTab({
   const [macroCity, setMacroCity] = useState("");
   const [macroDistrict, setMacroDistrict] = useState("");
   const [macroDetail, setMacroDetail] = useState("");
+  const [macroPanoramaFile, setMacroPanoramaFile] = useState<File | null>(null);
   const [macroBusy, setMacroBusy] = useState(false);
   const [editingMacroId, setEditingMacroId] = useState<string | null>(null);
   const [eMacroTitle, setEMacroTitle] = useState("");
@@ -786,6 +852,7 @@ function ScenarioWorkstationsTab({
   const [eMacroCity, setEMacroCity] = useState("");
   const [eMacroDistrict, setEMacroDistrict] = useState("");
   const [eMacroDetail, setEMacroDetail] = useState("");
+  const [eMacroPanoramaFile, setEMacroPanoramaFile] = useState<File | null>(null);
   const [eMacroBusy, setEMacroBusy] = useState(false);
   const macroBatch = useBatchSelection();
   const [macroBatchDeleting, setMacroBatchDeleting] = useState(false);
@@ -866,6 +933,7 @@ function ScenarioWorkstationsTab({
     setEMacroCity(m.address_city);
     setEMacroDistrict(m.address_district);
     setEMacroDetail(m.address_detail ?? "");
+    setEMacroPanoramaFile(null);
   }
 
   async function onSaveMacroEdit(e: React.FormEvent, id: string) {
@@ -877,15 +945,21 @@ function ScenarioWorkstationsTab({
     }
     setEMacroBusy(true);
     try {
-      await updateSceneMacroSite(id, {
+      const patch: Parameters<typeof updateSceneMacroSite>[1] = {
         title: eMacroTitle.trim(),
         description: eMacroDesc.trim() || null,
         address_province: eMacroProvince.trim(),
         address_city: eMacroCity.trim(),
         address_district: eMacroDistrict.trim(),
         address_detail: eMacroDetail.trim() || null,
-      });
+      };
+      if (eMacroPanoramaFile) {
+        const { path } = await uploadMacroPanoramaSnapshot(groupId, eMacroPanoramaFile);
+        patch.panorama_path = path;
+      }
+      await updateSceneMacroSite(id, patch);
       setEditingMacroId(null);
+      setEMacroPanoramaFile(null);
       await load();
     } catch (err: unknown) {
       setErr(err instanceof Error ? err.message : "保存大场景失败");
@@ -904,13 +978,19 @@ function ScenarioWorkstationsTab({
       setErr("请填写大场景的省、市、区（县）");
       return;
     }
+    if (!macroPanoramaFile) {
+      setErr("请上传大场景全景图");
+      return;
+    }
     setErr("");
     setMacroBusy(true);
     try {
+      const { path } = await uploadMacroPanoramaSnapshot(groupId, macroPanoramaFile);
       const created = await createSceneMacroSite({
         group_id: groupId,
         title: macroTitle.trim(),
         description: macroDesc.trim() || undefined,
+        panorama_path: path,
         address_province: macroProvince.trim(),
         address_city: macroCity.trim(),
         address_district: macroDistrict.trim(),
@@ -922,6 +1002,7 @@ function ScenarioWorkstationsTab({
       setMacroCity("");
       setMacroDistrict("");
       setMacroDetail("");
+      setMacroPanoramaFile(null);
       setMacroSceneId(created.id);
       await load();
     } catch (err: unknown) {
@@ -1105,12 +1186,19 @@ function ScenarioWorkstationsTab({
         </button>
       </div>
       <p className="text-sm text-gray-500">
-        <strong>场景岗位 / 快照</strong>：先维护<strong>大场景</strong>，再在其下添加<strong>小岗位</strong>（工序、现场说明、地址、大类与快照）。
+        <strong>场景岗位 / 快照</strong>：在下方「新建场景岗位」中先填大场景（含全景图），再在同一卡片内添加小岗位；列表在下方分别查看与管理。
       </p>
 
-      <section className="space-y-4">
-        <h2 className="text-base font-semibold text-gray-900">大场景</h2>
-        <form onSubmit={onAddMacro} className="bg-white rounded-xl border border-violet-100 p-4 space-y-2">
+      <section className="space-y-6">
+        <div className="bg-white rounded-xl border border-violet-100 overflow-hidden">
+          <div className="px-4 py-3 border-b border-violet-100 bg-violet-50/50">
+            <h2 className="text-base font-semibold text-gray-900">新建场景岗位</h2>
+            <p className="text-xs text-gray-500 mt-1">在同一表单内先创建大场景，再在其下添加小岗位。</p>
+          </div>
+          <div className="p-4 space-y-6">
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium text-violet-900">1. 大场景</h3>
+              <form onSubmit={onAddMacro} className="space-y-2">
           <input
             required
             placeholder="大场景名称（必填）"
@@ -1154,6 +1242,15 @@ function ScenarioWorkstationsTab({
             onChange={(e) => setMacroDetail(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">全景图（必填）</label>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => setMacroPanoramaFile(e.target.files?.[0] ?? null)}
+              className="text-sm w-full"
+            />
+          </div>
           <button
             type="submit"
             disabled={macroBusy}
@@ -1161,135 +1258,20 @@ function ScenarioWorkstationsTab({
           >
             {macroBusy ? "保存中…" : "添加大场景"}
           </button>
-        </form>
-        <BatchSelectToolbar
-          total={macros.length}
-          selectedCount={macroBatch.count}
-          onSelectAll={() => macroBatch.toggleAll(macroIds)}
-          onClear={macroBatch.clear}
-          onDelete={() => void onMacroBatchDelete()}
-          deleting={macroBatchDeleting}
-          deleteLabel="删除选中大场景"
-        />
-        {macros.length === 0 ? (
-          <p className="text-sm text-amber-700 border border-dashed border-amber-200 rounded-xl p-4 text-center">
-            请先添加至少一个大场景，再创建小岗位。
-          </p>
-        ) : (
-          <CardList as="div">
-            {macros.map((m) => (
-              <CardListItem as="div" key={m.id}>
-                <div className="relative rounded-xl border border-gray-200 overflow-hidden h-full w-full min-w-0 box-border bg-white">
-                  <div className="flex items-start gap-2 p-2 pb-0">
-                    <BatchSelectCheckbox
-                      checked={macroBatch.isSelected(m.id)}
-                      onChange={() => macroBatch.toggle(m.id)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      {editingMacroId === m.id ? (
-                        <form onSubmit={(ev) => void onSaveMacroEdit(ev, m.id)} className="p-2 space-y-2">
-                          <p className="text-xs font-medium text-violet-900">编辑大场景</p>
-                          <input
-                            required
-                            value={eMacroTitle}
-                            onChange={(e) => setEMacroTitle(e.target.value)}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-                          />
-                          <textarea
-                            value={eMacroDesc}
-                            onChange={(e) => setEMacroDesc(e.target.value)}
-                            rows={2}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-                          />
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            <input
-                              required
-                              placeholder="省"
-                              value={eMacroProvince}
-                              onChange={(e) => setEMacroProvince(e.target.value)}
-                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-                            />
-                            <input
-                              required
-                              placeholder="市"
-                              value={eMacroCity}
-                              onChange={(e) => setEMacroCity(e.target.value)}
-                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-                            />
-                            <input
-                              required
-                              placeholder="区/县"
-                              value={eMacroDistrict}
-                              onChange={(e) => setEMacroDistrict(e.target.value)}
-                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-                            />
-                          </div>
-                          <input
-                            placeholder="详细地址"
-                            value={eMacroDetail}
-                            onChange={(e) => setEMacroDetail(e.target.value)}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-                          />
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="submit"
-                              disabled={eMacroBusy}
-                              className="px-4 py-2 bg-violet-700 text-white rounded-lg text-sm disabled:opacity-50"
-                            >
-                              {eMacroBusy ? "保存中…" : "保存"}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={eMacroBusy}
-                              onClick={() => setEditingMacroId(null)}
-                              className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-                            >
-                              取消
-                            </button>
-                          </div>
-                        </form>
-                      ) : (
-                        <MacroSiteRow row={m} />
-                      )}
-                    </div>
-                  </div>
-                  {editingMacroId !== m.id && (
-                    <div className="absolute top-2 right-2 flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => openMacroEdit(m)}
-                        className="text-xs text-violet-700 bg-white/95 px-2 py-1 rounded border border-violet-200 shadow-sm"
-                      >
-                        编辑
-                      </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!confirm("删除该大场景？")) return;
-                          if (editingMacroId === m.id) setEditingMacroId(null);
-                          try {
-                            await deleteSceneMacroSite(m.id);
-                            await load();
-                          } catch (ex: unknown) {
-                            setErr(ex instanceof Error ? ex.message : "删除失败");
-                          }
-                        }}
-                        className="text-xs text-red-600 bg-white/95 px-2 py-1 rounded border border-red-100 shadow-sm"
-                      >
-                        删除
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </CardListItem>
-            ))}
-          </CardList>
-        )}
-      </section>
+              </form>
+            </div>
 
-      <section className="space-y-4">
-        <h2 className="text-base font-semibold text-gray-900">小岗位 / 快照</h2>
-        <form onSubmit={onAdd} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-2">
+            <div className="border-t border-gray-100 pt-6 space-y-3">
+              <h3 className="text-sm font-medium text-indigo-900">2. 小岗位</h3>
+              {macros.length === 0 && (
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                  请先添加上方大场景后，再填写小岗位。
+                </p>
+              )}
+              <form
+                onSubmit={onAdd}
+                className={`space-y-2 ${macros.length === 0 ? "opacity-50 pointer-events-none select-none" : ""}`}
+              >
           <div>
             <label className="block text-xs text-gray-500 mb-1">所属大场景（必填）</label>
             <select
@@ -1371,11 +1353,160 @@ function ScenarioWorkstationsTab({
           <button
             type="submit"
             disabled={busy || macros.length === 0}
-            className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm disabled:opacity-50"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50"
           >
             {busy ? "上传中..." : "添加小岗位"}
           </button>
-        </form>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h2 className="text-base font-semibold text-gray-900">大场景列表</h2>
+        <BatchSelectToolbar
+          total={macros.length}
+          selectedCount={macroBatch.count}
+          onSelectAll={() => macroBatch.toggleAll(macroIds)}
+          onClear={macroBatch.clear}
+          onDelete={() => void onMacroBatchDelete()}
+          deleting={macroBatchDeleting}
+          deleteLabel="删除选中大场景"
+        />
+        {macros.length === 0 ? (
+          <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-4 text-center">
+            暂无大场景。
+          </p>
+        ) : (
+          <CardList as="div">
+            {macros.map((m) => (
+              <CardListItem as="div" key={m.id}>
+                <div className="relative rounded-xl border border-gray-200 overflow-hidden h-full w-full min-w-0 box-border bg-white">
+                  <div className="flex items-start gap-2 p-2 pb-0">
+                    <BatchSelectCheckbox
+                      checked={macroBatch.isSelected(m.id)}
+                      onChange={() => macroBatch.toggle(m.id)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      {editingMacroId === m.id ? (
+                        <form onSubmit={(ev) => void onSaveMacroEdit(ev, m.id)} className="p-2 space-y-2">
+                          <p className="text-xs font-medium text-violet-900">编辑大场景</p>
+                          <input
+                            required
+                            value={eMacroTitle}
+                            onChange={(e) => setEMacroTitle(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                          />
+                          <textarea
+                            value={eMacroDesc}
+                            onChange={(e) => setEMacroDesc(e.target.value)}
+                            rows={2}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                          />
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <input
+                              required
+                              placeholder="省"
+                              value={eMacroProvince}
+                              onChange={(e) => setEMacroProvince(e.target.value)}
+                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                            />
+                            <input
+                              required
+                              placeholder="市"
+                              value={eMacroCity}
+                              onChange={(e) => setEMacroCity(e.target.value)}
+                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                            />
+                            <input
+                              required
+                              placeholder="区/县"
+                              value={eMacroDistrict}
+                              onChange={(e) => setEMacroDistrict(e.target.value)}
+                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                            />
+                          </div>
+                          <input
+                            placeholder="详细地址"
+                            value={eMacroDetail}
+                            onChange={(e) => setEMacroDetail(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                          />
+                          <div>
+                            <p className="text-xs text-gray-500 mb-1">当前全景图</p>
+                            <MacroPanoramaSnapshot snapshotPath={m.panorama_path} />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">更换全景图（可选，不选则保留原图）</label>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              onChange={(e) => setEMacroPanoramaFile(e.target.files?.[0] ?? null)}
+                              className="text-sm w-full"
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="submit"
+                              disabled={eMacroBusy}
+                              className="px-4 py-2 bg-violet-700 text-white rounded-lg text-sm disabled:opacity-50"
+                            >
+                              {eMacroBusy ? "保存中…" : "保存"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={eMacroBusy}
+                              onClick={() => {
+                                setEditingMacroId(null);
+                                setEMacroPanoramaFile(null);
+                              }}
+                              className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <MacroSiteRow row={m} />
+                      )}
+                    </div>
+                  </div>
+                  {editingMacroId !== m.id && (
+                    <div className="absolute top-2 right-2 flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openMacroEdit(m)}
+                        className="text-xs text-violet-700 bg-white/95 px-2 py-1 rounded border border-violet-200 shadow-sm"
+                      >
+                        编辑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm("删除该大场景？")) return;
+                          if (editingMacroId === m.id) setEditingMacroId(null);
+                          try {
+                            await deleteSceneMacroSite(m.id);
+                            await load();
+                          } catch (ex: unknown) {
+                            setErr(ex instanceof Error ? ex.message : "删除失败");
+                          }
+                        }}
+                        className="text-xs text-red-600 bg-white/95 px-2 py-1 rounded border border-red-100 shadow-sm"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </CardListItem>
+            ))}
+          </CardList>
+        )}
+        </div>
+
+        <div className="space-y-4">
+          <h2 className="text-base font-semibold text-gray-900">小岗位列表</h2>
         <BatchSelectToolbar
           total={rows.length}
           selectedCount={posBatch.count}
@@ -1385,6 +1516,11 @@ function ScenarioWorkstationsTab({
           deleting={posBatchDeleting}
           deleteLabel="删除选中小岗位"
         />
+        {rows.length === 0 ? (
+          <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-4 text-center">
+            暂无小岗位。
+          </p>
+        ) : (
         <ListViewSection
           storageKey="scene-positions"
           compact={
@@ -1551,6 +1687,8 @@ function ScenarioWorkstationsTab({
             })}
           </CardList>
         </ListViewSection>
+        )}
+        </div>
       </section>
     </div>
   );
