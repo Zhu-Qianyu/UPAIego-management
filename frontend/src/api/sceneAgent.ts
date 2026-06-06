@@ -108,15 +108,67 @@ export function sceneAiFeatureEnabled(): boolean {
   return isSceneAiEnabled();
 }
 
-export async function fileToBase64(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+const AGENT_IMAGE_MAX_EDGE = 1280;
+const AGENT_IMAGE_JPEG_QUALITY = 0.82;
+const AGENT_IMAGE_SKIP_COMPRESS_BYTES = 350_000;
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("图片读取失败"));
+        return;
+      }
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("图片读取失败"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function compressAgentImage(file: File): Promise<{ blob: Blob; mimeType: string }> {
+  let bitmap: ImageBitmap | null = null;
+  try {
+    bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, AGENT_IMAGE_MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("无法处理图片");
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", AGENT_IMAGE_JPEG_QUALITY)
+    );
+    if (!blob) throw new Error("图片压缩失败");
+    return { blob, mimeType: "image/jpeg" };
+  } finally {
+    bitmap?.close();
   }
-  return btoa(binary);
+}
+
+/** 压缩并编码为 base64，避免大图栈溢出或请求体过大。 */
+export async function prepareAgentImagePayload(
+  file: File
+): Promise<{ base64: string; mimeType: string }> {
+  const mimeType = file.type.startsWith("image/") ? file.type : "image/jpeg";
+  if (
+    file.size <= AGENT_IMAGE_SKIP_COMPRESS_BYTES &&
+    (mimeType === "image/jpeg" || mimeType === "image/webp")
+  ) {
+    return { base64: await blobToBase64(file), mimeType };
+  }
+  try {
+    const compressed = await compressAgentImage(file);
+    return { base64: await blobToBase64(compressed.blob), mimeType: compressed.mimeType };
+  } catch {
+    return { base64: await blobToBase64(file), mimeType };
+  }
 }
 
 export async function sendSceneAgentMessage(args: {
@@ -131,12 +183,15 @@ export async function sendSceneAgentMessage(args: {
   }
 
   const imagePayload: AgentImagePayload[] = await Promise.all(
-    args.images.map(async (img) => ({
-      index: img.index,
-      mimeType: img.file.type || "image/jpeg",
-      base64: await fileToBase64(img.file),
-      hint: img.hint,
-    }))
+    args.images.map(async (img) => {
+      const prepared = await prepareAgentImagePayload(img.file);
+      return {
+        index: img.index,
+        mimeType: prepared.mimeType,
+        base64: prepared.base64,
+        hint: img.hint,
+      };
+    })
   );
 
   const { data, error } = await supabase.functions.invoke(FN, {

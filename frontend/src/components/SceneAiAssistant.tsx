@@ -274,6 +274,7 @@ export default function SceneAiAssistant() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState("");
+  const [composeFocused, setComposeFocused] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [imageHint, setImageHint] = useState<"unknown" | "macro" | "position">("unknown");
   const [busy, setBusy] = useState(false);
@@ -288,6 +289,7 @@ export default function SceneAiAssistant() {
   const [quotedMessage, setQuotedMessage] = useState<AgentMessageQuote | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const snapScrollRef = useRef(true);
@@ -298,6 +300,15 @@ export default function SceneAiAssistant() {
   const quickTopics = QUICK_TOPICS_BY_ROLE[userRole];
 
   const speechSupported = useMemo(() => getSpeechRecognitionCtor() !== null, []);
+  const compactCompose =
+    inputMode === "text" && (composeFocused || !!input.trim() || pendingImages.length > 0);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el || inputMode !== "text") return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 112)}px`;
+  }, [input, inputMode, open, compactCompose]);
 
   const refreshUnread = useCallback(async (gid: string | null) => {
     try {
@@ -661,17 +672,19 @@ export default function SceneAiAssistant() {
     setBusy(true);
     setExtraOpen(false);
 
+    const imagesToSend = pendingImages;
     const quoteSnapshot = quotedMessage ?? undefined;
     const userMsg: UiMessage = {
       id: uid(),
       role: "user",
       text: text || "（见附件图片）",
       quote: quoteSnapshot,
-      imagePreviews: pendingImages.length ? pendingImages.map((p) => p.previewUrl) : undefined,
+      imagePreviews: imagesToSend.length ? imagesToSend.map((p) => p.previewUrl) : undefined,
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setQuotedMessage(null);
+    setPendingImages([]);
     void saveChatMessage(groupId, "user", userMsg.text, { quote: quoteSnapshot, source: "chat" });
 
     const history = [...messages, userMsg]
@@ -682,7 +695,7 @@ export default function SceneAiAssistant() {
       const macros = await loadMacrosForAgent(groupId);
       const res = await sendSceneAgentMessage({
         messages: history,
-        images: pendingImages,
+        images: imagesToSend,
         groupId,
         existingMacros: macros.map((m) => ({ id: m.id, title: m.title })),
         pageContext,
@@ -706,8 +719,9 @@ export default function SceneAiAssistant() {
         },
       ]);
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "发送失败");
-      const failText = "抱歉，这次没能处理你的请求。请检查网络或稍后再试。";
+      const reason = e instanceof Error ? e.message : "发送失败";
+      setErr(reason);
+      const failText = `抱歉，这次没能处理您的请求：${reason}`;
       const failMsg = groupId
         ? await saveChatMessage(groupId, "assistant", failText, { source: "chat" })
         : { id: uid(), role: "assistant" as const, text: failText };
@@ -1029,23 +1043,30 @@ export default function SceneAiAssistant() {
             )}
 
             <footer className="shrink-0 px-3 pb-3 pt-1 bg-[#f5f5f5] relative">
-              <p className="text-center text-sm text-gray-400 mb-2">聊聊新话题</p>
+              {inputMode === "text" && !compactCompose && (
+                <>
+                  <p className="text-center text-sm text-gray-400 mb-2">聊聊新话题</p>
+                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {quickTopics.map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => applyQuickTopic(item.prompt)}
+                        className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-sm text-gray-800 hover:bg-gray-50"
+                      >
+                        <span>{item.icon}</span>
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
 
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {quickTopics.map((item) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => applyQuickTopic(item.prompt)}
-                    className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-sm text-gray-800 hover:bg-gray-50"
-                  >
-                    <span>{item.icon}</span>
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2 rounded-[1.75rem] border border-gray-200 bg-white px-3 py-2 shadow-sm">
+              <div
+                className={`flex gap-2 rounded-[1.75rem] border border-gray-200 bg-white shadow-sm ${
+                  inputMode === "text" ? "items-end px-3 py-2" : "items-center px-3 py-2"
+                }`}
+              >
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
@@ -1057,7 +1078,7 @@ export default function SceneAiAssistant() {
                 <input
                   ref={fileRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp"
+                  accept="image/*"
                   multiple
                   className="hidden"
                   onChange={(e) => {
@@ -1067,20 +1088,20 @@ export default function SceneAiAssistant() {
                 />
 
                 {inputMode === "text" ? (
-                  <input
-                    type="text"
+                  <textarea
+                    ref={textareaRef}
                     value={input}
+                    rows={1}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="发消息或按住说话…"
-                    className="flex-1 min-w-0 bg-transparent text-[15px] text-gray-900 placeholder:text-gray-400 outline-none"
+                    onFocus={() => setComposeFocused(true)}
+                    onBlur={() => setComposeFocused(false)}
+                    placeholder="发消息…"
+                    className="flex-1 min-w-0 max-h-28 bg-transparent text-[15px] text-gray-900 placeholder:text-gray-400 outline-none resize-none leading-relaxed whitespace-pre-wrap break-words py-1"
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
+                      if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         void onSend();
                       }
-                    }}
-                    onPointerDown={(e) => {
-                      if (e.pointerType === "mouse" && e.button !== 0) return;
                     }}
                   />
                 ) : (
@@ -1101,35 +1122,49 @@ export default function SceneAiAssistant() {
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInputMode((m) => (m === "text" ? "voice" : "text"));
-                    stopRecognition();
-                  }}
-                  className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-full border ${
-                    inputMode === "voice"
-                      ? "border-gray-900 bg-gray-900 text-white"
-                      : "border-gray-200 text-gray-700 hover:bg-gray-50"
-                  }`}
-                  aria-label="切换语音输入"
-                >
-                  <IconWave className="h-5 w-5" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setExtraOpen((v) => !v)}
-                  className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50"
-                  aria-label="更多"
-                >
-                  <IconPlus className="h-5 w-5" />
-                </button>
-
-                {(input.trim() || pendingImages.length > 0) && inputMode === "text" && (
+                {inputMode === "text" && !compactCompose && (
                   <button
                     type="button"
-                    disabled={busy || !enabled}
+                    onClick={() => {
+                      setInputMode("voice");
+                      stopRecognition();
+                    }}
+                    className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50"
+                    aria-label="切换语音输入"
+                  >
+                    <IconWave className="h-5 w-5" />
+                  </button>
+                )}
+
+                {inputMode === "voice" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputMode("text");
+                      stopRecognition();
+                    }}
+                    className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-gray-900 bg-gray-900 text-white"
+                    aria-label="切换文字输入"
+                  >
+                    <IconWave className="h-5 w-5" />
+                  </button>
+                )}
+
+                {!compactCompose && (
+                  <button
+                    type="button"
+                    onClick={() => setExtraOpen((v) => !v)}
+                    className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50"
+                    aria-label="更多"
+                  >
+                    <IconPlus className="h-5 w-5" />
+                  </button>
+                )}
+
+                {inputMode === "text" && (
+                  <button
+                    type="button"
+                    disabled={busy || !enabled || (!input.trim() && pendingImages.length === 0)}
                     onClick={() => void onSend()}
                     className="shrink-0 rounded-full bg-[#1a1a1a] px-3 py-1.5 text-sm text-white disabled:opacity-40"
                   >
