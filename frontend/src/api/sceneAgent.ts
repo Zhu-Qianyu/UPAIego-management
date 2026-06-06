@@ -10,6 +10,7 @@ import type {
 } from "../aitebot/types";
 import { normalizePendingFormFills } from "./agentForms";
 import { buildFormFillConfirmMessage, inferFormFillsFromUserText, stripActionsWhenFormFills } from "../aitebot/formFillInfer";
+import { AGENT_TASK_CHOICE_PROMPT } from "../aitebot/selfServiceNavigation";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 
@@ -127,9 +128,11 @@ export async function sendSceneAgentMessage(args: {
 
   let assistant_message = payload.assistant_message ?? "";
   if (pending_form_fills.length && usedInfer) {
-    assistant_message = `${buildFormFillConfirmMessage(pending_form_fills)} 这样帮您填写可以吗？`;
+    assistant_message = buildFormFillConfirmMessage(pending_form_fills);
   } else if (pending_form_fills.length && /切换|打开.*页面|标签页/.test(assistant_message)) {
-    assistant_message = `${buildFormFillConfirmMessage(pending_form_fills)} 这样帮您填写可以吗？`;
+    assistant_message = buildFormFillConfirmMessage(pending_form_fills);
+  } else if (pending_form_fills.length && !assistant_message.includes(AGENT_TASK_CHOICE_PROMPT)) {
+    assistant_message = `${assistant_message.trim()}\n\n${AGENT_TASK_CHOICE_PROMPT}`;
   }
 
   let actions = normalizeActions(payload.actions);

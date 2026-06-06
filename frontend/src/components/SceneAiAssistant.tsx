@@ -33,6 +33,7 @@ import {
   pendingFormFillsNeedImages,
 } from "../aitebot/agentFormImages";
 import { IMAGE_UPLOAD_ACCEPT, prepareImageFileForUpload } from "../utils/compressImageFile";
+import { AGENT_TASK_CHOICE_PROMPT, resolveSelfServiceActions } from "../aitebot/selfServiceNavigation";
 import { useAitebot } from "../aitebot/AitebotContext";
 import { useAuth } from "../auth/AuthContext";
 import { ROLE_LABELS } from "../auth/roleLabels";
@@ -96,8 +97,8 @@ function welcomeMessage(enabled: boolean, role: UserRole): UiMessage {
   const roleLabel = ROLE_LABELS[role];
   const roleHints: Record<UserRole, string> = {
     admin: "我是您的职场小秘书，可帮您代填甲方业务、场景岗位、排班等表单；发通知、改群规定前都会先请示您。群发仅管理员可用。",
-    scene_operator: "我是您的职场小秘书，可帮您代填甲方业务、大场景、小岗位与排班；执行前会先问您可不可以。",
-    device_operator: "我是您的职场小秘书，可带您处理设备与运维流程；有事我会先问您可不可以再做。",
+    scene_operator: "我是您的职场小秘书，可帮您代填甲方业务、大场景、小岗位与排班；动手前会请您选「直接帮我干」或「跳转页面我自己搞」。",
+    device_operator: "我是您的职场小秘书，可帮您登记设备、走运维流程；动手前会请您选「直接帮我干」或「跳转页面我自己搞」。",
     collection_executor: "我是您的职场小秘书，可帮看排班、悬赏与钱包；本群规定我会遵守。",
   };
   return {
@@ -644,7 +645,7 @@ export default function SceneAiAssistant() {
       imageMap[Number(idx)] = entry.file;
     }
     if (!allRequiredFormImagesSelected(specs, imageMap)) {
-      setErr("请先上传所需图片后再点「可以」");
+      setErr("请先上传所需图片后再点「直接帮我干」");
       return;
     }
     const result = await executeAgentFormFills(groupId, userRole, specs, imageMap);
@@ -690,7 +691,22 @@ export default function SceneAiAssistant() {
     );
   }
 
-  function onDeclinePending(msgId: string, kind: "broadcast" | "rules" | "actions" | "forms") {
+  function onSelfServicePending(
+    msgId: string,
+    kind: "broadcast" | "rules" | "actions" | "forms",
+    ctx: {
+      formFills?: AgentPendingFormFill[];
+      actions?: AgentAction[];
+      broadcast?: AgentPendingBroadcast;
+      groupRules?: AgentPendingGroupRules;
+    }
+  ) {
+    const navActions = resolveSelfServiceActions({
+      formFills: ctx.formFills,
+      actions: ctx.actions,
+      broadcast: ctx.broadcast ?? null,
+      groupRules: ctx.groupRules ?? null,
+    });
     patchMessage(msgId, {
       confirmDone: true,
       pendingBroadcast: undefined,
@@ -699,15 +715,17 @@ export default function SceneAiAssistant() {
       pendingActions: undefined,
     });
     if (kind === "forms") clearFormFillImagesForMessage(msgId);
-    void appendAssistantLine(
-      kind === "broadcast"
-        ? "好的，那这次通知先不发了。您改主意了随时跟我说～"
-        : kind === "rules"
-          ? "好的，群规定先不改动。需要时再吩咐我～"
-          : kind === "forms"
-            ? "好的，那这次先不帮您填啦。您改好了再叫我～"
-            : "好的，那我们先不操作啦。有需要您再叫我～"
-    );
+
+    if (navActions.length) {
+      const summaries = executeActions(navActions);
+      void appendAssistantLine(
+        summaries.length
+          ? `好的，已帮您打开：${summaries.join("；")}。您在那儿自己操作就行～`
+          : "好的，已帮您打开相关页面，您在那儿自己操作就行～"
+      );
+    } else {
+      void appendAssistantLine("好的，您可以在左侧菜单进入对应页面自己操作～");
+    }
   }
 
   async function onSend(overrideText?: string) {
@@ -945,20 +963,22 @@ export default function SceneAiAssistant() {
                       {m.text}
                     {!m.confirmDone && m.pendingBroadcast ? (
                       <PendingConfirmBar
-                        prompt="那我发通知啦？"
+                        prompt={AGENT_TASK_CHOICE_PROMPT}
                         detail={
                           <div className="text-xs text-gray-600 space-y-1">
-                            <p className="font-medium text-gray-800">{m.pendingBroadcast.title}</p>
+                            <p className="font-medium text-gray-800">群发通知：{m.pendingBroadcast.title}</p>
                             <p className="line-clamp-3 whitespace-pre-wrap">{m.pendingBroadcast.body}</p>
                           </div>
                         }
                         onOk={() => void onConfirmBroadcast(m.id, m.pendingBroadcast!)}
-                        onDecline={() => onDeclinePending(m.id, "broadcast")}
+                        onSelfService={() =>
+                          onSelfServicePending(m.id, "broadcast", { broadcast: m.pendingBroadcast })
+                        }
                       />
                     ) : null}
                     {!m.confirmDone && m.pendingGroupRules ? (
                       <PendingConfirmBar
-                        prompt="这样写入群规定可以吗？"
+                        prompt={AGENT_TASK_CHOICE_PROMPT}
                         detail={
                           <p className="text-xs text-gray-600 line-clamp-4 whitespace-pre-wrap">
                             {m.pendingGroupRules.mode === "clear"
@@ -967,15 +987,17 @@ export default function SceneAiAssistant() {
                           </p>
                         }
                         onOk={() => void onConfirmGroupRules(m.id, m.pendingGroupRules!)}
-                        onDecline={() => onDeclinePending(m.id, "rules")}
+                        onSelfService={() =>
+                          onSelfServicePending(m.id, "rules", { groupRules: m.pendingGroupRules })
+                        }
                       />
                     ) : null}
                     {!m.confirmDone && m.pendingFormFills?.length ? (
                       <PendingConfirmBar
                         prompt={
                           pendingFormFillsNeedImages(m.pendingFormFills).length
-                            ? "请上传图片，确认后我帮您写入："
-                            : "这样帮您填写可以吗？"
+                            ? `请上传图片。${AGENT_TASK_CHOICE_PROMPT}`
+                            : AGENT_TASK_CHOICE_PROMPT
                         }
                         detail={
                           <div className="space-y-2">
@@ -1010,19 +1032,23 @@ export default function SceneAiAssistant() {
                           )
                         )}
                         onOk={() => void onConfirmFormFills(m.id, m.pendingFormFills!)}
-                        onDecline={() => onDeclinePending(m.id, "forms")}
+                        onSelfService={() =>
+                          onSelfServicePending(m.id, "forms", { formFills: m.pendingFormFills })
+                        }
                       />
                     ) : null}
                     {!m.confirmDone && m.pendingActions?.length ? (
                       <PendingConfirmBar
-                        prompt="这样可以吗？"
+                        prompt={AGENT_TASK_CHOICE_PROMPT}
                         detail={
                           <p className="text-xs text-gray-600">
                             {m.pendingActions.map((a) => describeAction(a)).join("；")}
                           </p>
                         }
                         onOk={() => void onConfirmActions(m.id, m.pendingActions!)}
-                        onDecline={() => onDeclinePending(m.id, "actions")}
+                        onSelfService={() =>
+                          onSelfServicePending(m.id, "actions", { actions: m.pendingActions })
+                        }
                       />
                     ) : null}
                     </div>
@@ -1295,34 +1321,34 @@ function PendingConfirmBar({
   prompt,
   detail,
   onOk,
-  onDecline,
+  onSelfService,
   okDisabled = false,
 }: {
   prompt: string;
   detail?: ReactNode;
   onOk: () => void;
-  onDecline: () => void;
+  onSelfService: () => void;
   okDisabled?: boolean;
 }) {
   return (
     <div className="mt-3 pt-2 border-t border-gray-100 space-y-2">
       <p className="text-xs font-medium text-rose-600">{prompt}</p>
       {detail}
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <button
           type="button"
           onClick={onOk}
           disabled={okDisabled}
           className="flex-1 rounded-full bg-[#1a1a1a] py-2 text-xs font-medium text-white disabled:opacity-40"
         >
-          可以
+          直接帮我干
         </button>
         <button
           type="button"
-          onClick={onDecline}
+          onClick={onSelfService}
           className="flex-1 rounded-full border border-gray-300 bg-white py-2 text-xs font-medium text-gray-700"
         >
-          不行
+          跳转页面我自己搞
         </button>
       </div>
     </div>

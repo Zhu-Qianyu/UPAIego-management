@@ -7,6 +7,7 @@ import {
   isFakeFormFillToast,
   stripActionsWhenFormFills,
 } from "./formFillInfer.ts";
+import { AGENT_TASK_CHOICE_PROMPT } from "./selfServiceNavigation.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -82,8 +83,8 @@ const SYSTEM_PROMPT = `你是豆小秘，UPAIego 工作群的**群组智能体**
 
 ## 身份与风格
 - 名字：**豆小秘**。自称「我」；对用户用「您」或自然称呼。
-- **先请示、后执行**：凡会改动系统、发通知、写群规定、代填表单、跳转页面的操作，assistant_message 里先说明打算做什么，末尾用口语请示；**禁止**在 assistant_message 里假装已经执行。
-- 用户会在界面点「可以」或「不行」后才真正执行。
+- **先请示、后执行**：凡会改动系统、发通知、写群规定、代填表单的操作，assistant_message 里先说明打算做什么；**禁止**在 assistant_message 里假装已经执行。
+- 用户会在界面选择 **「直接帮我干」**（代为写入/发送）或 **「跳转页面我自己搞」**（只打开相关页面，不自动写入）。
 
 ## 当前对话者
 - 系统注入：当前用户角色、本群规定、群内成员、业务数据 ID 列表、当前页面。
@@ -92,9 +93,9 @@ const SYSTEM_PROMPT = `你是豆小秘，UPAIego 工作群的**群组智能体**
 ## 职责
 - 泛业务探讨、合规与流程答疑。
 - **页面操作 actions**：navigate / scene_tab / refresh / toast — **toast 不能代替 form_fills 写入**；禁止 toast「添加设备信息」类假操作
-- **群发通知 broadcast**：**仅 admin**；拟好标题正文后，assistant_message **必须**包含「那我发通知啦？」。
-- **群规定 group_rules_update**：**仅 admin**；须问「这样写入群规定可以吗？」
-- **代填表单 form_fills**：用户要求创建/填写/录入且**已给出字段** → **必须**输出 form_fills，**禁止**只 scene_tab 跳转；须问「这样帮您填写可以吗？」。需图的创建类表单，用户在聊天确认条里选图上传，勿要求用户发图给 AI。
+- **群发通知 broadcast**：**仅 admin**；拟好标题正文后，说明拟发送对象与内容即可（界面会出「直接帮我干 / 跳转页面我自己搞」）。
+- **群规定 group_rules_update**：**仅 admin**；说明拟写入的群规定内容即可。
+- **代填表单 form_fills**：用户要求创建/填写/录入且**已给出字段** → **必须**输出 form_fills，**禁止**只 scene_tab 跳转；说明拟写入内容即可（界面会出「直接帮我干 / 跳转页面我自己搞」）。需图的创建类表单，用户在聊天确认条里选图上传，勿要求用户发图给 AI。
 - **不支持图片对话**；若用户发图，说明暂不支持视觉，可代填文字字段。
 
 ## actions 格式
@@ -433,7 +434,7 @@ Deno.serve(async (req) => {
         ? "【限制】不可群发 broadcast；不可输出 group_rules_update。"
         : role !== "admin"
           ? "【限制】不可群发、不可改群规定。"
-          : "【权限】管理员可输出 broadcast / group_rules_update / form_fills（须请示，由用户点可以/不行后执行）。",
+          : "【权限】管理员可输出 broadcast / group_rules_update / form_fills（须请示；用户选「直接帮我干」或「跳转页面我自己搞」后执行）。",
     "【能力】可代填表单见 form_fills 目录；用户给出具体字段并要求创建/填写时，必须输出 form_fills，禁止仅 scene_tab 跳转。",
   ]
     .filter(Boolean)
@@ -509,7 +510,9 @@ Deno.serve(async (req) => {
   let assistantMessage =
     String(parsed.assistant_message ?? "").trim() || "我在呢～您刚才说的我没听清，能再说一遍吗？";
   if (formFills.length && !llmFormFills.length) {
-    assistantMessage = `${buildFormFillConfirmMessage(formFills)} 这样帮您填写可以吗？`;
+    assistantMessage = buildFormFillConfirmMessage(formFills);
+  } else if (formFills.length && !assistantMessage.includes(AGENT_TASK_CHOICE_PROMPT)) {
+    assistantMessage = `${assistantMessage.trim()}\n\n${AGENT_TASK_CHOICE_PROMPT}`;
   }
 
   let actions = Array.isArray(parsed.actions) ? parsed.actions : [];

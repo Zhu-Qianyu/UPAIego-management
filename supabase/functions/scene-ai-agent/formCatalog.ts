@@ -1,5 +1,5 @@
 /** 豆小秘代填表单目录 — 注入 LLM system prompt；与 frontend agentForms 权限保持一致 */
-export const FORM_FILL_SKILL_PROMPT = `## 代填表单 form_fills（须先请示，用户点「可以」后前端才写入）
+export const FORM_FILL_SKILL_PROMPT = `## 代填表单 form_fills（须先请示；用户选「直接帮我干」后前端才写入）
 
 **铁律（违反即失败）**
 - 用户说「添加/增加/创建/登记/填」且带了公司名、数量、类型等字段 → **必须**输出 form_fills，**actions 必须为空**
