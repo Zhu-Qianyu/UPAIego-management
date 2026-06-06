@@ -1,10 +1,3 @@
--- 豆小秘群组智能体：个人收件箱 + 分角色群发
--- Prerequisite: work_groups, group_members, profiles, current_profile_role(), user_active_group_id(), policy_work_group_accessible
--- Run in Supabase SQL Editor as a single script.
-
--- ---------------------------------------------------------------------------
--- 1. Inbox table
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.agent_inbox_messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id uuid NOT NULL REFERENCES public.work_groups (id) ON DELETE CASCADE,
@@ -28,9 +21,6 @@ CREATE INDEX IF NOT EXISTS idx_agent_inbox_group
 CREATE INDEX IF NOT EXISTS idx_agent_inbox_broadcast
   ON public.agent_inbox_messages (broadcast_id);
 
--- ---------------------------------------------------------------------------
--- 2. RLS
--- ---------------------------------------------------------------------------
 ALTER TABLE public.agent_inbox_messages ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "agent_inbox_select_own" ON public.agent_inbox_messages;
@@ -45,11 +35,7 @@ CREATE POLICY "agent_inbox_update_read_own"
   USING (recipient_user_id = auth.uid())
   WITH CHECK (recipient_user_id = auth.uid());
 
--- Inserts only via SECURITY DEFINER RPC
 
--- ---------------------------------------------------------------------------
--- 3. Broadcast RPC (called by Edge Function with user JWT, or admin UI later)
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.send_agent_group_broadcast(
   p_group_id uuid,
   p_title text,
@@ -97,7 +83,6 @@ BEGIN
     v_category := 'notice';
   END IF;
 
-  -- Normalize target roles
   IF p_target_roles IS NULL OR array_length(p_target_roles, 1) IS NULL THEN
     v_targets := ARRAY['admin', 'device_operator', 'scene_operator', 'collection_executor'];
   ELSE
@@ -111,7 +96,6 @@ BEGIN
     END IF;
   END IF;
 
-  -- Permission: admin → any target; scene_operator → executors only; others → forbidden
   IF v_role = 'admin' THEN
     NULL;
   ELSIF v_role = 'scene_operator' THEN
@@ -148,7 +132,6 @@ BEGIN
 
   GET DIAGNOSTICS v_sent = ROW_COUNT;
 
-  -- Also notify sender if they are in target roles (admin self-notify optional — skip for boss broadcasts)
   IF v_role = ANY (v_targets) AND NOT EXISTS (
     SELECT 1 FROM public.agent_inbox_messages m
     WHERE m.broadcast_id = v_broadcast_id AND m.recipient_user_id = v_uid
@@ -171,9 +154,6 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.send_agent_group_broadcast(uuid, text, text, text[], text) TO authenticated;
 
--- ---------------------------------------------------------------------------
--- 4. Unread count helper
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.count_agent_inbox_unread(p_group_id uuid DEFAULT NULL)
 RETURNS integer
 LANGUAGE sql

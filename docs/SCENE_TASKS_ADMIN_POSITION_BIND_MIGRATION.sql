@@ -1,7 +1,3 @@
--- Scene tasks: bind to one scenario position (admin-created); sync only matches that position.
--- INSERT scene_tasks: admin only. UPDATE: scene_operator in same group (e.g. publish). DELETE draft: admin or scene_operator in group.
--- Prerequisite: SCENE_BUSINESS_ASSIGNMENT_MIGRATION.sql (scene_tasks.group_id, sync_scene_task_assignments, scenario_positions).
-
 ALTER TABLE public.scene_tasks
   ADD COLUMN IF NOT EXISTS scenario_position_id uuid REFERENCES public.scenario_positions (id) ON DELETE SET NULL;
 
@@ -119,5 +115,3 @@ CREATE POLICY "scene_tasks_delete_draft_in_group_or_admin"
       AND public.policy_work_group_accessible(group_id)
     )
   );
-
-COMMENT ON COLUMN public.scene_tasks.scenario_position_id IS 'When set, auto-assignments only use this scenario position; NULL = legacy all positions in group.';

@@ -1,23 +1,21 @@
-import { pinyin } from "pinyin-pro";
+/** 离线设备登记编号格式：4 位大写字母 + 4 位数字，如 SKAX0001；兼容旧 10 位 hex */
+export const MANUAL_DEVICE_PUBLIC_CODE_RE = /^(?:[0-9A-F]{10}|[A-Z]{4}[0-9]{4})$/;
 
-/** 从甲方公司名生成离线设备编号前缀，如「智元觅蜂」→ ZYMF */
-export function deriveDeviceCodePrefix(company: string): string {
-  const cleaned = company.trim().replace(/[^\u4e00-\u9fffA-Za-z0-9]/g, "");
-  if (!cleaned) return "DEV";
-
-  if (/^[A-Za-z0-9]+$/.test(cleaned)) {
-    return cleaned.toUpperCase().slice(0, 8) || "DEV";
-  }
-
-  const firsts = pinyin(cleaned, { pattern: "first", toneType: "none", type: "array" }) as string[];
-  const prefix = firsts
-    .join("")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
-  return prefix.slice(0, 8) || "DEV";
+export function normalizeManualDevicePublicCode(code: string): string {
+  return code.trim().toUpperCase();
 }
 
-/** 格式化展示：登记编号 ZYMF0001 */
+export function isValidManualDevicePublicCode(code: string): boolean {
+  return MANUAL_DEVICE_PUBLIC_CODE_RE.test(normalizeManualDevicePublicCode(code));
+}
+
+/** 从登记编号提取 4 字母前缀（新格式） */
+export function manualDevicePublicCodePrefix(code: string): string | null {
+  const n = normalizeManualDevicePublicCode(code);
+  const m = /^([A-Z]{4})[0-9]{4}$/.exec(n);
+  return m ? m[1] : null;
+}
+
 export function formatManualDevicePublicCode(code: string): string {
-  return code.trim().toUpperCase();
+  return normalizeManualDevicePublicCode(code);
 }

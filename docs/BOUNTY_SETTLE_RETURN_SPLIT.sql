@@ -1,7 +1,3 @@
--- 结算与归还拆分：结算可多次，归还每接单仅一次
--- 前置：BOUNTY_DEVICE_SETTLEMENT_V2.sql
--- 在 Supabase SQL Editor 整段执行
-
 ALTER TABLE public.bounty_claims
   ADD COLUMN IF NOT EXISTS device_returned_at timestamptz;
 
@@ -246,7 +242,5 @@ GRANT EXECUTE ON FUNCTION public.return_device_for_claim(uuid) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
-COMMENT ON FUNCTION public.settle_claim_session(uuid, numeric, text) IS
   'Partial settlement: log hours, wallet, points; repeatable until claim fully settled.';
-COMMENT ON FUNCTION public.return_device_for_claim(uuid) IS
   'Physical device return: release device to pool once per claim; does not settle hours.';

@@ -1,7 +1,3 @@
--- 豆小秘对话记录：每人每群持久化聊天记录
--- Prerequisite: work_groups, group_members, policy_work_group_accessible
--- Run in Supabase SQL Editor as a single script.
-
 CREATE TABLE IF NOT EXISTS public.agent_chat_messages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id uuid NOT NULL REFERENCES public.work_groups (id) ON DELETE CASCADE,

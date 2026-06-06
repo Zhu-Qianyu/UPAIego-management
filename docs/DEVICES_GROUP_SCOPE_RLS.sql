@@ -1,8 +1,3 @@
--- 全平台设备 / 数采地图：admin 与 collection_executor 仅能查看、更新、收菜
--- 「本工作群」内成员名下的设备（devices.user_id 须在群主或当前活跃群下且为 pending/active 成员）。
--- 前置：docs/ROLE_SYSTEM_MIGRATION.sql 与 docs/GROUP_TOPICS_BUSINESS_MIGRATION.sql（含 user_owned_group_id / user_active_group_id）。
--- 在 Supabase SQL Editor 中整段执行。
-
 CREATE OR REPLACE FUNCTION public.device_visible_to_fleet_roles(p_device_owner_id uuid)
 RETURNS boolean
 LANGUAGE plpgsql

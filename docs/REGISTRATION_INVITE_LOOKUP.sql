@@ -1,7 +1,3 @@
--- 注册时预览群组号对应的工作群（任意有效 invite_code 均可，归属该群群主审批）
--- 前置：REGISTRATION_GROUP_CODE_ENFORCE.sql
--- 在 Supabase SQL Editor 整段执行
-
 CREATE OR REPLACE FUNCTION public.lookup_invite_code(p_invite_code text)
 RETURNS json
 LANGUAGE plpgsql
@@ -33,7 +29,6 @@ $$;
 REVOKE ALL ON FUNCTION public.lookup_invite_code(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.lookup_invite_code(text) TO anon, authenticated;
 
-COMMENT ON FUNCTION public.lookup_invite_code(text) IS
   'Resolve invite code to work group; each platform admin owns one group — user joins the group matching the code they enter at signup.';
 
 NOTIFY pgrst, 'reload schema';

@@ -1,8 +1,3 @@
--- 设备分发 / 数采登记支持离线设备（manual_tracked_devices）
--- 使用 device_id = 'offline:' || public_code；解除对 devices 表的外键。
--- 前置：BOUNTY_OPERATOR_AUDIT_MIGRATION.sql、MANUAL_TRACKED_DEVICES_MIGRATION.sql
--- 在 Supabase SQL Editor 整段执行
-
 ALTER TABLE public.device_executor_assignments
   DROP CONSTRAINT IF EXISTS device_executor_assignments_device_id_fkey;
 
@@ -130,5 +125,4 @@ REVOKE ALL ON FUNCTION public._assert_operator_owns_assignable_device(text, uuid
 
 NOTIFY pgrst, 'reload schema';
 
-COMMENT ON FUNCTION public._assert_operator_owns_assignable_device(text, uuid) IS
   'Validates联网 devices owned by operator, or offline:PUBLIC_CODE in active work group.';

@@ -3,6 +3,7 @@ import {
   createManualTrackedDevice,
   deleteManualTrackedDevice,
   formatManualTrackedDeviceLabel,
+  groupManualTrackedDevicesByParty,
   labelExternalDeviceStatus,
   listManualTrackedDevices,
   listPartyDemands,
@@ -141,7 +142,20 @@ export default function ManualDevicesTab() {
   const [err, setErr] = useState("");
   const [partyId, setPartyId] = useState("");
   const [shortLabel, setShortLabel] = useState("");
+  const [partyFilter, setPartyFilter] = useState<string>("all");
   const [adding, setAdding] = useState(false);
+
+  const partyGroups = useMemo(() => groupManualTrackedDevicesByParty(rows, demands), [rows, demands]);
+
+  const visibleGroups = useMemo(() => {
+    if (partyFilter === "all") return partyGroups;
+    return partyGroups.filter((g) => g.partyDemandId === partyFilter);
+  }, [partyFilter, partyGroups]);
+
+  const visibleRows = useMemo(
+    () => visibleGroups.flatMap((g) => g.devices),
+    [visibleGroups]
+  );
 
   const load = useCallback(async () => {
     const gid = await fetchActiveGroupId();
@@ -232,7 +246,8 @@ export default function ManualDevicesTab() {
       <RefreshStrip active={refreshing} />
       <p className="text-sm text-gray-600">
         <strong>离线设备</strong>指无法接入本站心跳的设备，由<strong>设备运维员</strong>据现场或人员反馈维护。
-        每条保留<strong>运行是否正常</strong>、系统分配的<strong>登记编号与二维码</strong>，以及由<strong>甲方公司名 + 设备简称</strong>组成的设备类型（甲方请在「场景业务 → 甲方业务」中维护）。列表仅展示<strong>当前工作群</strong>内登记。
+        每条保留<strong>运行是否正常</strong>、系统分配的<strong>登记编号与二维码</strong>，以及由<strong>甲方公司名 + 设备简称</strong>组成的设备类型（甲方请在「场景业务 → 甲方业务」中维护）。
+        同一甲方业务的登记编号共用<strong> 4 位随机大写字母</strong>前缀，后接顺序号（如 <span className="font-mono">SKAX0001</span>）。列表可按甲方分类查看。
       </p>
       {err && <p className="text-sm text-red-600">{err}</p>}
 
@@ -273,6 +288,22 @@ export default function ManualDevicesTab() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-gray-800">本群已登记</h2>
         <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-gray-600">
+            <span>按甲方</span>
+            <select
+              value={partyFilter}
+              onChange={(e) => setPartyFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 px-2 py-1 text-xs bg-white min-w-[10rem]"
+            >
+              <option value="all">全部甲方（{rows.length} 台）</option>
+              {partyGroups.map((g) => (
+                <option key={g.partyDemandId} value={g.partyDemandId}>
+                  {g.label}
+                  {g.codePrefix ? ` · ${g.codePrefix}` : ""}（{g.devices.length} 台）
+                </option>
+              ))}
+            </select>
+          </label>
             <span className="text-xs text-gray-500 max-sm:w-full">含二维码（纯文本）与备查网页链接，可打印贴签或归档：</span>
           <button
             type="button"
@@ -281,15 +312,16 @@ export default function ManualDevicesTab() {
                 if (!groupId) return;
                 setErr("");
                 try {
-                  await openManualDevicesPrint("离线设备贴签列表", `工作群 ${groupId}`, rows);
+                  await openManualDevicesPrint("离线设备贴签列表", `工作群 ${groupId}`, visibleRows);
                 } catch (e: unknown) {
                   setErr(e instanceof Error ? e.message : "无法打开打印窗口");
                 }
               })();
             }}
-            className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs bg-white hover:bg-gray-50"
+            disabled={visibleRows.length === 0}
+            className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs bg-white hover:bg-gray-50 disabled:opacity-40"
           >
-            打印列表
+            打印{partyFilter === "all" ? "全部" : "当前甲方"}
           </button>
           <button type="button" onClick={() => void refresh()} className="text-xs text-indigo-700 hover:underline">
             刷新
@@ -298,30 +330,47 @@ export default function ManualDevicesTab() {
       </div>
       {rows.length === 0 ? (
         <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">暂无离线设备</p>
+      ) : visibleGroups.length === 0 ? (
+        <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">该甲方下暂无设备</p>
       ) : (
-        <ListViewSection
-          storageKey="manual-devices"
-          compact={
-            <CompactList>
-              {rows.map((r) => (
-                <CompactListRow
-                  key={`${r.id}-${r.updated_at}`}
-                  primary={formatManualTrackedDeviceLabel(r)}
-                  secondary={`登记编号 ${r.public_code}`}
-                  meta={labelExternalDeviceStatus(r.external_status)}
-                />
-              ))}
-            </CompactList>
-          }
-        >
-        <CardList>
-          {rows.map((r) => (
-            <CardListItem key={`${r.id}-${r.updated_at}`}>
-              <ManualTrackedDeviceRow row={r} onChanged={() => void refresh()} />
-            </CardListItem>
+        <div className="space-y-8">
+          {visibleGroups.map((group) => (
+            <section key={group.partyDemandId} className="space-y-3">
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-gray-200 pb-2">
+                <h3 className="text-sm font-semibold text-gray-900">{group.label}</h3>
+                {group.codePrefix && (
+                  <span className="text-xs font-mono text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded">
+                    编号前缀 {group.codePrefix}
+                  </span>
+                )}
+                <span className="text-xs text-gray-500">{group.devices.length} 台</span>
+              </div>
+              <ListViewSection
+                storageKey={`manual-devices-${group.partyDemandId}`}
+                compact={
+                  <CompactList>
+                    {group.devices.map((r) => (
+                      <CompactListRow
+                        key={`${r.id}-${r.updated_at}`}
+                        primary={formatManualTrackedDeviceLabel(r)}
+                        secondary={`登记编号 ${r.public_code}`}
+                        meta={labelExternalDeviceStatus(r.external_status)}
+                      />
+                    ))}
+                  </CompactList>
+                }
+              >
+                <CardList>
+                  {group.devices.map((r) => (
+                    <CardListItem key={`${r.id}-${r.updated_at}`}>
+                      <ManualTrackedDeviceRow row={r} onChanged={() => void refresh()} />
+                    </CardListItem>
+                  ))}
+                </CardList>
+              </ListViewSection>
+            </section>
           ))}
-        </CardList>
-        </ListViewSection>
+        </div>
       )}
     </div>
   );

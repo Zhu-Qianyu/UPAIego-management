@@ -1,8 +1,3 @@
--- 手机号注册 + 注册时绑定群组号 + 管理员审批入群
--- 前置：ROLE_SYSTEM_MIGRATION.sql、GROUP_TOPICS_BUSINESS_MIGRATION.sql
--- Supabase Dashboard：Authentication → Providers → Email → 关闭「Confirm email」
--- 在 SQL Editor 整段执行
-
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS contact_email text;
 
 ALTER TABLE public.group_members ADD COLUMN IF NOT EXISTS request_phone text;
@@ -83,7 +78,6 @@ BEGIN
 END;
 $$;
 
--- 注册后提交入群申请（非 admin 角色在注册页填写群组号后调用）
 CREATE OR REPLACE FUNCTION public.complete_signup_group_request(p_invite_code text)
 RETURNS void
 LANGUAGE plpgsql

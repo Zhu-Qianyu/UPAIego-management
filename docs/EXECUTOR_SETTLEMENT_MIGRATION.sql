@@ -1,10 +1,3 @@
--- 数采执行员现金结算（元/小时，基于 bounties.hourly_rate）
--- 前置：BOUNTY_MIGRATION.sql、BOUNTY_OPERATOR_AUDIT_MIGRATION.sql
--- 在 Supabase SQL Editor 整段执行
-
--- ---------------------------------------------------------------------------
--- Tables
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.executor_wallets (
   user_id uuid PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
   available_balance numeric(12, 2) NOT NULL DEFAULT 0 CHECK (available_balance >= 0),
@@ -53,9 +46,6 @@ CREATE TABLE IF NOT EXISTS public.executor_wallet_ledger (
 CREATE INDEX IF NOT EXISTS idx_executor_wallet_ledger_user
   ON public.executor_wallet_ledger (user_id, created_at DESC);
 
--- ---------------------------------------------------------------------------
--- Helpers
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public._settlement_policy_drop(tbl text)
 RETURNS void
 LANGUAGE plpgsql
@@ -163,9 +153,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- Preview settlement (operator / admin)
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.preview_settlement_for_claim(p_claim_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -207,9 +194,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- Settle: cash ledger + complete claim (points)
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.settle_bounty_claim(
   p_claim_id uuid,
   p_confirmed_hours numeric,
@@ -294,9 +278,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- Executor wallet summary
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.get_my_wallet_summary()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -347,9 +328,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- RLS
--- ---------------------------------------------------------------------------
 ALTER TABLE public.executor_wallets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.executor_settlement_lines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.executor_wallet_ledger ENABLE ROW LEVEL SECURITY;
@@ -395,7 +373,3 @@ GRANT SELECT ON public.executor_settlement_lines TO authenticated;
 GRANT SELECT ON public.executor_wallet_ledger TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
-
-COMMENT ON TABLE public.executor_wallets IS 'Executor CNY wallet; balance mutated only via SECURITY DEFINER RPCs.';
-COMMENT ON TABLE public.executor_settlement_lines IS 'Per-claim cash settlement; one settled row per bounty_claim_id.';
-COMMENT ON COLUMN public.executor_settlement_lines.hourly_rate_snapshot IS 'Frozen bounties.hourly_rate at settlement time (元/小时).';

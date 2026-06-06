@@ -1,7 +1,3 @@
--- 无网站心跳的第三方设备：运维员手动登记；登记编号(public_code)用于二维码；设备类型展示为「甲方公司名 · 设备简称」。
--- Prerequisite: work_groups, party_demands, policy_work_group_accessible, current_profile_role().
--- After this script, run EXTERNAL_DEVICE_STATUS_MIGRATION.sql to replace status_ok with external_status (normal / fault / factory_repair).
-
 CREATE TABLE IF NOT EXISTS public.manual_tracked_devices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id uuid NOT NULL REFERENCES public.work_groups (id) ON DELETE CASCADE,
@@ -206,7 +202,3 @@ CREATE POLICY "mtd_delete"
       AND public.policy_work_group_accessible(group_id)
     )
   );
-
-COMMENT ON TABLE public.manual_tracked_devices IS '外部设备（无法连接本站心跳）：运维维护状态与贴签登记编号(QR)。';
-COMMENT ON COLUMN public.manual_tracked_devices.public_code IS 'Sticker id: legacy hex or {prefix}{0001} sequential per party; see MANUAL_DEVICE_PUBLIC_CODE_TRIGGER_FIX.sql on existing DBs.';
-COMMENT ON COLUMN public.manual_tracked_devices.device_short_label IS 'Short label combined with party demand company for display type.';

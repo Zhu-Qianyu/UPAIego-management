@@ -1,9 +1,3 @@
--- Fix publish_bounty RPC / 42P13 "cannot change name of input parameter p_total_reward"
--- Run this ENTIRE script only (do not re-run full BOUNTY_MIGRATION publish_bounty without DROP).
--- Fixes: missing p_hourly_rate in schema cache, or 42P13 when replacing p_total_reward.
--- Then wait ~10s or Dashboard → Settings → API → Reload schema (if available).
-
--- 1) Column: total_reward → hourly_rate (older bounty table)
 DO $$
 BEGIN
   IF EXISTS (
@@ -17,7 +11,6 @@ BEGIN
   END IF;
 END $$;
 
--- 2) Recreate publish_bounty (PostgREST matches RPC args by parameter *names*)
 DROP FUNCTION IF EXISTS public.publish_bounty(uuid, text, integer, numeric, integer, text, numeric);
 
 CREATE OR REPLACE FUNCTION public.publish_bounty(
@@ -76,5 +69,4 @@ $$;
 REVOKE ALL ON FUNCTION public.publish_bounty(uuid, text, integer, numeric, integer, text, numeric) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.publish_bounty(uuid, text, integer, numeric, integer, text, numeric) TO authenticated;
 
--- 3) Refresh PostgREST schema cache (Supabase)
 NOTIFY pgrst, 'reload schema';

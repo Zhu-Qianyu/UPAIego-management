@@ -1,7 +1,3 @@
--- 场景分级：大场景 (scene_macro_sites) → 小岗位 (scenario_positions.macro_scene_id)
--- Prerequisite: work_groups, scenario_positions, policy_work_group_accessible, GROUP_TOPICS_BUSINESS_MIGRATION RLS patterns.
--- Run in Supabase SQL Editor as a single script.
-
 CREATE TABLE IF NOT EXISTS public.scene_macro_sites (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id uuid NOT NULL REFERENCES public.work_groups (id) ON DELETE CASCADE,
@@ -22,7 +18,6 @@ ALTER TABLE public.scenario_positions
 
 CREATE INDEX IF NOT EXISTS idx_scenario_positions_macro ON public.scenario_positions (macro_scene_id);
 
--- 为已有小岗位按工作群补一条默认大场景并回填
 DO $$
 DECLARE
   g record;
@@ -131,6 +126,3 @@ CREATE POLICY "scene_macro_sites_delete"
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.scene_macro_sites TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
-
-COMMENT ON TABLE public.scene_macro_sites IS '大场景：小岗位 (scenario_positions) 的上级分组。';
-COMMENT ON COLUMN public.scenario_positions.macro_scene_id IS '所属大场景；与 group_id 须同群。';

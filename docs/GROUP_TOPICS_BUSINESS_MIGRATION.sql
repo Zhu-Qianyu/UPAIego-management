@@ -1,8 +1,3 @@
--- Groups, approvals, group-scoped topics, Party-A demands, scenario workstations + Storage bucket.
--- Prerequisite: docs/ROLE_SYSTEM_MIGRATION.sql (uses public.current_profile_role()).
--- Run the ENTIRE script in Supabase SQL Editor.
--- Also replaces devices fleet RLS (section 9): admin / collection_executor only see devices owned by users in the same work group.
-
 CREATE OR REPLACE FUNCTION public._grp_policy_drop(tbl text)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE pol text;
@@ -57,9 +52,6 @@ CREATE TABLE IF NOT EXISTS public.group_members (
 
 CREATE INDEX IF NOT EXISTS idx_group_members_g_status ON public.group_members (group_id, membership_status);
 
--- Must be defined AFTER work_groups + group_members exist (Postgres validates SQL function bodies).
--- RLS-safe helpers: policies on work_groups <-> group_members must NOT query each other through RLS
--- (Postgres reports "infinite recursion detected in policy for relation work_groups").
 CREATE OR REPLACE FUNCTION public.user_active_group_id()
 RETURNS uuid
 LANGUAGE plpgsql
@@ -451,9 +443,6 @@ CREATE POLICY "scenario_snap_delete"
     AND public.current_profile_role() IN ('scene_operator', 'admin')
   );
 
--- ---------------------------------------------------------------------------
--- 9. Fleet devices：admin / collection_executor 仅见本工作群成员名下设备
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.device_visible_to_fleet_roles(p_device_owner_id uuid)
 RETURNS boolean
 LANGUAGE plpgsql

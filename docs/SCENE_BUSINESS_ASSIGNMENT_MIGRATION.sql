@@ -1,8 +1,3 @@
--- Scene business v2: party demand fields, scenario address/categories, scene_tasks.group_id,
--- scene_task_assignments (auto-synced), sync RPC.
--- Prerequisite: docs/GROUP_TOPICS_BUSINESS_MIGRATION.sql (policy_work_group_accessible, work_groups, party_demands, scenario_positions, scene_tasks).
--- Run in Supabase SQL Editor as a single script.
-
 CREATE OR REPLACE FUNCTION public.scene_categories_overlap(d text[], p text[])
 RETURNS boolean
 LANGUAGE sql
@@ -11,7 +6,6 @@ AS $$
   SELECT COALESCE(d, '{}') && COALESCE(p, '{}');
 $$;
 
--- party_demands: device snapshot, hours, repeatable scene categories
 ALTER TABLE public.party_demands ADD COLUMN IF NOT EXISTS device_snapshot_bucket text;
 ALTER TABLE public.party_demands ADD COLUMN IF NOT EXISTS device_snapshot_path text;
 ALTER TABLE public.party_demands ADD COLUMN IF NOT EXISTS total_hours_required numeric;
@@ -21,13 +15,11 @@ ALTER TABLE public.party_demands ADD COLUMN IF NOT EXISTS scene_categories text[
 UPDATE public.party_demands SET max_hours_per_scene = 8 WHERE max_hours_per_scene IS NULL OR max_hours_per_scene <= 0;
 
 ALTER TABLE public.party_demands DROP CONSTRAINT IF EXISTS party_demands_scene_categories_chk;
--- CHECK 中不能使用子查询；用 <@ 表示「每个元素都属于右侧集合」
 ALTER TABLE public.party_demands ADD CONSTRAINT party_demands_scene_categories_chk CHECK (
   cardinality(scene_categories) >= 1
   AND scene_categories <@ ARRAY['industrial', 'home', 'special']::text[]
 );
 
--- scenario_positions: unique-set scene categories + address (province/city/district required)
 ALTER TABLE public.scenario_positions ADD COLUMN IF NOT EXISTS scene_categories text[] NOT NULL DEFAULT ARRAY['industrial']::text[];
 ALTER TABLE public.scenario_positions ADD COLUMN IF NOT EXISTS address_province text NOT NULL DEFAULT '待补充';
 ALTER TABLE public.scenario_positions ADD COLUMN IF NOT EXISTS address_city text NOT NULL DEFAULT '待补充';
@@ -41,7 +33,6 @@ ALTER TABLE public.scenario_positions ADD CONSTRAINT scenario_positions_scene_ca
   AND scene_categories <@ ARRAY['industrial', 'home', 'special']::text[]
 );
 
--- 场景岗位：大类不可重复（CHECK 无法表达「元素互异」，用触发器）
 CREATE OR REPLACE FUNCTION public.scenario_positions_scene_categories_distinct()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -62,7 +53,6 @@ CREATE TRIGGER trg_sp_scene_cat_distinct
   FOR EACH ROW
   EXECUTE FUNCTION public.scenario_positions_scene_categories_distinct();
 
--- scene_tasks: scope to work group for assignment sync
 ALTER TABLE public.scene_tasks ADD COLUMN IF NOT EXISTS group_id uuid REFERENCES public.work_groups (id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_scene_tasks_group_id ON public.scene_tasks (group_id);
 
@@ -83,7 +73,6 @@ CREATE INDEX IF NOT EXISTS idx_sta_demand ON public.scene_task_assignments (part
 
 ALTER TABLE public.scene_task_assignments ENABLE ROW LEVEL SECURITY;
 
--- 不依赖 GROUP_TOPICS 脚本里的 _grp_policy_drop（部分库未创建该函数）
 DROP POLICY IF EXISTS "sta_select" ON public.scene_task_assignments;
 DROP POLICY IF EXISTS "sta_update_hours" ON public.scene_task_assignments;
 
@@ -187,7 +176,6 @@ $$;
 REVOKE ALL ON FUNCTION public.sync_scene_task_assignments(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.sync_scene_task_assignments(uuid) TO authenticated;
 
--- scene_tasks: scope SELECT to work group; INSERT requires group; UPDATE only creator (scene_operator) / admin
 DROP POLICY IF EXISTS "scene_tasks_select" ON public.scene_tasks;
 DROP POLICY IF EXISTS "scene_tasks_insert_scene_or_admin" ON public.scene_tasks;
 DROP POLICY IF EXISTS "scene_tasks_update_scene_or_admin" ON public.scene_tasks;
@@ -241,7 +229,3 @@ CREATE POLICY "scene_tasks_delete_scene_or_admin"
       AND created_by = auth.uid()
     )
   );
-
-COMMENT ON TABLE public.scene_task_assignments IS 'Auto-generated links: published scene_task x scenario_position x party_demand when scene_categories overlap.';
-COMMENT ON COLUMN public.party_demands.scene_categories IS 'industrial/home/special; duplicates allowed (repeatable picks).';
-COMMENT ON COLUMN public.scenario_positions.scene_categories IS 'industrial/home/special; at most one of each (1–3 unique).';

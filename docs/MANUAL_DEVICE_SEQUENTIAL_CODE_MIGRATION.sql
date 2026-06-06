@@ -1,9 +1,6 @@
--- 与 MANUAL_DEVICE_SEQUENTIAL_CODE_MIGRATION.sql 相同；已有库请优先执行 MANUAL_DEVICE_PUBLIC_CODE_TRIGGER_FIX.sql
-
 ALTER TABLE public.party_demands
   ADD COLUMN IF NOT EXISTS device_code_prefix text;
 
-COMMENT ON COLUMN public.party_demands.device_code_prefix IS 'Offline device public_code prefix per party demand, e.g. ZYMF from 智元觅蜂.';
 
 ALTER TABLE public.manual_tracked_devices
   DROP CONSTRAINT IF EXISTS manual_tracked_devices_public_code_fmt;
@@ -73,5 +70,3 @@ CREATE TRIGGER trg_manual_tracked_code
   BEFORE INSERT ON public.manual_tracked_devices
   FOR EACH ROW
   EXECUTE FUNCTION public.manual_tracked_devices_assign_public_code();
-
-COMMENT ON COLUMN public.manual_tracked_devices.public_code IS 'Sticker id: legacy 10-char hex or {prefix}{0001} sequential per party demand.';

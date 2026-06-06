@@ -1,7 +1,3 @@
--- 豆小秘：每工作群自定义规定（全员对话须遵守，仅管理员可写）
--- Prerequisite: work_groups, policy_work_group_accessible, current_profile_role()
--- Run in Supabase SQL Editor as a single script.
-
 CREATE TABLE IF NOT EXISTS public.agent_group_rules (
   group_id uuid PRIMARY KEY REFERENCES public.work_groups (id) ON DELETE CASCADE,
   rules_text text NOT NULL DEFAULT '' CHECK (char_length(rules_text) <= 12000),
@@ -18,7 +14,6 @@ CREATE POLICY "agent_group_rules_select_members"
   ON public.agent_group_rules FOR SELECT TO authenticated
   USING (public.policy_work_group_accessible(group_id));
 
--- 写入仅经 SECURITY DEFINER RPC
 
 CREATE OR REPLACE FUNCTION public.upsert_agent_group_rules(
   p_group_id uuid,
@@ -70,7 +65,6 @@ BEGIN
     END IF;
     v_next := v_content;
   ELSE
-    -- append
     IF v_content = '' THEN
       RAISE EXCEPTION 'append 模式须提供要追加的规定';
     END IF;

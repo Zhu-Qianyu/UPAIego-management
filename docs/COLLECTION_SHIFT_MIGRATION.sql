@@ -1,10 +1,3 @@
--- 采集排班：手动选场景岗位 + 数采执行员 + 设备数量；发布时自动分配离线设备编号；执行员打卡上下班。
--- Prerequisite: work_groups, scenario_positions, manual_tracked_devices (external_status), policy_work_group_accessible.
--- Run in Supabase SQL Editor as a single script.
-
--- ---------------------------------------------------------------------------
--- 1. Tables
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.collection_shifts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id uuid NOT NULL REFERENCES public.work_groups (id) ON DELETE CASCADE,
@@ -52,9 +45,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS collection_shift_clock_open_uidx
   ON public.collection_shift_clock_sessions (shift_id)
   WHERE clock_out_at IS NULL;
 
--- ---------------------------------------------------------------------------
--- 2. Helpers
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public._collection_shift_group_id(p_shift_id uuid)
 RETURNS uuid
 LANGUAGE sql
@@ -106,9 +96,6 @@ AS $$
   );
 $$;
 
--- ---------------------------------------------------------------------------
--- 3. RPCs
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.create_collection_shift(
   p_group_id uuid,
   p_scenario_position_id uuid,
@@ -347,9 +334,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- 4. RLS
--- ---------------------------------------------------------------------------
 ALTER TABLE public.collection_shifts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.collection_shift_devices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.collection_shift_clock_sessions ENABLE ROW LEVEL SECURITY;
@@ -432,7 +416,3 @@ REVOKE ALL ON FUNCTION public.delete_collection_shift_draft(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.delete_collection_shift_draft(uuid) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
-
-COMMENT ON TABLE public.collection_shifts IS '采集排班：手动指定场景岗位、执行员与设备数量；发布时分配离线设备编号。';
-COMMENT ON TABLE public.collection_shift_devices IS '排班发布时自动分配的离线设备批次（public_code 为执行员可见编号）。';
-COMMENT ON TABLE public.collection_shift_clock_sessions IS '数采执行员上下班打卡记录。';

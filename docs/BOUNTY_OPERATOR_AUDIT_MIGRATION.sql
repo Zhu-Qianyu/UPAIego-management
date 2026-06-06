@@ -1,10 +1,3 @@
--- Bounty × device operator audit workflow (independent of scene_tasks).
--- Prerequisite: BOUNTY_MIGRATION.sql, GROUP_TOPICS_BUSINESS_MIGRATION.sql, ROLE_SYSTEM_MIGRATION.sql
--- Run ENTIRE script in Supabase SQL Editor.
-
--- ---------------------------------------------------------------------------
--- 1. Profiles: real name + phone
--- ---------------------------------------------------------------------------
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS real_name text;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone text;
 
@@ -36,17 +29,11 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- 2. Bounties: assigned device operator (contact for executors)
--- ---------------------------------------------------------------------------
 ALTER TABLE public.bounties
   ADD COLUMN IF NOT EXISTS assigned_operator_id uuid REFERENCES public.profiles (id);
 
 CREATE INDEX IF NOT EXISTS idx_bounties_assigned_operator ON public.bounties (assigned_operator_id);
 
--- ---------------------------------------------------------------------------
--- 3. Device ↔ executor assignments
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.device_executor_assignments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id uuid NOT NULL REFERENCES public.work_groups (id) ON DELETE CASCADE,
@@ -63,9 +50,6 @@ CREATE INDEX IF NOT EXISTS idx_device_executor_assignments_device
 CREATE INDEX IF NOT EXISTS idx_device_executor_assignments_executor
   ON public.device_executor_assignments (executor_id, status);
 
--- ---------------------------------------------------------------------------
--- 4. Operator hour registration logs
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.device_data_hour_logs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id uuid NOT NULL REFERENCES public.work_groups (id) ON DELETE CASCADE,
@@ -80,15 +64,9 @@ CREATE TABLE IF NOT EXISTS public.device_data_hour_logs (
 CREATE INDEX IF NOT EXISTS idx_device_data_hour_logs_device ON public.device_data_hour_logs (device_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_device_data_hour_logs_claim ON public.device_data_hour_logs (bounty_claim_id);
 
--- ---------------------------------------------------------------------------
--- 5. Claims: approval audit
--- ---------------------------------------------------------------------------
 ALTER TABLE public.bounty_claims ADD COLUMN IF NOT EXISTS approved_by uuid REFERENCES auth.users (id);
 ALTER TABLE public.bounty_claims ADD COLUMN IF NOT EXISTS approved_at timestamptz;
 
--- ---------------------------------------------------------------------------
--- Helpers
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public._bounty_group_id_for_claim(p_claim_id uuid)
 RETURNS uuid
 LANGUAGE sql
@@ -181,9 +159,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- publish_bounty (+ assigned operator)
--- ---------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.publish_bounty(uuid, text, integer, numeric, integer, text, numeric);
 DROP FUNCTION IF EXISTS public.publish_bounty(uuid, text, integer, numeric, integer, text, numeric, uuid);
 
@@ -296,7 +271,6 @@ BEGIN
 END;
 $$;
 
--- Executors can no longer self-complete; operators/admins approve instead.
 CREATE OR REPLACE FUNCTION public.complete_bounty_claim(p_claim_id uuid, p_executed_hours integer)
 RETURNS void
 LANGUAGE plpgsql
@@ -442,9 +416,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- RLS
--- ---------------------------------------------------------------------------
 ALTER TABLE public.device_executor_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.device_data_hour_logs ENABLE ROW LEVEL SECURITY;
 

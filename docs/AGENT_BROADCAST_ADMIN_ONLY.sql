@@ -1,6 +1,3 @@
--- 群发通知改为仅管理员可发起（移除场景业务员权限）
--- Run in Supabase SQL Editor as a single script.
-
 CREATE OR REPLACE FUNCTION public.send_agent_group_broadcast(
   p_group_id uuid,
   p_title text,

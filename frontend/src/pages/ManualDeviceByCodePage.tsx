@@ -11,11 +11,12 @@ import {
 } from "../api/operations";
 import Spinner from "../components/Spinner";
 import { buildManualTrackedDeviceQrText } from "../utils/manualDeviceQrPayload";
+import { isValidManualDevicePublicCode, normalizeManualDevicePublicCode } from "../utils/deviceCodePrefix";
 
 export default function ManualDeviceByCodePage() {
   const { code } = useParams<{ code: string }>();
-  const normalized = (code ?? "").trim().toUpperCase();
-  const codeInvalid = normalized.length > 0 && !/^[0-9A-F]{10}$/.test(normalized);
+  const normalized = normalizeManualDevicePublicCode(code ?? "");
+  const codeInvalid = normalized.length > 0 && !isValidManualDevicePublicCode(normalized);
   const [row, setRow] = useState<ManualTrackedDevice | null | undefined>(undefined);
   const [qr, setQr] = useState<string | null>(null);
   const [err, setErr] = useState("");

@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import type { SceneCategoryKey } from "../utils/sceneCategories";
-import { deriveDeviceCodePrefix } from "../utils/deviceCodePrefix";
+import { isValidManualDevicePublicCode, normalizeManualDevicePublicCode } from "../utils/deviceCodePrefix";
 import { isMissingColumnError } from "../utils/supabaseSchemaCompat";
 
 const PD = "party_demands";
@@ -24,7 +24,7 @@ export interface PartyDemand {
   scene_categories: string[];
   /** 甲方结算单价（元/小时），用于管理员收入估算 */
   client_hourly_rate?: number | null;
-  /** 离线设备登记编号前缀，如 ZYMF */
+  /** 离线设备登记编号前缀：同一甲方 4 位随机大写字母，如 SKAX */
   device_code_prefix?: string | null;
   created_by: string;
   created_at: string;
@@ -116,16 +116,7 @@ export async function createPartyDemand(row: {
     client_hourly_rate: row.client_hourly_rate ?? null,
   };
 
-  let { data, error } = await supabase
-    .from(PD)
-    .insert({ ...insertBase, device_code_prefix: deriveDeviceCodePrefix(company) })
-    .select()
-    .single();
-
-  if (error && isMissingColumnError(error, "device_code_prefix")) {
-    ({ data, error } = await supabase.from(PD).insert(insertBase).select().single());
-  }
-
+  const { data, error } = await supabase.from(PD).insert(insertBase).select().single();
   if (error) throw new Error(error.message);
   return data as PartyDemand;
 }
@@ -149,9 +140,6 @@ export async function updatePartyDemand(id: string, patch: PartyDemandUpdatePatc
   if (patch.title !== undefined) payload.title = patch.title.trim();
   if (patch.client_company !== undefined) {
     payload.client_company = patch.client_company === null ? null : patch.client_company.trim() || null;
-    if (payload.client_company) {
-      payload.device_code_prefix = deriveDeviceCodePrefix(String(payload.client_company));
-    }
   }
   if (patch.device_type !== undefined) {
     payload.device_type = patch.device_type === null ? null : patch.device_type.trim() || null;
@@ -522,6 +510,7 @@ export type ManualTrackedPartyRow = {
   client_company: string | null;
   title: string;
   device_type?: string | null;
+  device_code_prefix?: string | null;
 };
 
 export interface ManualTrackedDevice {
@@ -544,10 +533,70 @@ export function formatManualTrackedDeviceLabel(d: ManualTrackedDevice): string {
   return `${company} · ${d.device_short_label.trim()}`;
 }
 
+export type ManualDevicePartyGroup = {
+  partyDemandId: string;
+  label: string;
+  codePrefix: string | null;
+  devices: ManualTrackedDevice[];
+};
+
+function partyDemandDisplayName(d: PartyDemand): string {
+  return (d.client_company || d.title || "未命名").trim();
+}
+
+function resolvePartyCodePrefix(
+  partyId: string,
+  devices: ManualTrackedDevice[],
+  demands: PartyDemand[]
+): string | null {
+  const pd = demands.find((d) => d.id === partyId);
+  const fromDemand = pd?.device_code_prefix?.trim().toUpperCase();
+  if (fromDemand && /^[A-Z]{4}$/.test(fromDemand)) return fromDemand;
+
+  const sample = devices.find((d) => d.party_demand_id === partyId);
+  if (!sample) return null;
+  const m = /^([A-Z]{4})[0-9]{4}$/.exec(sample.public_code.trim().toUpperCase());
+  return m ? m[1] : null;
+}
+
+/** 按甲方业务分组离线设备（列表展示用） */
+export function groupManualTrackedDevicesByParty(
+  devices: ManualTrackedDevice[],
+  demands: PartyDemand[]
+): ManualDevicePartyGroup[] {
+  const byParty = new Map<string, ManualTrackedDevice[]>();
+  for (const d of devices) {
+    const list = byParty.get(d.party_demand_id) ?? [];
+    list.push(d);
+    byParty.set(d.party_demand_id, list);
+  }
+
+  const orderIds = demands.map((d) => d.id).filter((id) => byParty.has(id));
+  for (const id of byParty.keys()) {
+    if (!orderIds.includes(id)) orderIds.push(id);
+  }
+
+  return orderIds.map((partyDemandId) => {
+    const pd = demands.find((d) => d.id === partyDemandId);
+    const devs = [...(byParty.get(partyDemandId) ?? [])].sort((a, b) =>
+      a.public_code.localeCompare(b.public_code)
+    );
+    const label = pd
+      ? partyDemandDisplayName(pd)
+      : formatManualTrackedDeviceLabel(devs[0]).split(" · ")[0] || "未命名甲方";
+    return {
+      partyDemandId,
+      label,
+      codePrefix: resolvePartyCodePrefix(partyDemandId, devices, demands),
+      devices: devs,
+    };
+  });
+}
+
 export async function listManualTrackedDevices(groupId: string): Promise<ManualTrackedDevice[]> {
   const { data, error } = await supabase
     .from(MTD)
-    .select("*, party_demands(client_company,title,device_type)")
+    .select("*, party_demands(client_company,title,device_type,device_code_prefix)")
     .eq("group_id", groupId)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
@@ -558,7 +607,7 @@ export async function listManualTrackedDevices(groupId: string): Promise<ManualT
 export async function listAllManualTrackedDevices(): Promise<ManualTrackedDevice[]> {
   const { data, error } = await supabase
     .from(MTD)
-    .select("*, party_demands(client_company,title,device_type)")
+    .select("*, party_demands(client_company,title,device_type,device_code_prefix)")
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as ManualTrackedDevice[];
@@ -593,11 +642,11 @@ export async function searchManualTrackedDevices(
 }
 
 export async function getManualTrackedDeviceByPublicCode(publicCode: string): Promise<ManualTrackedDevice | null> {
-  const code = publicCode.trim().toUpperCase();
-  if (!/^[0-9A-F]{10}$/.test(code)) return null;
+  const code = normalizeManualDevicePublicCode(publicCode);
+  if (!isValidManualDevicePublicCode(code)) return null;
   const { data, error } = await supabase
     .from(MTD)
-    .select("*, party_demands(client_company,title,device_type)")
+    .select("*, party_demands(client_company,title,device_type,device_code_prefix)")
     .eq("public_code", code)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -612,38 +661,11 @@ export async function createManualTrackedDevice(input: {
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) throw new Error("未登录");
 
-  let partyQuery = await supabase
-    .from(PD)
-    .select("id, client_company, device_code_prefix")
-    .eq("id", input.party_demand_id)
-    .maybeSingle();
-
-  let prefixColumnAvailable = true;
-  if (partyQuery.error && isMissingColumnError(partyQuery.error, "device_code_prefix")) {
-    prefixColumnAvailable = false;
-    partyQuery = await supabase
-      .from(PD)
-      .select("id, client_company")
-      .eq("id", input.party_demand_id)
-      .maybeSingle();
-  }
-  if (partyQuery.error) throw new Error(partyQuery.error.message);
-  const party = partyQuery.data;
-  if (!party) throw new Error("甲方业务不存在");
-
-  if (
-    prefixColumnAvailable &&
-    "device_code_prefix" in party &&
-    !(party as { device_code_prefix?: string | null }).device_code_prefix?.trim() &&
-    party.client_company?.trim()
-  ) {
-    const { error: prefixErr } = await supabase
-      .from(PD)
-      .update({ device_code_prefix: deriveDeviceCodePrefix(party.client_company) })
-      .eq("id", input.party_demand_id);
-    if (prefixErr && !isMissingColumnError(prefixErr, "device_code_prefix")) {
-      throw new Error(prefixErr.message);
-    }
+  const { error: prefixErr } = await supabase.rpc("ensure_party_device_code_prefix", {
+    p_party_demand_id: input.party_demand_id,
+  });
+  if (prefixErr && !/ensure_party_device_code_prefix|set_party_device_code_prefix/.test(prefixErr.message)) {
+    throw new Error(prefixErr.message);
   }
 
   const { data, error } = await supabase
@@ -655,7 +677,7 @@ export async function createManualTrackedDevice(input: {
       external_status: "normal",
       created_by: u.id,
     })
-    .select("*, party_demands(client_company,title,device_type)")
+    .select("*, party_demands(client_company,title,device_type,device_code_prefix)")
     .single();
   if (error) throw new Error(error.message);
   return data as ManualTrackedDevice;

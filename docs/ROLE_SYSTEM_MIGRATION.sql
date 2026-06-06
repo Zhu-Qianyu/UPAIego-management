@@ -1,11 +1,3 @@
--- Role-based access for UPAIego fleet UI. Safe to re-run in Supabase SQL Editor.
--- IMPORTANT: Run the ENTIRE script (Ctrl+A in SQL editor). Running only the CREATE POLICY
--- section will fail if policies already exist — the blocks below drop them from pg_policy first.
--- After run: optionally UPDATE public.profiles SET role = 'admin' WHERE id = '<your-user-uuid>';
-
--- ---------------------------------------------------------------------------
--- 0. Helpers: drop every RLS policy on a table (handles re-runs & name mismatches)
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public._role_migration_drop_policies(tbl text)
 RETURNS void
 LANGUAGE plpgsql
@@ -26,9 +18,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- 1. Profiles (1:1 with auth.users)
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
   role text NOT NULL DEFAULT 'device_operator'
@@ -40,7 +29,6 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- Read invoker's role without RLS recursion (policies must NOT use EXISTS subqueries on profiles).
 CREATE OR REPLACE FUNCTION public.current_profile_role()
 RETURNS text
 LANGUAGE sql
@@ -77,18 +65,12 @@ CREATE POLICY "profiles_admin_update"
   USING (public.current_profile_role() = 'admin')
   WITH CHECK (true);
 
--- ---------------------------------------------------------------------------
--- 2. Backfill profiles for existing auth users (no-op if empty)
--- ---------------------------------------------------------------------------
 INSERT INTO public.profiles (id, role)
 SELECT u.id, 'device_operator'
 FROM auth.users u
 WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = u.id)
 ON CONFLICT (id) DO NOTHING;
 
--- ---------------------------------------------------------------------------
--- 3. New user -> profile from auth.raw_user_meta_data.role
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -109,23 +91,16 @@ END;
 $$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
--- PostgreSQL 14+ 使用 EXECUTE FUNCTION；若报错可改为 EXECUTE PROCEDURE
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- ---------------------------------------------------------------------------
--- 4. Device map / storage columns (nullable for backward compatibility)
--- ---------------------------------------------------------------------------
 ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS map_lat double precision;
 ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS map_lng double precision;
 ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS storage_used_mb numeric NOT NULL DEFAULT 0;
 ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS storage_capacity_mb numeric NOT NULL DEFAULT 1024;
 ALTER TABLE public.devices ADD COLUMN IF NOT EXISTS last_data_pickup_at timestamptz;
 
--- ---------------------------------------------------------------------------
--- 5. Admin KPIs & messages
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.admin_kpis (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
@@ -177,9 +152,6 @@ CREATE POLICY "admin_messages_delete_admin"
   ON public.admin_messages FOR DELETE TO authenticated
   USING (public.current_profile_role() = 'admin');
 
--- ---------------------------------------------------------------------------
--- 6. Scene tasks & collection requirements
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.scene_tasks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
@@ -300,12 +272,6 @@ CREATE POLICY "collection_req_delete_scene_or_admin"
     )
   );
 
--- ---------------------------------------------------------------------------
--- 7. Replace devices RLS (drop legacy policy names from DEPLOYMENT.md)
--- ---------------------------------------------------------------------------
--- 默认 admin / collection_executor 可查全表；若已跑群组迁移，请再执行
--- docs/GROUP_TOPICS_BUSINESS_MIGRATION.sql（含 section 9）或 docs/DEVICES_GROUP_SCOPE_RLS.sql，
--- 将全量设备限制为「仅本工作群成员名下设备」。
 ALTER TABLE public.devices ENABLE ROW LEVEL SECURITY;
 
 SELECT public._role_migration_drop_policies('devices');
@@ -342,9 +308,6 @@ CREATE POLICY "devices_delete_ops_or_admin"
     OR (user_id = auth.uid() AND public.current_profile_role() = 'device_operator')
   );
 
--- ---------------------------------------------------------------------------
--- 8. RPC: 数采执行员 / 管理员「收菜」清空存储计数
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.harvest_device(p_device_id text)
 RETURNS void
 LANGUAGE plpgsql
@@ -367,5 +330,4 @@ $$;
 REVOKE ALL ON FUNCTION public.harvest_device(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.harvest_device(text) TO authenticated;
 
--- Optional: remove helper (comment out if you want to keep it for future migrations)
 DROP FUNCTION IF EXISTS public._role_migration_drop_policies(text);

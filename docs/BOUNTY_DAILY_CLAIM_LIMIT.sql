@@ -1,6 +1,3 @@
--- Daily claim cap per executor: tier max_concurrent_claims (台) × 8 hours per slot per day (Asia/Shanghai).
--- Run in Supabase SQL Editor on databases that already have the bounty module.
-
 CREATE OR REPLACE FUNCTION public.bounty_hours_per_slot_per_day()
 RETURNS integer
 LANGUAGE sql

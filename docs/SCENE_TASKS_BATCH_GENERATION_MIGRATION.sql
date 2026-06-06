@@ -1,7 +1,3 @@
--- Batch-generate draft scene_tasks for every scenario_position in a work group that does not yet have a task bound to it.
--- Prerequisite: SCENE_TASKS_ADMIN_POSITION_BIND_MIGRATION.sql (scenario_position_id, insert admin-only).
--- Run in Supabase SQL Editor.
-
 CREATE OR REPLACE FUNCTION public.batch_generate_scene_tasks_for_group(p_group_id uuid)
 RETURNS integer
 LANGUAGE plpgsql
@@ -59,5 +55,3 @@ $$;
 
 REVOKE ALL ON FUNCTION public.batch_generate_scene_tasks_for_group(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.batch_generate_scene_tasks_for_group(uuid) TO authenticated;
-
-COMMENT ON FUNCTION public.batch_generate_scene_tasks_for_group(uuid) IS 'Admin-only: insert one draft scene_task per scenario_position in the group when missing (same binding rules as manual create).';

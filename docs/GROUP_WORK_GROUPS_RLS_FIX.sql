@@ -1,8 +1,3 @@
--- Fix: infinite recursion detected in policy for relation "work_groups"
--- Cause: work_groups policies queried group_members under RLS, and group_members policies queried work_groups.
--- Run this entire script in Supabase SQL Editor (safe to re-run).
--- Prerequisite: public.current_profile_role() exists (ROLE_SYSTEM_MIGRATION.sql).
-
 CREATE OR REPLACE FUNCTION public.user_active_group_id()
 RETURNS uuid
 LANGUAGE plpgsql

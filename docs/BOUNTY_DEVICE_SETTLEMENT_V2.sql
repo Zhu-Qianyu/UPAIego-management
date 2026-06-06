@@ -1,11 +1,3 @@
--- 悬赏设备借还 + 按次归还结算（V2）
--- 前置（按序）：BOUNTY_MIGRATION、BOUNTY_OPERATOR_AUDIT、EXECUTOR_SETTLEMENT、
---   MANUAL_TRACKED_DEVICES、EXTERNAL_DEVICE_STATUS、DEVICE_ASSIGNMENT_OFFLINE（建议）
--- 在 Supabase SQL Editor 整段执行
-
--- ---------------------------------------------------------------------------
--- 1. Schema
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.bounty_allowed_party_demands (
   bounty_id uuid NOT NULL REFERENCES public.bounties (id) ON DELETE CASCADE,
   party_demand_id uuid NOT NULL REFERENCES public.party_demands (id) ON DELETE CASCADE,
@@ -56,9 +48,6 @@ ALTER TABLE public.bounty_claims ADD CONSTRAINT bounty_claims_executed_hours_che
   executed_hours <= claimed_hours::numeric OR status = 'active'
 );
 
--- ---------------------------------------------------------------------------
--- 2. Helpers
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public._release_assignments_for_claim(p_claim_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -285,7 +274,6 @@ BEGIN
 END;
 $$;
 
--- Release devices when claim ends in failure paths
 CREATE OR REPLACE FUNCTION public._finalize_bounty_claim_failure(
   p_claim_id uuid,
   p_new_status text,
@@ -346,9 +334,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- 3. publish_bounty + allowed party demands
--- ---------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.publish_bounty(uuid, text, integer, numeric, integer, text, numeric);
 DROP FUNCTION IF EXISTS public.publish_bounty(uuid, text, integer, numeric, integer, text, numeric, uuid);
 DROP FUNCTION IF EXISTS public.publish_bounty(uuid, text, integer, numeric, integer, text, numeric, uuid, uuid[]);
@@ -432,9 +417,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- 4. Checkout / settle / return (separate actions)
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public._claim_assignment_for_settle(p_claim_id uuid)
 RETURNS public.device_executor_assignments
 LANGUAGE plpgsql
@@ -725,7 +707,6 @@ BEGIN
 END;
 $$;
 
--- Legacy single-shot settle → disabled in favor of return_and_settle_session
 CREATE OR REPLACE FUNCTION public.settle_bounty_claim(
   p_claim_id uuid,
   p_confirmed_hours numeric,
@@ -778,9 +759,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- 5. RLS for bounty_allowed_party_demands
--- ---------------------------------------------------------------------------
 ALTER TABLE public.bounty_allowed_party_demands ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "bapd_select" ON public.bounty_allowed_party_demands;
@@ -796,9 +774,6 @@ CREATE POLICY "bapd_select"
 
 REVOKE INSERT, UPDATE, DELETE ON public.bounty_allowed_party_demands FROM authenticated;
 
--- ---------------------------------------------------------------------------
--- 6. Grants
--- ---------------------------------------------------------------------------
 REVOKE ALL ON FUNCTION public._release_assignments_for_claim(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public._claim_assignment_for_settle(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.settle_claim_session(uuid, numeric, text) FROM PUBLIC;
@@ -819,7 +794,6 @@ GRANT EXECUTE ON FUNCTION public.publish_bounty(uuid, text, integer, numeric, in
 
 GRANT SELECT ON public.bounty_allowed_party_demands TO authenticated;
 
--- Admin legacy complete: release any active checkout
 CREATE OR REPLACE FUNCTION public._complete_bounty_claim_core(
   p_claim_id uuid,
   p_executed_hours integer,
@@ -883,7 +857,5 @@ $$;
 
 NOTIFY pgrst, 'reload schema';
 
-COMMENT ON FUNCTION public.settle_claim_session(uuid, numeric, text) IS
   'Partial settlement: log hours, wallet, points; repeatable until claim fully settled.';
-COMMENT ON FUNCTION public.return_device_for_claim(uuid) IS
   'Physical device return: release device to pool once per claim; does not settle hours.';

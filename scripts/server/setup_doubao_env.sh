@@ -1,6 +1,4 @@
 #!/bin/bash
-# Configure Doubao / Volcano Ark secrets for scene-ai-agent on self-hosted Supabase.
-# Usage: bash setup_doubao_env.sh <ARK_API_KEY> [ARK_MODEL]
 set -euo pipefail
 
 DOCKER_DIR="${HOME}/supabase/docker"

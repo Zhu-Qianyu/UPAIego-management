@@ -1,7 +1,3 @@
--- Bounty (悬赏令) module — independent of scene_tasks / scene business.
--- Prerequisite: docs/ROLE_SYSTEM_MIGRATION.sql, docs/GROUP_TOPICS_BUSINESS_MIGRATION.sql
--- Run the ENTIRE script in Supabase SQL Editor.
-
 CREATE OR REPLACE FUNCTION public._bounty_policy_drop(tbl text)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
 DECLARE pol text;
@@ -13,9 +9,6 @@ BEGIN FOR pol IN
 END LOOP;
 END $$;
 
--- ---------------------------------------------------------------------------
--- Config: executor tiers (seed data at bottom)
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.executor_tiers (
   tier_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -28,9 +21,6 @@ CREATE TABLE IF NOT EXISTS public.executor_tiers (
 
 CREATE INDEX IF NOT EXISTS idx_executor_tiers_min_points ON public.executor_tiers (min_points DESC);
 
--- ---------------------------------------------------------------------------
--- Executor stats (points + tier; maintained only via SECURITY DEFINER RPCs)
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.executor_stats (
   user_id uuid PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
   points_balance integer NOT NULL DEFAULT 0 CHECK (points_balance >= 0),
@@ -39,9 +29,6 @@ CREATE TABLE IF NOT EXISTS public.executor_stats (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- ---------------------------------------------------------------------------
--- Point ledger (append-only audit trail)
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.executor_point_ledger (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
@@ -55,9 +42,6 @@ CREATE TABLE IF NOT EXISTS public.executor_point_ledger (
 
 CREATE INDEX IF NOT EXISTS idx_executor_point_ledger_user ON public.executor_point_ledger (user_id, created_at DESC);
 
--- ---------------------------------------------------------------------------
--- Bounties (admin-published hour pools)
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.bounties (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id uuid NOT NULL REFERENCES public.work_groups (id) ON DELETE CASCADE,
@@ -79,9 +63,6 @@ CREATE TABLE IF NOT EXISTS public.bounties (
 
 CREATE INDEX IF NOT EXISTS idx_bounties_group_status ON public.bounties (group_id, status, created_at DESC);
 
--- ---------------------------------------------------------------------------
--- Bounty claims
--- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.bounty_claims (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   bounty_id uuid NOT NULL REFERENCES public.bounties (id) ON DELETE CASCADE,
@@ -109,9 +90,6 @@ ALTER TABLE public.executor_point_ledger
   ADD CONSTRAINT executor_point_ledger_ref_claim_id_fkey
   FOREIGN KEY (ref_claim_id) REFERENCES public.bounty_claims (id) ON DELETE SET NULL;
 
--- ---------------------------------------------------------------------------
--- Seed tiers (stable UUIDs)
--- ---------------------------------------------------------------------------
 INSERT INTO public.executor_tiers (tier_id, name, min_points, max_concurrent_claims, sort_order)
 VALUES
   ('11111111-1111-1111-1111-111111111101'::uuid, '新手', 0, 1, 1),
@@ -124,9 +102,6 @@ ON CONFLICT (min_points) DO UPDATE SET
   max_concurrent_claims = EXCLUDED.max_concurrent_claims,
   sort_order = EXCLUDED.sort_order;
 
--- ---------------------------------------------------------------------------
--- Internal helpers (no direct client grants)
--- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public._bounty_default_tier_id()
 RETURNS uuid
 LANGUAGE sql
@@ -189,7 +164,6 @@ BEGIN
 END;
 $$;
 
--- Each concurrent slot (台) allows up to 8 claimed hours per calendar day (Asia/Shanghai).
 CREATE OR REPLACE FUNCTION public.bounty_hours_per_slot_per_day()
 RETURNS integer
 LANGUAGE sql
@@ -355,10 +329,6 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- Public RPCs
--- ---------------------------------------------------------------------------
--- Parameter renames (e.g. p_total_reward → p_hourly_rate) require DROP first (42P13).
 DROP FUNCTION IF EXISTS public.publish_bounty(uuid, text, integer, numeric, integer, text, numeric);
 
 CREATE OR REPLACE FUNCTION public.publish_bounty(
@@ -627,7 +597,6 @@ BEGIN
 END;
 $$;
 
--- Grants for public RPCs only
 REVOKE ALL ON FUNCTION public.recalc_executor_tier(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.recalc_executor_tier(uuid) TO authenticated;
 
@@ -661,9 +630,6 @@ GRANT EXECUTE ON FUNCTION public.executor_claimed_hours_on_date(uuid, date) TO a
 REVOKE ALL ON FUNCTION public.get_my_daily_claim_usage() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_my_daily_claim_usage() TO authenticated;
 
--- ---------------------------------------------------------------------------
--- RLS
--- ---------------------------------------------------------------------------
 ALTER TABLE public.executor_tiers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.executor_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.executor_point_ledger ENABLE ROW LEVEL SECURITY;
@@ -701,7 +667,6 @@ CREATE POLICY "bounties_select_group_or_admin"
     OR public.current_profile_role() = 'admin'
   );
 
--- No direct client writes; use publish_bounty / close_bounty RPCs
 
 CREATE POLICY "bounty_claims_select_own_or_admin"
   ON public.bounty_claims FOR SELECT TO authenticated
@@ -710,7 +675,6 @@ CREATE POLICY "bounty_claims_select_own_or_admin"
     OR public.current_profile_role() = 'admin'
   );
 
--- Mutations only via SECURITY DEFINER RPCs
 REVOKE INSERT, UPDATE, DELETE ON public.bounties FROM authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.executor_stats FROM authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.executor_point_ledger FROM authenticated;
@@ -721,14 +685,7 @@ GRANT SELECT ON public.executor_point_ledger TO authenticated;
 GRANT SELECT ON public.bounties TO authenticated;
 GRANT SELECT ON public.bounty_claims TO authenticated;
 
-COMMENT ON TABLE public.bounties IS 'Admin-published hour pools for collection executors (independent of scene_tasks).';
-COMMENT ON TABLE public.bounty_claims IS 'Partial hour claims against a bounty; due_at = claim time + completion_days.';
-COMMENT ON TABLE public.executor_stats IS 'Executor points balance, tier, and active claim count; mutated only via RPC.';
-COMMENT ON TABLE public.executor_point_ledger IS 'Append-only point adjustments: complete, penalty, abandon, admin_adjust.';
-COMMENT ON TABLE public.executor_tiers IS 'Configurable tier thresholds and concurrent claim limits.';
-COMMENT ON COLUMN public.bounties.hourly_rate IS 'Reward unit price in CNY per hour (元/小时).';
 
--- Upgrade: if an earlier run created total_reward, rename to hourly_rate
 DO $$
 BEGIN
   IF EXISTS (
