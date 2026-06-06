@@ -17,15 +17,10 @@ import {
 import {
   executeAgentBroadcast,
   executeAgentGroupRules,
-  executeAgentProposals,
-  loadMacrosForAgent,
   sceneAiFeatureEnabled,
   sendSceneAgentMessage,
-  type AgentProposal,
-  type PendingImage,
 } from "../api/sceneAgent";
 import type { AgentAction, AgentPendingBroadcast, AgentPendingGroupRules } from "../aitebot/types";
-import { labelSceneCategories } from "../utils/sceneCategories";
 import { useAitebot } from "../aitebot/AitebotContext";
 import { useAuth } from "../auth/AuthContext";
 import { ROLE_LABELS } from "../auth/roleLabels";
@@ -39,8 +34,6 @@ type UiMessage = {
   role: "user" | "assistant";
   text: string;
   quote?: AgentMessageQuote;
-  imagePreviews?: string[];
-  proposals?: AgentProposal[];
   pendingBroadcast?: AgentPendingBroadcast;
   pendingGroupRules?: AgentPendingGroupRules;
   pendingActions?: AgentAction[];
@@ -120,7 +113,6 @@ function chatRowToUiMessage(row: AgentChatMessageRow): UiMessage {
     role: row.role,
     text: row.content,
     quote: row.metadata.quote,
-    proposals: row.metadata.proposals?.length ? row.metadata.proposals : undefined,
     inboxId: row.metadata.inbox_id,
   };
 }
@@ -174,7 +166,6 @@ async function saveChatMessage(
   role: "user" | "assistant",
   content: string,
   metadata?: {
-    proposals?: AgentProposal[];
     inbox_id?: string;
     source?: "inbox" | "chat";
     quote?: AgentMessageQuote;
@@ -182,7 +173,7 @@ async function saveChatMessage(
 ): Promise<UiMessage> {
   const row = await appendAgentChatMessage({ groupId, role, content, metadata });
   if (row) return chatRowToUiMessage(row);
-  return { id: uid(), role, text: content, quote: metadata?.quote, proposals: metadata?.proposals };
+  return { id: uid(), role, text: content, quote: metadata?.quote };
 }
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
@@ -191,15 +182,6 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
     webkitSpeechRecognition?: new () => SpeechRecognition;
   };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
-
-function IconCamera({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M4 8h3l2-2h6l2 2h3v11H4V8z" strokeLinejoin="round" />
-      <circle cx="12" cy="13" r="3.5" />
-    </svg>
-  );
 }
 
 function IconWave({ className }: { className?: string }) {
@@ -275,12 +257,8 @@ export default function SceneAiAssistant() {
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState("");
   const [composeFocused, setComposeFocused] = useState(false);
-  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
-  const [imageHint, setImageHint] = useState<"unknown" | "macro" | "position">("unknown");
   const [busy, setBusy] = useState(false);
-  const [executing, setExecuting] = useState(false);
   const [err, setErr] = useState("");
-  const [nextImageIndex, setNextImageIndex] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchBusy, setSearchBusy] = useState(false);
@@ -288,7 +266,6 @@ export default function SceneAiAssistant() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [quotedMessage, setQuotedMessage] = useState<AgentMessageQuote | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -300,8 +277,7 @@ export default function SceneAiAssistant() {
   const quickTopics = QUICK_TOPICS_BY_ROLE[userRole];
 
   const speechSupported = useMemo(() => getSpeechRecognitionCtor() !== null, []);
-  const compactCompose =
-    inputMode === "text" && (composeFocused || !!input.trim() || pendingImages.length > 0);
+  const compactCompose = inputMode === "text" && (composeFocused || !!input.trim());
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -457,44 +433,6 @@ export default function SceneAiAssistant() {
     };
   }, []);
 
-  const imageByIndex = useMemo(() => {
-    const m = new Map<number, File>();
-    for (const img of pendingImages) m.set(img.index, img.file);
-    return m;
-  }, [pendingImages]);
-
-  const onPickFiles = useCallback(
-    (files: FileList | null) => {
-      if (!files?.length) return;
-      const added: PendingImage[] = [];
-      let idx = nextImageIndex;
-      for (const f of Array.from(files)) {
-        if (!f.type.startsWith("image/")) continue;
-        added.push({
-          index: idx,
-          file: f,
-          hint: imageHint,
-          previewUrl: URL.createObjectURL(f),
-        });
-        idx += 1;
-      }
-      if (added.length) {
-        setPendingImages((prev) => [...prev, ...added]);
-        setNextImageIndex(idx);
-        setExtraOpen(false);
-      }
-    },
-    [imageHint, nextImageIndex]
-  );
-
-  const removeImage = (index: number) => {
-    setPendingImages((prev) => {
-      const target = prev.find((p) => p.index === index);
-      if (target) URL.revokeObjectURL(target.previewUrl);
-      return prev.filter((p) => p.index !== index);
-    });
-  };
-
   const stopRecognition = () => {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
@@ -556,11 +494,6 @@ export default function SceneAiAssistant() {
       shownInboxIdsRef.current.clear();
       setMessages([welcomeMessage(enabled, userRole)]);
       setInput("");
-      setPendingImages((prev) => {
-        for (const p of prev) URL.revokeObjectURL(p.previewUrl);
-        return [];
-      });
-      setNextImageIndex(0);
       setErr("");
       setExtraOpen(false);
       setQuotedMessage(null);
@@ -659,7 +592,7 @@ export default function SceneAiAssistant() {
 
   async function onSend(overrideText?: string) {
     const text = (overrideText ?? input).trim();
-    if (!text && pendingImages.length === 0) return;
+    if (!text) return;
     if (!enabled) {
       setErr(`${BOT_NAME} 未启用`);
       return;
@@ -672,19 +605,16 @@ export default function SceneAiAssistant() {
     setBusy(true);
     setExtraOpen(false);
 
-    const imagesToSend = pendingImages;
     const quoteSnapshot = quotedMessage ?? undefined;
     const userMsg: UiMessage = {
       id: uid(),
       role: "user",
-      text: text || "（见附件图片）",
+      text,
       quote: quoteSnapshot,
-      imagePreviews: imagesToSend.length ? imagesToSend.map((p) => p.previewUrl) : undefined,
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setQuotedMessage(null);
-    setPendingImages([]);
     void saveChatMessage(groupId, "user", userMsg.text, { quote: quoteSnapshot, source: "chat" });
 
     const history = [...messages, userMsg]
@@ -692,12 +622,9 @@ export default function SceneAiAssistant() {
       .map((m) => ({ role: m.role, content: formatMessageForAi(m) }));
 
     try {
-      const macros = await loadMacrosForAgent(groupId);
       const res = await sendSceneAgentMessage({
         messages: history,
-        images: imagesToSend,
         groupId,
-        existingMacros: macros.map((m) => ({ id: m.id, title: m.title })),
         pageContext,
       });
 
@@ -705,14 +632,12 @@ export default function SceneAiAssistant() {
         res.assistant_message + (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : "");
 
       const assistantMsg = await saveChatMessage(groupId, "assistant", assistantText, {
-        proposals: res.proposals.length ? res.proposals : undefined,
         source: "chat",
       });
       setMessages((prev) => [
         ...prev,
         {
           ...assistantMsg,
-          proposals: res.proposals.length ? res.proposals : undefined,
           pendingBroadcast: res.pending_broadcast ?? undefined,
           pendingGroupRules: res.pending_group_rules ?? undefined,
           pendingActions: res.actions.length ? res.actions : undefined,
@@ -728,28 +653,6 @@ export default function SceneAiAssistant() {
       setMessages((prev) => [...prev, failMsg]);
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function onConfirmProposals(proposals: AgentProposal[]) {
-    if (!groupId || proposals.length === 0) return;
-    if (!confirm(`确认将 ${proposals.length} 条方案写入系统？（不会删除任何已有数据）`)) return;
-    setErr("");
-    setExecuting(true);
-    try {
-      const result = await executeAgentProposals(groupId, proposals, imageByIndex);
-      const okText = `已写入：大场景 ${result.createdMacros} 个，小岗位 ${result.createdPositions} 个。可在「场景业务 → 场景岗位」查看。`;
-      const okMsg = await saveChatMessage(groupId, "assistant", okText, { source: "chat" });
-      setMessages((prev) => [...prev, okMsg]);
-      setPendingImages((prev) => {
-        for (const p of prev) URL.revokeObjectURL(p.previewUrl);
-        return [];
-      });
-      setNextImageIndex(0);
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "写入失败");
-    } finally {
-      setExecuting(false);
     }
   }
 
@@ -915,20 +818,6 @@ export default function SceneAiAssistant() {
                     >
                       {m.quote ? <MessageQuoteBlock quote={m.quote} variant={m.role} /> : null}
                       {m.text}
-                      {m.imagePreviews?.length ? (
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {m.imagePreviews.map((src) => (
-                            <img key={src} src={src} alt="" className="h-16 w-16 object-cover rounded-lg" />
-                          ))}
-                        </div>
-                      ) : null}
-                    {m.proposals?.length ? (
-                      <ProposalCards
-                        proposals={m.proposals}
-                        disabled={executing}
-                        onConfirm={() => void onConfirmProposals(m.proposals!)}
-                      />
-                    ) : null}
                     {!m.confirmDone && m.pendingBroadcast ? (
                       <PendingConfirmBar
                         prompt="那我发通知啦？"
@@ -1004,25 +893,6 @@ export default function SceneAiAssistant() {
 
             {err && <p className="shrink-0 px-4 py-1 text-xs text-red-600">{err}</p>}
 
-            {pendingImages.length > 0 && (
-              <div className="shrink-0 px-4 pb-1">
-                <div className="flex flex-wrap gap-2">
-                  {pendingImages.map((img) => (
-                    <div key={img.index} className="relative">
-                      <img src={img.previewUrl} alt="" className="h-11 w-11 object-cover rounded-lg border border-gray-200" />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(img.index)}
-                        className="absolute -top-1 -right-1 bg-gray-800 text-white text-[10px] rounded-full w-4 h-4"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {quotedMessage && (
               <div className="shrink-0 mx-4 mb-1 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50/90 px-3 py-2">
                 <div className="flex-1 min-w-0 border-l-[3px] border-rose-400 pl-2.5">
@@ -1067,26 +937,6 @@ export default function SceneAiAssistant() {
                   inputMode === "text" ? "items-end px-3 py-2" : "items-center px-3 py-2"
                 }`}
               >
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="shrink-0 p-1 text-gray-700 hover:text-gray-900"
-                  aria-label="上传图片"
-                >
-                  <IconCamera className="h-6 w-6" />
-                </button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    onPickFiles(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-
                 {inputMode === "text" ? (
                   <textarea
                     ref={textareaRef}
@@ -1164,7 +1014,7 @@ export default function SceneAiAssistant() {
                 {inputMode === "text" && (
                   <button
                     type="button"
-                    disabled={busy || !enabled || (!input.trim() && pendingImages.length === 0)}
+                    disabled={busy || !enabled || !input.trim()}
                     onClick={() => void onSend()}
                     className="shrink-0 rounded-full bg-[#1a1a1a] px-3 py-1.5 text-sm text-white disabled:opacity-40"
                   >
@@ -1203,27 +1053,6 @@ export default function SceneAiAssistant() {
                   >
                     English
                   </button>
-                  <div className="border-t border-gray-100 my-1" />
-                  <div className="px-4 py-1 text-gray-500 text-xs">图片类型</div>
-                  {(
-                    [
-                      ["unknown", "自动识别"],
-                      ["macro", "大场景全景"],
-                      ["position", "小岗位现场"],
-                    ] as const
-                  ).map(([val, lab]) => (
-                    <button
-                      key={val}
-                      type="button"
-                      className={`w-full px-4 py-2 text-left hover:bg-gray-50 ${imageHint === val ? "text-gray-900 font-medium" : ""}`}
-                      onClick={() => {
-                        setImageHint(val);
-                        setExtraOpen(false);
-                      }}
-                    >
-                      {lab}
-                    </button>
-                  ))}
                 </div>
               )}
             </footer>
@@ -1272,51 +1101,6 @@ function PendingConfirmBar({
           不行
         </button>
       </div>
-    </div>
-  );
-}
-
-function ProposalCards({
-  proposals,
-  onConfirm,
-  disabled,
-}: {
-  proposals: AgentProposal[];
-  onConfirm: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="mt-3 pt-2 border-t border-gray-100 space-y-2">
-      <p className="text-xs font-medium text-gray-600">待确认录入方案</p>
-      <ul className="space-y-2 text-xs text-gray-700">
-        {proposals.map((p) => (
-          <li key={p.id} className="rounded-xl bg-gray-50 p-2.5">
-            {p.kind === "macro" ? (
-              <>
-                <p className="font-medium text-gray-900">大场景 · {p.title}</p>
-                <p className="text-gray-600 mt-0.5">{p.description || "—"}</p>
-                <p className="text-gray-500 mt-0.5">
-                  {p.contact_name} · {p.contact_phone}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="font-medium text-gray-900">小岗位 · {p.title}</p>
-                <p className="text-gray-600 mt-0.5">{p.process_description || "—"}</p>
-                <p className="text-gray-500">{labelSceneCategories(p.scene_categories)}</p>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onConfirm}
-        className="w-full py-2 rounded-full bg-[#1a1a1a] text-white text-xs font-medium disabled:opacity-50"
-      >
-        {disabled ? "写入中…" : "确认写入系统"}
-      </button>
     </div>
   );
 }

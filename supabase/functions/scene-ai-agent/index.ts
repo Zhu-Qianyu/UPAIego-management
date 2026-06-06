@@ -8,15 +8,6 @@ const cors = {
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
 
-type IncomingImage = {
-  index: number;
-  mimeType: string;
-  base64: string;
-  hint?: "macro" | "position" | "unknown";
-};
-
-type ExistingMacro = { id: string; title: string };
-
 type PageContext = {
   route: string;
   pageTitle: string;
@@ -27,9 +18,7 @@ type PageContext = {
 
 type AgentRequest = {
   messages: ChatTurn[];
-  images?: IncomingImage[];
   groupId: string;
-  existingMacros?: ExistingMacro[];
   pageContext?: PageContext | null;
 };
 
@@ -96,8 +85,8 @@ const SYSTEM_PROMPT = `你是豆小秘，UPAIego 工作群的**群组智能体**
 ## 职责
 - 泛业务探讨、合规与流程答疑。
 - **页面操作 actions**：navigate / scene_tab / refresh / toast（须用户点「可以」后前端才执行）。
-- **方案 proposals**：仅 admin/scene_operator 录入场景时用；写入仍须用户确认。
 - **群发通知 broadcast**：**仅 admin**；拟好标题正文后，assistant_message **必须**包含「那我发通知啦？」，并输出 broadcast 对象（系统不会立刻发送，等用户点「可以」）。
+- **当前不支持图片/视觉输入**；若用户发图或要求看现场照片，请说明暂不支持，并引导其到「场景业务」页面手动录入；**proposals 必须恒为 []**。
 
 ## actions 格式
 - navigate: { "type":"navigate", "path":"/scene?tab=stations", "label":"..." }
@@ -117,9 +106,6 @@ const SYSTEM_PROMPT = `你是豆小秘，UPAIego 工作群的**群组智能体**
 
 ## 回复引用
 - 用户消息含 \`[回复 …]\` 时，结合被回复内容作答。
-
-## proposals
-大场景 macro / 小岗位 position — 仅 admin/scene_operator；其他角色 proposals 为 []。
 
 ## 输出格式（仅 JSON）
 {
@@ -170,7 +156,7 @@ function resolveAiConfig(provider: AiProvider): { apiKey: string; baseUrl: strin
   if (!model) {
     return {
       error:
-        "未配置 ARK_MODEL（推理接入点 ID）。请在火山方舟控制台开通多模态模型（推荐 Doubao-Seed-1.6 视觉理解），复制 endpoint id 设为 ARK_MODEL。",
+        "未配置 ARK_MODEL（推理接入点 ID）。请在火山方舟控制台创建文本对话接入点，复制 endpoint id 设为 ARK_MODEL。",
     };
   }
   return {
@@ -345,8 +331,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "请先加入并激活工作群后再使用豆小秘" }, 403);
   }
 
-  const images = (body.images ?? []).slice(0, 8);
-  const existingMacros = body.existingMacros ?? [];
   const pc = body.pageContext;
   const chatTurns = (body.messages ?? []).slice(-24);
   const memberSummary = await fetchGroupMemberSummary(supabase, body.groupId);
@@ -360,11 +344,6 @@ Deno.serve(async (req) => {
     `当前工作群 ID: ${body.groupId}`,
     memberSummary,
     `【当前对话者】${displayName}，角色：${roleLabel}（${role}）`,
-    existingMacros.length
-      ? `已有大场景：${existingMacros.map((m) => `${m.title}(${m.id})`).join("；")}`
-      : role === "admin" || role === "scene_operator"
-        ? "当前尚无大场景，需先方案中大场景再挂小岗位。"
-        : "",
     pc
       ? `【用户当前页面】${pc.pageTitle} (${pc.route})${pc.sceneTab ? `，场景子标签：${pc.sceneTab}` : ""}`
       : "",
@@ -372,12 +351,13 @@ Deno.serve(async (req) => {
       ? `【该角色可跳转菜单】${pc.navItems.map((n) => `${n.label}:${n.path}`).join("；")}`
       : "",
     role !== "admin" && role !== "scene_operator"
-      ? "【限制】当前用户不可输出 proposals（场景录入）或向非授权角色群发。"
+      ? "【限制】不可向非授权角色群发。"
       : role === "scene_operator"
         ? "【限制】不可群发 broadcast；不可输出 group_rules_update。"
         : role !== "admin"
           ? "【限制】不可群发、不可改群规定。"
           : "【权限】管理员可输出 broadcast / group_rules_update（须请示，由用户点可以/不行后执行）。",
+    "【限制】当前豆小秘仅支持纯文本对话，不支持图片理解或场景照片录入（proposals 恒为 []）。",
   ]
     .filter(Boolean)
     .join("\n");
@@ -393,31 +373,9 @@ Deno.serve(async (req) => {
     }
   }
 
-  const lastUser = chatTurns.filter((m) => m.role === "user").pop();
-  const userText =
-    lastUser?.content?.trim() ||
-    (images.length > 0 ? "请结合附件图片与上下文回复。" : "请根据对话上下文回复。");
-
-  const userContent: Array<Record<string, unknown>> = [{ type: "text", text: userText }];
-  for (const img of images) {
-    const mime = img.mimeType?.startsWith("image/") ? img.mimeType : "image/jpeg";
-    const hint =
-      img.hint === "macro"
-        ? "（用户标注：大场景全景图）"
-        : img.hint === "position"
-          ? "（用户标注：小岗位现场图）"
-          : "";
-    userContent.push({
-      type: "text",
-      text: `图片 index=${img.index}${hint}`,
-    });
-    userContent.push({
-      type: "image_url",
-      image_url: { url: `data:${mime};base64,${img.base64}` },
-    });
+  if (chatTurns.length === 0) {
+    chatMessages.push({ role: "user", content: "请根据对话上下文回复。" });
   }
-
-  chatMessages.push({ role: "user", content: userContent });
 
   const url = `${aiCfg.baseUrl.replace(/\/$/, "")}/chat/completions`;
   const aiRes = await fetch(url, {
@@ -467,19 +425,12 @@ Deno.serve(async (req) => {
   const broadcastSpec = parseBroadcast(parsed.broadcast, role);
   const rulesUpdate = parseGroupRulesUpdate(parsed.group_rules_update, role);
 
-  const proposals =
-    role === "admin" || role === "scene_operator"
-      ? Array.isArray(parsed.proposals)
-        ? parsed.proposals
-        : []
-      : [];
-
   const assistantMessage =
     String(parsed.assistant_message ?? "").trim() || "我在呢～您刚才说的我没听清，能再说一遍吗？";
 
   return jsonResponse({
     assistant_message: assistantMessage,
-    proposals,
+    proposals: [],
     questions: Array.isArray(parsed.questions) ? parsed.questions : [],
     actions: Array.isArray(parsed.actions) ? parsed.actions : [],
     pending_broadcast: broadcastSpec,
