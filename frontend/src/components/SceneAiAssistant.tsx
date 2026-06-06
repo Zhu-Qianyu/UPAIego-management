@@ -14,13 +14,19 @@ import {
   markAgentInboxRead,
   type AgentInboxMessage,
 } from "../api/agentInbox";
+import { executeAgentFormFills } from "../api/agentForms";
 import {
   executeAgentBroadcast,
   executeAgentGroupRules,
   sceneAiFeatureEnabled,
   sendSceneAgentMessage,
 } from "../api/sceneAgent";
-import type { AgentAction, AgentPendingBroadcast, AgentPendingGroupRules } from "../aitebot/types";
+import type {
+  AgentAction,
+  AgentPendingBroadcast,
+  AgentPendingFormFill,
+  AgentPendingGroupRules,
+} from "../aitebot/types";
 import { useAitebot } from "../aitebot/AitebotContext";
 import { useAuth } from "../auth/AuthContext";
 import { ROLE_LABELS } from "../auth/roleLabels";
@@ -36,6 +42,7 @@ type UiMessage = {
   quote?: AgentMessageQuote;
   pendingBroadcast?: AgentPendingBroadcast;
   pendingGroupRules?: AgentPendingGroupRules;
+  pendingFormFills?: AgentPendingFormFill[];
   pendingActions?: AgentAction[];
   confirmDone?: boolean;
   inboxId?: string;
@@ -50,11 +57,11 @@ const QUICK_TOPICS_BY_ROLE: Record<UserRole, { icon: string; label: string; prom
     { icon: "📢", label: "群发通知", prompt: "帮我起草一条通知：明天全体放假，并发送给群组所有人。" },
     { icon: "📋", label: "采集流程", prompt: "请说明从场景录入、排班到悬赏结算的完整数采制度。" },
     { icon: "👥", label: "群组管理", prompt: "带我去看群组管理和待审批成员。" },
-    { icon: "🏢", label: "甲方业务", prompt: "甲方业务和场景岗位怎么配合？" },
+    { icon: "🏢", label: "填甲方业务", prompt: "帮我填一条甲方业务：公司名「示例科技」，设备类型「协作臂」，单场景上限 8 小时，场景类型 industrial。" },
   ],
   scene_operator: [
     { icon: "📅", label: "采集排班", prompt: "帮我打开采集排班，并说明发布排班前要准备什么。" },
-    { icon: "✨", label: "新场景", prompt: "我们在评估一个新场景，是否适合采集？" },
+    { icon: "✨", label: "填场景岗位", prompt: "帮我创建一个大场景：标题「华东仓」，联系人张三 13800138000，地址浙江省杭州市余杭区。" },
     { icon: "📋", label: "采集流程", prompt: "请说明从甲方业务、岗位到排班发布的流程。" },
   ],
   device_operator: [
@@ -80,8 +87,8 @@ function describeAction(action: AgentAction): string {
 function welcomeMessage(enabled: boolean, role: UserRole): UiMessage {
   const roleLabel = ROLE_LABELS[role];
   const roleHints: Record<UserRole, string> = {
-    admin: "我是您的职场小秘书，发通知、改群规定、带路前都会先请示您。群发通知仅管理员可用，发之前我会问「那我发通知啦？」",
-    scene_operator: "我是您的职场小秘书，可帮您梳理甲方业务与排班；本群规定我会遵守。群发通知请联系管理员。",
+    admin: "我是您的职场小秘书，可帮您代填甲方业务、场景岗位、排班等表单；发通知、改群规定前都会先请示您。群发仅管理员可用。",
+    scene_operator: "我是您的职场小秘书，可帮您代填甲方业务、大场景、小岗位与排班；执行前会先问您可不可以。",
     device_operator: "我是您的职场小秘书，可带您处理设备与运维流程；有事我会先问您可不可以再做。",
     collection_executor: "我是您的职场小秘书，可帮看排班、悬赏与钱包；本群规定我会遵守。",
   };
@@ -562,6 +569,38 @@ export default function SceneAiAssistant() {
     }
   }
 
+  async function onConfirmFormFills(msgId: string, specs: AgentPendingFormFill[]) {
+    if (!groupId) return;
+    const result = await executeAgentFormFills(groupId, userRole, specs);
+    const sceneForms = new Set([
+      "party_demand_create",
+      "party_demand_update",
+      "scene_macro_create",
+      "scene_macro_update",
+      "scenario_position_create",
+      "scenario_position_update",
+      "collection_shift_create",
+    ]);
+    const needsSceneRefresh = specs.some((s) => sceneForms.has(s.form));
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId) return m;
+        let text = m.text;
+        if (result.summaries.length) text += `\n\n✅ ${result.summaries.join("；")}`;
+        if (result.errors.length) text += `\n\n⚠️ ${result.errors.join("；")}`;
+        return { ...m, confirmDone: true, pendingFormFills: undefined, text };
+      })
+    );
+
+    if (needsSceneRefresh && result.summaries.length) {
+      executeActions([{ type: "refresh", target: "scene" }]);
+    }
+    if (result.errors.length && !result.summaries.length) {
+      await appendAssistantLine(`表单没能写入：${result.errors.join("；")}，您看要改改再试吗？`);
+    }
+  }
+
   function onConfirmActions(msgId: string, actions: AgentAction[]) {
     const summaries = executeActions(actions);
     setMessages((prev) =>
@@ -574,11 +613,12 @@ export default function SceneAiAssistant() {
     );
   }
 
-  function onDeclinePending(msgId: string, kind: "broadcast" | "rules" | "actions") {
+  function onDeclinePending(msgId: string, kind: "broadcast" | "rules" | "actions" | "forms") {
     patchMessage(msgId, {
       confirmDone: true,
       pendingBroadcast: undefined,
       pendingGroupRules: undefined,
+      pendingFormFills: undefined,
       pendingActions: undefined,
     });
     void appendAssistantLine(
@@ -586,7 +626,9 @@ export default function SceneAiAssistant() {
         ? "好的，那这次通知先不发了。您改主意了随时跟我说～"
         : kind === "rules"
           ? "好的，群规定先不改动。需要时再吩咐我～"
-          : "好的，那我们先不操作啦。有需要您再叫我～"
+          : kind === "forms"
+            ? "好的，那这次先不帮您填啦。您改好了再叫我～"
+            : "好的，那我们先不操作啦。有需要您再叫我～"
     );
   }
 
@@ -626,6 +668,7 @@ export default function SceneAiAssistant() {
         messages: history,
         groupId,
         pageContext,
+        role: userRole,
       });
 
       const assistantText =
@@ -640,6 +683,7 @@ export default function SceneAiAssistant() {
           ...assistantMsg,
           pendingBroadcast: res.pending_broadcast ?? undefined,
           pendingGroupRules: res.pending_group_rules ?? undefined,
+          pendingFormFills: res.pending_form_fills.length ? res.pending_form_fills : undefined,
           pendingActions: res.actions.length ? res.actions : undefined,
         },
       ]);
@@ -843,6 +887,20 @@ export default function SceneAiAssistant() {
                         }
                         onOk={() => void onConfirmGroupRules(m.id, m.pendingGroupRules!)}
                         onDecline={() => onDeclinePending(m.id, "rules")}
+                      />
+                    ) : null}
+                    {!m.confirmDone && m.pendingFormFills?.length ? (
+                      <PendingConfirmBar
+                        prompt="这样帮您填写可以吗？"
+                        detail={
+                          <ul className="text-xs text-gray-600 space-y-1 list-disc pl-4">
+                            {m.pendingFormFills.map((f, i) => (
+                              <li key={`${f.form}-${i}`}>{f.label}</li>
+                            ))}
+                          </ul>
+                        }
+                        onOk={() => void onConfirmFormFills(m.id, m.pendingFormFills!)}
+                        onDecline={() => onDeclinePending(m.id, "forms")}
                       />
                     ) : null}
                     {!m.confirmDone && m.pendingActions?.length ? (

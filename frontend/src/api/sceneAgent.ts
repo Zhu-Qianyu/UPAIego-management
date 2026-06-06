@@ -6,7 +6,9 @@ import type {
   AgentGroupRulesResult,
   AgentPendingBroadcast,
   AgentPendingGroupRules,
+  AgentPendingFormFill,
 } from "../aitebot/types";
+import { normalizePendingFormFills } from "./agentForms";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 
@@ -52,6 +54,7 @@ export type AgentResponse = {
   actions: AgentAction[];
   pending_broadcast: AgentPendingBroadcast | null;
   pending_group_rules: AgentPendingGroupRules | null;
+  pending_form_fills: AgentPendingFormFill[];
   broadcast_result: AgentBroadcastResult | null;
   group_rules_result: AgentGroupRulesResult | null;
 };
@@ -90,6 +93,7 @@ export async function sendSceneAgentMessage(args: {
   messages: AgentChatTurn[];
   groupId: string;
   pageContext?: AitebotPageContext;
+  role?: string;
 }): Promise<AgentResponse> {
   if (!isSceneAiEnabled()) {
     throw new Error("智能助手未启用。请在环境变量中设置 VITE_SCENE_AI_ENABLED=true 并部署 Edge Function（豆包：ARK_API_KEY + ARK_MODEL）。");
@@ -112,6 +116,8 @@ export async function sendSceneAgentMessage(args: {
     throw new Error(payload.error);
   }
 
+  const role = (args.role ?? "collection_executor") as import("../types/roles").UserRole;
+
   return {
     assistant_message: payload.assistant_message ?? "",
     proposals: [],
@@ -119,6 +125,7 @@ export async function sendSceneAgentMessage(args: {
     actions: normalizeActions(payload.actions),
     pending_broadcast: normalizePendingBroadcast(payload.pending_broadcast),
     pending_group_rules: normalizePendingGroupRules(payload.pending_group_rules),
+    pending_form_fills: normalizePendingFormFills(payload.pending_form_fills, role),
     broadcast_result: payload.broadcast_result ?? null,
     group_rules_result: payload.group_rules_result ?? null,
   };

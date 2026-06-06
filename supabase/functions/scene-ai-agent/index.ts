@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { FORM_FILL_SKILL_PROMPT, FORM_ROLES } from "./formCatalog.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -75,37 +76,38 @@ const SYSTEM_PROMPT = `你是豆小秘，UPAIego 工作群的**群组智能体**
 
 ## 身份与风格
 - 名字：**豆小秘**。自称「我」；对用户用「您」或自然称呼。
-- **先请示、后执行**：凡会改动系统、发通知、写群规定、跳转页面的操作，assistant_message 里先说明打算做什么，末尾用口语请示；**禁止**在 assistant_message 里假装已经执行。
-- 用户会在界面点「可以」或「不行」后才真正执行；你只需输出对应的 broadcast / group_rules_update / actions 字段供前端展示确认按钮。
+- **先请示、后执行**：凡会改动系统、发通知、写群规定、代填表单、跳转页面的操作，assistant_message 里先说明打算做什么，末尾用口语请示；**禁止**在 assistant_message 里假装已经执行。
+- 用户会在界面点「可以」或「不行」后才真正执行。
 
 ## 当前对话者
-- 系统注入：当前用户角色、本群规定、群内成员、当前页面。
+- 系统注入：当前用户角色、本群规定、群内成员、业务数据 ID 列表、当前页面。
 - 按角色回答：执行员讲排班/悬赏，运维讲设备，业务员讲甲方与岗位，管理员讲审批与群发。
 
 ## 职责
 - 泛业务探讨、合规与流程答疑。
 - **页面操作 actions**：navigate / scene_tab / refresh / toast（须用户点「可以」后前端才执行）。
-- **群发通知 broadcast**：**仅 admin**；拟好标题正文后，assistant_message **必须**包含「那我发通知啦？」，并输出 broadcast 对象（系统不会立刻发送，等用户点「可以」）。
-- **当前不支持图片/视觉输入**；若用户发图或要求看现场照片，请说明暂不支持，并引导其到「场景业务」页面手动录入；**proposals 必须恒为 []**。
+- **群发通知 broadcast**：**仅 admin**；拟好标题正文后，assistant_message **必须**包含「那我发通知啦？」。
+- **群规定 group_rules_update**：**仅 admin**；须问「这样写入群规定可以吗？」
+- **代填表单 form_fills**：用户要求帮你填写/录入时，按下方目录输出；须问「这样可以吗？」。图片字段由系统自动占位，勿要求用户发图。
+- **不支持图片对话**；若用户发图，说明暂不支持视觉，可代填文字字段。
 
 ## actions 格式
 - navigate: { "type":"navigate", "path":"/scene?tab=stations", "label":"..." }
 - scene_tab: { "type":"scene_tab", "tab":"demands|tasks|stations", "label":"..." }
 - refresh: { "type":"refresh", "target":"scene" }
 - toast: { "type":"toast", "message":"..." }
-规则：用户要求打开/切换 → 输出 actions 并在 assistant_message 请示「我帮您打开…可以吗？」；一次最多 3 个。
+规则：用户要求打开/切换 → 输出 actions 并请示；一次最多 3 个。
 
-## broadcast（仅 admin，须请示）
-- 非 admin → broadcast 必须为 null；请对方找管理员发通知。
+## broadcast（仅 admin）
 - 格式: { "title":"标题", "body":"正文", "target_roles":["all"] 或角色列表, "category":"notice|holiday|task|workflow" }
-- assistant_message 复述通知对象与要点，**必须问「那我发通知啦？」**；不要说「已发送」。
 
-## group_rules_update（仅 admin，须请示）
-- append / replace / clear；assistant_message 复述将写入的内容并问「这样写入群规定可以吗？」
+## group_rules_update（仅 admin）
 - 格式: { "mode":"append|replace|clear", "content":"..." }
 
 ## 回复引用
 - 用户消息含 \`[回复 …]\` 时，结合被回复内容作答。
+
+${FORM_FILL_SKILL_PROMPT}
 
 ## 输出格式（仅 JSON）
 {
@@ -113,6 +115,7 @@ const SYSTEM_PROMPT = `你是豆小秘，UPAIego 工作群的**群组智能体**
   "proposals": [],
   "questions": [],
   "actions": [],
+  "form_fills": [],
   "broadcast": null,
   "group_rules_update": null
 }`;
@@ -260,7 +263,73 @@ async function fetchGroupMemberSummary(
     .map(([r, n]) => `${ROLE_LABELS[r] ?? r} ${n} 人`)
     .join("，");
 
-  return `群内 active 成员 ${members.length} 人：${countLine}。\n成员：${names.slice(0, 20).join("；")}${names.length > 20 ? "…" : ""}`;
+  return `群内 active 成员 ${members.length} 人：${countLine}。\n成员（含 UUID 供 form_fills 引用）：${names.slice(0, 20).join("；")}${names.length > 20 ? "…" : ""}`;
+}
+
+async function fetchFormContext(
+  supabase: ReturnType<typeof createClient>,
+  groupId: string
+): Promise<string> {
+  const [{ data: demands }, { data: macros }, { data: positions }] = await Promise.all([
+    supabase
+      .from("party_demands")
+      .select("id, title, client_company, device_type")
+      .eq("group_id", groupId)
+      .order("created_at", { ascending: false })
+      .limit(25),
+    supabase
+      .from("scene_macro_sites")
+      .select("id, title")
+      .eq("group_id", groupId)
+      .order("created_at", { ascending: false })
+      .limit(25),
+    supabase
+      .from("scenario_positions")
+      .select("id, title, macro_scene_id")
+      .eq("group_id", groupId)
+      .order("created_at", { ascending: false })
+      .limit(40),
+  ]);
+
+  const demandLines = (demands ?? [])
+    .map((p) => `${p.client_company ?? p.title}(${p.id}) 设备:${p.device_type ?? "—"}`)
+    .join("；");
+  const macroLines = (macros ?? []).map((m) => `${m.title}(${m.id})`).join("；");
+  const posLines = (positions ?? [])
+    .map((p) => `${p.title}(${p.id})→宏观:${p.macro_scene_id ?? "?"}`)
+    .join("；");
+
+  return [
+    demandLines ? `【甲方业务 ID 列表】${demandLines}` : "【甲方业务】暂无",
+    macroLines ? `【大场景 ID 列表】${macroLines}` : "【大场景】暂无",
+    posLines ? `【小岗位 ID 列表】${posLines}` : "【小岗位】暂无",
+  ].join("\n");
+}
+
+type FormFillSpec = {
+  form: string;
+  label: string;
+  target_id?: string;
+  data: Record<string, unknown>;
+};
+
+function parseFormFills(raw: unknown, callerRole: string): FormFillSpec[] {
+  if (!Array.isArray(raw)) return [];
+  const out: FormFillSpec[] = [];
+  for (const item of raw.slice(0, 3)) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const form = String(o.form ?? "").trim();
+    const allowed = FORM_ROLES[form];
+    if (!allowed?.includes(callerRole)) continue;
+    const label = String(o.label ?? "").trim();
+    if (!label) continue;
+    const data = o.data && typeof o.data === "object" ? (o.data as Record<string, unknown>) : null;
+    if (!data) continue;
+    const target_id = o.target_id != null ? String(o.target_id).trim() : undefined;
+    out.push({ form, label, target_id: target_id || undefined, data });
+  }
+  return out;
 }
 
 Deno.serve(async (req) => {
@@ -334,6 +403,7 @@ Deno.serve(async (req) => {
   const pc = body.pageContext;
   const chatTurns = (body.messages ?? []).slice(-24);
   const memberSummary = await fetchGroupMemberSummary(supabase, body.groupId);
+  const formContext = await fetchFormContext(supabase, body.groupId);
   const groupRulesBlock = await fetchGroupRules(supabase, body.groupId);
   const roleLabel = ROLE_LABELS[role] ?? role;
   const displayName = profile?.display_name?.trim() || "用户";
@@ -343,6 +413,7 @@ Deno.serve(async (req) => {
     groupRulesBlock,
     `当前工作群 ID: ${body.groupId}`,
     memberSummary,
+    formContext,
     `【当前对话者】${displayName}，角色：${roleLabel}（${role}）`,
     pc
       ? `【用户当前页面】${pc.pageTitle} (${pc.route})${pc.sceneTab ? `，场景子标签：${pc.sceneTab}` : ""}`
@@ -356,8 +427,8 @@ Deno.serve(async (req) => {
         ? "【限制】不可群发 broadcast；不可输出 group_rules_update。"
         : role !== "admin"
           ? "【限制】不可群发、不可改群规定。"
-          : "【权限】管理员可输出 broadcast / group_rules_update（须请示，由用户点可以/不行后执行）。",
-    "【限制】当前豆小秘仅支持纯文本对话，不支持图片理解或场景照片录入（proposals 恒为 []）。",
+          : "【权限】管理员可输出 broadcast / group_rules_update / form_fills（须请示，由用户点可以/不行后执行）。",
+    "【能力】可代填表单见 form_fills 目录；代填前须问「这样可以吗？」。",
   ]
     .filter(Boolean)
     .join("\n");
@@ -419,11 +490,13 @@ Deno.serve(async (req) => {
       group_rules_result: null,
       pending_broadcast: null,
       pending_group_rules: null,
+      pending_form_fills: null,
     });
   }
 
   const broadcastSpec = parseBroadcast(parsed.broadcast, role);
   const rulesUpdate = parseGroupRulesUpdate(parsed.group_rules_update, role);
+  const formFills = parseFormFills(parsed.form_fills, role);
 
   const assistantMessage =
     String(parsed.assistant_message ?? "").trim() || "我在呢～您刚才说的我没听清，能再说一遍吗？";
@@ -435,6 +508,7 @@ Deno.serve(async (req) => {
     actions: Array.isArray(parsed.actions) ? parsed.actions : [],
     pending_broadcast: broadcastSpec,
     pending_group_rules: rulesUpdate,
+    pending_form_fills: formFills.length ? formFills : null,
     broadcast_result: null,
     group_rules_result: null,
   });

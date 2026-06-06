@@ -44,6 +44,8 @@ export type AgentPendingGroupRules = {
   content: string;
 };
 
+export type { AgentFormKind, AgentPendingFormFill } from "./agentFormTypes";
+
 export type AgentResponsePayload = {
   assistant_message: string;
   proposals: unknown[];
@@ -51,6 +53,7 @@ export type AgentResponsePayload = {
   actions?: AgentAction[];
   pending_broadcast?: AgentPendingBroadcast | null;
   pending_group_rules?: AgentPendingGroupRules | null;
+  pending_form_fills?: import("./agentFormTypes").AgentPendingFormFill[] | null;
   broadcast_result?: AgentBroadcastResult | null;
   group_rules_result?: AgentGroupRulesResult | null;
 };
