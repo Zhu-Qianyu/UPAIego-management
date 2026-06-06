@@ -47,7 +47,7 @@ export default function SceneAiAssistant() {
       id: "welcome",
       role: "assistant",
       text: enabled
-        ? `你好，我是 ${BOT_NAME}。你可以发文字或语音、上传大场景/岗位现场图，我会整理录入方案；确认后帮你写入系统，不会删除任何数据。`
+        ? `你好，我是 ${BOT_NAME}，负责数据采集相关业务咨询。你可以和我探讨：新场景能不能采、要注意什么、系统怎么用；也可以发现场图让我整理录入方案。纯聊天不需要确认写入；有方案时你再点「确认写入系统」。`
         : `${BOT_NAME} 尚未启用。请联系管理员配置 scene-ai-agent（ARK_API_KEY + ARK_MODEL）。`,
     },
   ]);
@@ -289,7 +289,7 @@ export default function SceneAiAssistant() {
                 </span>
                 <div>
                   <p className="font-semibold text-indigo-950 tracking-wide">{BOT_NAME}</p>
-                  <p className="text-xs text-indigo-700/80">只增不改 · 不删除数据</p>
+                  <p className="text-xs text-indigo-700/80">数据采集业务咨询 · 只增不改</p>
                 </div>
               </div>
               <button
@@ -440,7 +440,7 @@ export default function SceneAiAssistant() {
                   placeholder={
                     inputMode === "voice"
                       ? "点击「开始说话」录入，或在此编辑识别结果…"
-                      : `向 ${BOT_NAME} 提问或描述现场…`
+                      : `向 ${BOT_NAME} 提问：新场景能否采集、流程说明、现场描述…`
                   }
                   rows={2}
                   className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm resize-none"
