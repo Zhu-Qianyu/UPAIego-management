@@ -13,7 +13,10 @@ CREATE TABLE IF NOT EXISTS public.manual_tracked_devices (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT manual_tracked_devices_short_nonempty CHECK (char_length(trim(device_short_label)) >= 1 AND char_length(trim(device_short_label)) <= 120),
-  CONSTRAINT manual_tracked_devices_public_code_fmt CHECK (public_code ~ '^[0-9A-F]{10}$')
+  CONSTRAINT manual_tracked_devices_public_code_fmt CHECK (
+    public_code ~ '^[0-9A-F]{10}$'
+    OR public_code ~ '^[A-Z0-9]{2,8}[0-9]{4}$'
+  )
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS manual_tracked_devices_public_code_key ON public.manual_tracked_devices (public_code);
@@ -48,21 +51,50 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
-  c text;
+  prefix text;
+  seq int;
+  code text;
   tries int := 0;
 BEGIN
   IF NEW.public_code IS NOT NULL AND trim(NEW.public_code) <> '' THEN
+    NEW.public_code := upper(trim(NEW.public_code));
     RETURN NEW;
   END IF;
+
+  PERFORM 1
+  FROM public.party_demands pd
+  WHERE pd.id = NEW.party_demand_id
+  FOR UPDATE;
+
+  SELECT upper(regexp_replace(COALESCE(NULLIF(trim(pd.device_code_prefix), ''), 'DEV'), '[^A-Z0-9]', '', 'g'))
+  INTO prefix
+  FROM public.party_demands pd
+  WHERE pd.id = NEW.party_demand_id;
+
+  IF prefix IS NULL OR length(prefix) < 2 THEN
+    prefix := 'PD' || upper(substring(replace(NEW.party_demand_id::text, '-', '') FROM 1 FOR 2));
+  END IF;
+
+  IF length(prefix) > 8 THEN
+    prefix := substring(prefix FROM 1 FOR 8);
+  END IF;
+
+  SELECT count(*)::int + 1
+  INTO seq
+  FROM public.manual_tracked_devices m
+  WHERE m.party_demand_id = NEW.party_demand_id;
+
   LOOP
-    c := upper(substring(encode(gen_random_bytes(5), 'hex') from 1 for 10));
-    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.manual_tracked_devices m WHERE m.public_code = c);
+    code := prefix || lpad(seq::text, 4, '0');
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.manual_tracked_devices m WHERE m.public_code = code);
+    seq := seq + 1;
     tries := tries + 1;
-    IF tries > 20 THEN
+    IF tries > 50 THEN
       RAISE EXCEPTION 'failed to assign unique public_code';
     END IF;
   END LOOP;
-  NEW.public_code := c;
+
+  NEW.public_code := code;
   RETURN NEW;
 END;
 $$;
@@ -176,5 +208,5 @@ CREATE POLICY "mtd_delete"
   );
 
 COMMENT ON TABLE public.manual_tracked_devices IS '外部设备（无法连接本站心跳）：运维维护状态与贴签登记编号(QR)。';
-COMMENT ON COLUMN public.manual_tracked_devices.public_code IS '10-char hex sticker id; immutable after insert.';
+COMMENT ON COLUMN public.manual_tracked_devices.public_code IS 'Sticker id: legacy hex or {prefix}{0001} sequential per party; see MANUAL_DEVICE_PUBLIC_CODE_TRIGGER_FIX.sql on existing DBs.';
 COMMENT ON COLUMN public.manual_tracked_devices.device_short_label IS 'Short label combined with party demand company for display type.';

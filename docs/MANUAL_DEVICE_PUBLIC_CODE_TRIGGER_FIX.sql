@@ -1,4 +1,6 @@
--- 与 MANUAL_DEVICE_SEQUENTIAL_CODE_MIGRATION.sql 相同；已有库请优先执行 MANUAL_DEVICE_PUBLIC_CODE_TRIGGER_FIX.sql
+-- 修复：登记离线设备时报 gen_random_bytes does not exist
+-- 原因：旧版 manual_tracked_devices_assign_public_code 依赖 pgcrypto；本脚本改为按甲方前缀顺序编号（ZYMF0001…）
+-- 在 Supabase SQL Editor 执行；执行后 Settings → API → Reload schema
 
 ALTER TABLE public.party_demands
   ADD COLUMN IF NOT EXISTS device_code_prefix text;
@@ -75,3 +77,5 @@ CREATE TRIGGER trg_manual_tracked_code
   EXECUTE FUNCTION public.manual_tracked_devices_assign_public_code();
 
 COMMENT ON COLUMN public.manual_tracked_devices.public_code IS 'Sticker id: legacy 10-char hex or {prefix}{0001} sequential per party demand.';
+
+COMMENT ON FUNCTION public.manual_tracked_devices_assign_public_code() IS 'Assign sequential public_code per party_demand; no pgcrypto required.';
