@@ -24,10 +24,19 @@ export type AgentBroadcastResult = {
   error?: string;
 };
 
+export type AgentGroupRulesResult = {
+  ok: boolean;
+  mode?: string;
+  rules_length?: number;
+  preview?: string;
+  error?: string;
+};
+
 export type AgentResponsePayload = {
   assistant_message: string;
   proposals: unknown[];
   questions: string[];
   actions?: AgentAction[];
   broadcast_result?: AgentBroadcastResult | null;
+  group_rules_result?: AgentGroupRulesResult | null;
 };

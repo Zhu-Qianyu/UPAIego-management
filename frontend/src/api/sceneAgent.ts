@@ -6,7 +6,7 @@ import {
   uploadWorkstationSnapshot,
   type SceneMacroSite,
 } from "./operations";
-import type { AgentAction, AitebotPageContext, AgentResponsePayload, AgentBroadcastResult } from "../aitebot/types";
+import type { AgentAction, AitebotPageContext, AgentResponsePayload, AgentBroadcastResult, AgentGroupRulesResult } from "../aitebot/types";
 import { supabase } from "./supabase";
 import type { SceneCategoryKey } from "../utils/sceneCategories";
 import { SCENE_CATEGORY_KEYS } from "../utils/sceneCategories";
@@ -57,6 +57,7 @@ export type AgentResponse = {
   questions: string[];
   actions: AgentAction[];
   broadcast_result: AgentBroadcastResult | null;
+  group_rules_result: AgentGroupRulesResult | null;
 };
 
 export type PendingImage = {
@@ -134,6 +135,7 @@ export async function sendSceneAgentMessage(args: {
     questions: payload.questions ?? [],
     actions: normalizeActions(payload.actions),
     broadcast_result: payload.broadcast_result ?? null,
+    group_rules_result: payload.group_rules_result ?? null,
   };
 }
 

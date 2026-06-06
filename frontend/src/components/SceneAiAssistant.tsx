@@ -44,6 +44,7 @@ type VoiceLang = "zh-CN" | "en-US";
 
 const QUICK_TOPICS_BY_ROLE: Record<UserRole, { icon: string; label: string; prompt: string }[]> = {
   admin: [
+    { icon: "📜", label: "群规定", prompt: "查看当前本群已生效的豆小秘规定；如果没有，我会教你怎么写入。" },
     { icon: "📢", label: "群发通知", prompt: "帮我起草一条通知：明天全体放假，并发送给群组所有人。" },
     { icon: "📋", label: "采集流程", prompt: "请说明从场景录入、排班到悬赏结算的完整数采制度。" },
     { icon: "👥", label: "群组管理", prompt: "带我去看群组管理和待审批成员。" },
@@ -71,10 +72,10 @@ const QUICK_TOPICS_BY_ROLE: Record<UserRole, { icon: string; label: string; prom
 function welcomeMessage(enabled: boolean, role: UserRole): UiMessage {
   const roleLabel = ROLE_LABELS[role];
   const roleHints: Record<UserRole, string> = {
-    admin: "你可以让我通知全员或指定角色（消息会发到每人账户收件箱），也可以带路管理台、场景业务与悬赏。",
-    scene_operator: "我可以帮你梳理甲方业务与排班，并向数采执行员群发通知；有录入方案时会请你确认后再写入。",
-    device_operator: "我可以带你处理设备登记、运维工作台与悬赏借还流程。",
-    collection_executor: "我可以帮你看排班打卡、悬赏接单与钱包；有群通知时会在收件箱提醒你。",
+    admin: "你可以让我通知全员或指定角色，也可以用「定为群规定：…」写入本群制度（全员豆小秘都会遵守），还可以带路管理台与场景业务。",
+    scene_operator: "我可以帮你梳理甲方业务与排班，并向数采执行员群发通知；本群规定我会遵守，有录入方案时会请你确认后再写入。",
+    device_operator: "我可以带你处理设备登记、运维工作台与悬赏借还流程；本群规定我会遵守。",
+    collection_executor: "我可以帮你看排班打卡、悬赏接单与钱包；本群规定我会遵守，有群通知时会在收件箱提醒你。",
   };
   return {
     id: "welcome",
@@ -533,11 +534,21 @@ export default function SceneAiAssistant() {
         }
       }
 
+      let rulesNote = "";
+      if (res.group_rules_result) {
+        if (res.group_rules_result.ok) {
+          rulesNote = `\n\n📜 本群规定已更新（全员豆小秘生效，共 ${res.group_rules_result.rules_length ?? 0} 字）。`;
+        } else if (res.group_rules_result.error) {
+          rulesNote = `\n\n⚠️ 群规定保存失败：${res.group_rules_result.error}`;
+        }
+      }
+
       const assistantText =
         res.assistant_message +
         (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : "") +
         actionNote +
-        broadcastNote;
+        broadcastNote +
+        rulesNote;
 
       const assistantMsg = await saveChatMessage(groupId, "assistant", assistantText, {
         proposals: res.proposals.length ? res.proposals : undefined,

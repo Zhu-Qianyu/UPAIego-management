@@ -42,6 +42,11 @@ type BroadcastSpec = {
   category?: string;
 };
 
+type GroupRulesUpdate = {
+  mode: "append" | "replace" | "clear";
+  content: string;
+};
+
 const VALID_ROLES = ["admin", "device_operator", "scene_operator", "collection_executor"] as const;
 
 const ROLE_LABELS: Record<string, string> = {
@@ -111,6 +116,17 @@ const SYSTEM_PROMPT = `你是豆小秘，UPAIego 工作群的**群组智能体**
 - 用户说「通知所有人/全员/每个账户」→ target_roles: ["all"]。
 - 确认将要发送后再写 broadcast；assistant_message 说明已安排发送给谁。
 
+## 本群自定义规定（group_rules_update，仅管理员）
+- 系统会注入【本群已生效规定】；**全员**与豆小秘对话时都必须遵守，且**优先于**平台默认制度。
+- **仅 admin** 可写入/更新/清空；业务员、执行员、运维员只能询问，不能改。
+- 当管理员明确要求写入群规定时（如「定为群规定」「写入群制度」「记住我们群必须…」「追加规定」「清空群规定」「查看当前群规定」），输出 group_rules_update：
+  - append: 追加一条或多条（保留原有）
+  - replace: 用新正文整体替换
+  - clear: 清空全部群规定
+- 格式: { "mode":"append|replace|clear", "content":"规定正文（clear 时可为空）" }
+- 写入前在 assistant_message 中复述将要保存的内容并确认；成功保存后说明「已写入本群规定，全员豆小秘将遵守」。
+- 非管理员问群规定 → 只读回答已生效内容，group_rules_update 为 null。
+
 ## proposals（仅 admin/scene_operator 需要录入时）
 大场景 macro / 小岗位 position — 规则同前；其他角色禁止输出 proposals。
 
@@ -120,9 +136,10 @@ const SYSTEM_PROMPT = `你是豆小秘，UPAIego 工作群的**群组智能体**
   "proposals": [],
   "questions": [],
   "actions": [],
-  "broadcast": null
+  "broadcast": null,
+  "group_rules_update": null
 }
-broadcast 无群发时为 null；有群发时为对象。`;
+broadcast / group_rules_update 无操作时均为 null。`;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -210,6 +227,38 @@ function parseBroadcast(raw: unknown, callerRole: string): BroadcastSpec | null 
     target_roles: targetRoles,
     category: allowed.includes(category) ? category : "notice",
   };
+}
+
+function parseGroupRulesUpdate(raw: unknown, callerRole: string): GroupRulesUpdate | null {
+  if (callerRole !== "admin") return null;
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const mode = String(o.mode ?? "").trim().toLowerCase();
+  if (mode !== "append" && mode !== "replace" && mode !== "clear") return null;
+  const content = String(o.content ?? "").trim();
+  if (mode === "clear") return { mode: "clear", content: "" };
+  if (!content) return null;
+  return { mode: mode as GroupRulesUpdate["mode"], content: content.slice(0, 4000) };
+}
+
+async function fetchGroupRules(
+  supabase: ReturnType<typeof createClient>,
+  groupId: string
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("agent_group_rules")
+    .select("rules_text, updated_at")
+    .eq("group_id", groupId)
+    .maybeSingle();
+
+  if (error || !data?.rules_text?.trim()) {
+    return "（尚未配置本群规定；管理员可通过对话「定为群规定」写入，写入后全员豆小秘遵守。）";
+  }
+
+  const text = String(data.rules_text).trim();
+  const injected = text.length > 6000 ? `${text.slice(0, 6000)}…（已截断）` : text;
+  const at = data.updated_at ? String(data.updated_at).slice(0, 19) : "";
+  return `【本群已生效规定 — 全员须遵守，优先于平台默认制度】\n${injected}${at ? `\n（最近更新：${at}）` : ""}`;
 }
 
 async function fetchGroupMemberSummary(
@@ -315,11 +364,13 @@ Deno.serve(async (req) => {
   const existingMacros = body.existingMacros ?? [];
   const pc = body.pageContext;
   const memberSummary = await fetchGroupMemberSummary(supabase, body.groupId);
+  const groupRulesBlock = await fetchGroupRules(supabase, body.groupId);
   const roleLabel = ROLE_LABELS[role] ?? role;
   const displayName = profile?.display_name?.trim() || "用户";
 
   const contextNote = [
     WORKFLOW_RULES,
+    groupRulesBlock,
     `当前工作群 ID: ${body.groupId}`,
     memberSummary,
     `【当前对话者】${displayName}，角色：${roleLabel}（${role}）`,
@@ -338,7 +389,7 @@ Deno.serve(async (req) => {
       ? "【限制】当前用户不可输出 proposals（场景录入）或向非授权角色群发。"
       : role === "scene_operator"
         ? "【限制】群发仅可 target_roles: [\"collection_executor\"]。"
-        : "【权限】管理员可向全员或任意角色群发 broadcast。",
+        : "【权限】管理员可向全员或任意角色群发 broadcast；可通过 group_rules_update 写入/更新本群规定（全员生效）。",
   ]
     .filter(Boolean)
     .join("\n");
@@ -419,6 +470,7 @@ Deno.serve(async (req) => {
       questions: [],
       actions: [],
       broadcast_result: null,
+      group_rules_result: null,
     });
   }
 
@@ -444,6 +496,23 @@ Deno.serve(async (req) => {
     }
   }
 
+  const rulesUpdate = parseGroupRulesUpdate(parsed.group_rules_update, role);
+  let groupRulesResult: Record<string, unknown> | null = null;
+
+  if (rulesUpdate) {
+    const { data: rpcData, error: rpcErr } = await supabase.rpc("upsert_agent_group_rules", {
+      p_group_id: body.groupId,
+      p_mode: rulesUpdate.mode,
+      p_content: rulesUpdate.content,
+    });
+
+    if (rpcErr) {
+      groupRulesResult = { ok: false, error: rpcErr.message };
+    } else {
+      groupRulesResult = { ok: true, ...(rpcData as Record<string, unknown>) };
+    }
+  }
+
   const proposals =
     role === "admin" || role === "scene_operator"
       ? Array.isArray(parsed.proposals)
@@ -457,6 +526,7 @@ Deno.serve(async (req) => {
     questions: Array.isArray(parsed.questions) ? parsed.questions : [],
     actions: Array.isArray(parsed.actions) ? parsed.actions : [],
     broadcast_result: broadcastResult,
+    group_rules_result: groupRulesResult,
   });
 });
 
