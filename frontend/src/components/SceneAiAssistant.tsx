@@ -677,14 +677,23 @@ export default function SceneAiAssistant() {
       const assistantMsg = await saveChatMessage(groupId, "assistant", assistantText, {
         source: "chat",
       });
+      const formFills = res.pending_form_fills;
+      const navOnly = (a: AgentAction) =>
+        a.type === "scene_tab" ||
+        (a.type === "navigate" && (a.path.startsWith("/scene") || a.path.includes("tab=")));
+      const pendingActions =
+        formFills.length && res.actions.length
+          ? res.actions.filter((a) => !navOnly(a))
+          : res.actions;
+
       setMessages((prev) => [
         ...prev,
         {
           ...assistantMsg,
           pendingBroadcast: res.pending_broadcast ?? undefined,
           pendingGroupRules: res.pending_group_rules ?? undefined,
-          pendingFormFills: res.pending_form_fills.length ? res.pending_form_fills : undefined,
-          pendingActions: res.actions.length ? res.actions : undefined,
+          pendingFormFills: formFills.length ? formFills : undefined,
+          pendingActions: pendingActions.length ? pendingActions : undefined,
         },
       ]);
     } catch (e: unknown) {

@@ -9,6 +9,7 @@ import type {
   AgentPendingFormFill,
 } from "../aitebot/types";
 import { normalizePendingFormFills } from "./agentForms";
+import { buildFormFillConfirmMessage, inferFormFillsFromUserText } from "../aitebot/formFillInfer";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 
@@ -117,15 +118,34 @@ export async function sendSceneAgentMessage(args: {
   }
 
   const role = (args.role ?? "collection_executor") as import("../types/roles").UserRole;
+  const lastUserText = [...args.messages].reverse().find((m) => m.role === "user")?.content ?? "";
+  let pending_form_fills = normalizePendingFormFills(payload.pending_form_fills, role);
+  const usedInfer = !pending_form_fills.length;
+  if (usedInfer) {
+    pending_form_fills = inferFormFillsFromUserText(lastUserText, role);
+  }
+
+  let assistant_message = payload.assistant_message ?? "";
+  if (pending_form_fills.length && usedInfer) {
+    assistant_message = `${buildFormFillConfirmMessage(pending_form_fills)} 这样帮您填写可以吗？`;
+  }
+
+  const navOnly = (a: AgentAction) =>
+    a.type === "scene_tab" ||
+    (a.type === "navigate" && (a.path.startsWith("/scene") || a.path.includes("tab=")));
+  let actions = normalizeActions(payload.actions);
+  if (pending_form_fills.length) {
+    actions = actions.filter((a) => !navOnly(a));
+  }
 
   return {
-    assistant_message: payload.assistant_message ?? "",
+    assistant_message,
     proposals: [],
     questions: payload.questions ?? [],
-    actions: normalizeActions(payload.actions),
+    actions,
     pending_broadcast: normalizePendingBroadcast(payload.pending_broadcast),
     pending_group_rules: normalizePendingGroupRules(payload.pending_group_rules),
-    pending_form_fills: normalizePendingFormFills(payload.pending_form_fills, role),
+    pending_form_fills,
     broadcast_result: payload.broadcast_result ?? null,
     group_rules_result: payload.group_rules_result ?? null,
   };

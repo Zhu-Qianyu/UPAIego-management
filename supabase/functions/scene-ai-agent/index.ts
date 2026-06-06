@@ -1,6 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { FORM_FILL_SKILL_PROMPT, FORM_ROLES } from "./formCatalog.ts";
+import {
+  buildFormFillConfirmMessage,
+  inferFormFillsFromUserText,
+  stripNavigationActionsForFormFill,
+} from "./formFillInfer.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -88,7 +93,7 @@ const SYSTEM_PROMPT = `你是豆小秘，UPAIego 工作群的**群组智能体**
 - **页面操作 actions**：navigate / scene_tab / refresh / toast（须用户点「可以」后前端才执行）。
 - **群发通知 broadcast**：**仅 admin**；拟好标题正文后，assistant_message **必须**包含「那我发通知啦？」。
 - **群规定 group_rules_update**：**仅 admin**；须问「这样写入群规定可以吗？」
-- **代填表单 form_fills**：用户要求帮你填写/录入时，按下方目录输出；须问「这样可以吗？」。图片字段由系统自动占位，勿要求用户发图。
+- **代填表单 form_fills**：用户要求创建/填写/录入且**已给出字段**（名称、联系人、地址等）→ **必须**输出 form_fills，**禁止**只输出 scene_tab 跳转；须问「这样帮您填写可以吗？」。仅当用户只说「打开页面/切换标签」且未给字段时才用 actions。
 - **不支持图片对话**；若用户发图，说明暂不支持视觉，可代填文字字段。
 
 ## actions 格式
@@ -96,7 +101,7 @@ const SYSTEM_PROMPT = `你是豆小秘，UPAIego 工作群的**群组智能体**
 - scene_tab: { "type":"scene_tab", "tab":"demands|tasks|stations", "label":"..." }
 - refresh: { "type":"refresh", "target":"scene" }
 - toast: { "type":"toast", "message":"..." }
-规则：用户要求打开/切换 → 输出 actions 并请示；一次最多 3 个。
+规则：用户**仅**要求打开/切换页面、且**没有**给出要写入的字段 → 输出 actions 并请示；**若已给出创建/填写字段，actions 必须为空，改用 form_fills**。一次最多 3 个 actions。
 
 ## broadcast（仅 admin）
 - 格式: { "title":"标题", "body":"正文", "target_roles":["all"] 或角色列表, "category":"notice|holiday|task|workflow" }
@@ -428,7 +433,7 @@ Deno.serve(async (req) => {
         : role !== "admin"
           ? "【限制】不可群发、不可改群规定。"
           : "【权限】管理员可输出 broadcast / group_rules_update / form_fills（须请示，由用户点可以/不行后执行）。",
-    "【能力】可代填表单见 form_fills 目录；代填前须问「这样可以吗？」。",
+    "【能力】可代填表单见 form_fills 目录；用户给出具体字段并要求创建/填写时，必须输出 form_fills，禁止仅 scene_tab 跳转。",
   ]
     .filter(Boolean)
     .join("\n");
@@ -496,16 +501,26 @@ Deno.serve(async (req) => {
 
   const broadcastSpec = parseBroadcast(parsed.broadcast, role);
   const rulesUpdate = parseGroupRulesUpdate(parsed.group_rules_update, role);
-  const formFills = parseFormFills(parsed.form_fills, role);
+  const llmFormFills = parseFormFills(parsed.form_fills, role);
+  const lastUserText = [...chatTurns].reverse().find((m) => m.role === "user")?.content ?? "";
+  const formFills = llmFormFills.length ? llmFormFills : inferFormFillsFromUserText(lastUserText, role);
 
-  const assistantMessage =
+  let assistantMessage =
     String(parsed.assistant_message ?? "").trim() || "我在呢～您刚才说的我没听清，能再说一遍吗？";
+  if (formFills.length && !llmFormFills.length) {
+    assistantMessage = `${buildFormFillConfirmMessage(formFills)} 这样帮您填写可以吗？`;
+  }
+
+  let actions = Array.isArray(parsed.actions) ? parsed.actions : [];
+  if (formFills.length) {
+    actions = stripNavigationActionsForFormFill(actions);
+  }
 
   return jsonResponse({
     assistant_message: assistantMessage,
     proposals: [],
     questions: Array.isArray(parsed.questions) ? parsed.questions : [],
-    actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+    actions,
     pending_broadcast: broadcastSpec,
     pending_group_rules: rulesUpdate,
     pending_form_fills: formFills.length ? formFills : null,

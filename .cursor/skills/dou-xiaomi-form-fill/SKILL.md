@@ -55,6 +55,8 @@ description: >-
 
 改 Edge 后重启 CVM 上 `scene-ai-agent` 容器；改前端后 `npm run build` 并 push。
 
+**form_fills 优先于跳转**：用户已给出字段并要求创建/填写时，禁止仅 `scene_tab`。Edge 与前端均有 `formFillInfer.ts` 兜底解析（如「创建大场景：华东仓，联系人…」）。
+
 ## 冒烟话术
 
 > 帮我填一条甲方业务：公司「测试公司」，设备类型「协作臂」，单场景上限 8 小时，场景 industrial。
