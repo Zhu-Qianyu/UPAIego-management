@@ -277,7 +277,7 @@ export default function CollectionShiftsTab({
           </button>
           {(positions.length === 0 || executors.length === 0) && (
             <p className="text-xs text-amber-700">
-              {positions.length === 0 ? "请先在「场景岗位 / 快照」添加岗位。" : "本群暂无数采执行员成员。"}
+              {positions.length === 0 ? "请先在「场景岗位」添加小岗位。" : "本群暂无数采执行员成员。"}
             </p>
           )}
         </form>
