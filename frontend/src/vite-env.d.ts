@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_MAP_FEATURE_ENABLED?: string;
   readonly VITE_MAP_TILE_URL?: string;
   readonly VITE_MAP_TILE_ATTRIBUTION?: string;
+  /** 设为 true 时显示右下角「场景助手」（需部署 scene-ai-agent Edge Function） */
+  readonly VITE_SCENE_AI_ENABLED?: string;
 }
 
 interface ImportMeta {
