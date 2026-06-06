@@ -255,14 +255,18 @@ export type ListViewMode = "detail" | "compact";
 
 const LIST_VIEW_STORAGE_PREFIX = "upaiego-list-view:";
 
-export function useListViewMode(storageKey: string): [ListViewMode, (mode: ListViewMode) => void] {
+export function useListViewMode(
+  storageKey: string,
+  defaultMode: ListViewMode = "compact"
+): [ListViewMode, (mode: ListViewMode) => void] {
   const key = `${LIST_VIEW_STORAGE_PREFIX}${storageKey}`;
   const [mode, setModeState] = useState<ListViewMode>(() => {
     try {
       const saved = localStorage.getItem(key);
-      return saved === "compact" ? "compact" : "detail";
+      if (saved === "compact" || saved === "detail") return saved;
+      return defaultMode;
     } catch {
-      return "detail";
+      return defaultMode;
     }
   });
   const setMode = (next: ListViewMode) => {
@@ -315,18 +319,20 @@ export function ListViewToggle({
 
 export function ListViewSection({
   storageKey,
+  defaultMode = "compact",
   header,
   className = "",
   compact,
   children,
 }: {
   storageKey: string;
+  defaultMode?: ListViewMode;
   header?: ReactNode;
   className?: string;
   compact: ReactNode;
   children: ReactNode;
 }) {
-  const [mode, setMode] = useListViewMode(storageKey);
+  const [mode, setMode] = useListViewMode(storageKey, defaultMode);
   return (
     <div className={`min-w-0 w-full max-w-full box-border ${className}`}>
       <div className={`flex flex-wrap items-center gap-2 mb-3 ${header ? "justify-between" : "justify-end"}`}>

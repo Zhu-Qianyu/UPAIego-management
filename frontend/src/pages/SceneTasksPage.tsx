@@ -14,6 +14,7 @@ import {
   deleteScenarioPositions,
   deleteSceneMacroSite,
   deleteSceneMacroSites,
+  formatScenarioPositionLabel,
   getSnapshotPublicUrl,
   listPartyDemands,
   listScenarioPositions,
@@ -437,6 +438,11 @@ function PartyDemandsTab({
       />
       <ListViewSection
         storageKey="scene-party-demands"
+        header={
+          <p className="text-sm font-medium text-gray-800">
+            甲方业务列表 <span className="text-gray-500 font-normal">（共 {rows.length} 条）</span>
+          </p>
+        }
         compact={
           <CompactList>
             {rows.map((r) => (
@@ -459,7 +465,7 @@ function PartyDemandsTab({
           </CompactList>
         }
       >
-      <CardList>
+      <CardList className="!grid-cols-1">
         {rows.map((r) => (
           <CardListItem key={r.id}>
           <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 h-full w-full min-w-0 overflow-hidden box-border">
@@ -884,6 +890,9 @@ function ScenarioWorkstationsTab({
     return map;
   }, [macros, rows]);
 
+  const macroMap = useMemo(() => new Map(macros.map((m) => [m.id, m])), [macros]);
+  const posIds = useMemo(() => rows.map((r) => r.id), [rows]);
+
   const [addPosMacroId, setAddPosMacroId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [proc, setProc] = useState("");
@@ -1096,6 +1105,23 @@ function ScenarioWorkstationsTab({
       setErr(ex instanceof Error ? ex.message : "批量删除大场景失败");
     } finally {
       setMacroBatchDeleting(false);
+    }
+  }
+
+  async function onPosBatchDelete() {
+    if (posBatch.count === 0) return;
+    if (!confirm(`确定删除选中的 ${posBatch.count} 个小岗位？`)) return;
+    setErr("");
+    setPosBatchDeleting(true);
+    try {
+      await deleteScenarioPositions(posBatch.selectedIds);
+      if (editingId && posBatch.isSelected(editingId)) setEditingId(null);
+      posBatch.clear();
+      await load();
+    } catch (ex: unknown) {
+      setErr(ex instanceof Error ? ex.message : "批量删除小岗位失败");
+    } finally {
+      setPosBatchDeleting(false);
     }
   }
 
@@ -1494,8 +1520,104 @@ function ScenarioWorkstationsTab({
         </form>
       </section>
 
-      <section className="space-y-4">
-        <h2 className="text-base font-semibold text-gray-900">大场景列表</h2>
+      <ListViewSection
+        storageKey="scene-stations"
+        header={
+          <p className="text-sm font-medium text-gray-800">
+            大场景与小岗位{" "}
+            <span className="text-gray-500 font-normal">
+              （{macros.length} 个大场景 · {rows.length} 个小岗位）
+            </span>
+          </p>
+        }
+        compact={
+          <div className="space-y-4">
+            {rows.length > 0 ? (
+              <>
+                <BatchSelectToolbar
+                  total={rows.length}
+                  selectedCount={posBatch.count}
+                  onSelectAll={() => posBatch.toggleAll(posIds)}
+                  onClear={posBatch.clear}
+                  onDelete={() => void onPosBatchDelete()}
+                  deleting={posBatchDeleting}
+                  deleteLabel="删除选中小岗位"
+                />
+                <CompactList>
+                  {rows.map((r) => (
+                    <CompactListRow
+                      key={r.id}
+                      primary={
+                          <span className="inline-flex items-center gap-2 min-w-0">
+                            <BatchSelectCheckbox
+                              checked={posBatch.isSelected(r.id)}
+                              onChange={() => posBatch.toggle(r.id)}
+                            />
+                            <span className="truncate">{formatScenarioPositionLabel(r, macroMap)}</span>
+                          </span>
+                        }
+                        secondary={r.process_description ?? undefined}
+                        meta={`${labelSceneCategories(r.scene_categories)} · ${[r.address_province, r.address_city, r.address_district].filter(Boolean).join(" ")}`}
+                        actions={
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(r)}
+                              className="text-xs text-indigo-700 font-medium px-2 py-1 rounded border border-indigo-200 hover:bg-indigo-50"
+                            >
+                              编辑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!confirm("删除该小岗位？")) return;
+                                if (editingId === r.id) setEditingId(null);
+                                try {
+                                  await deleteScenarioPosition(r.id);
+                                  await load();
+                                } catch (ex: unknown) {
+                                  setErr(ex instanceof Error ? ex.message : "删除失败");
+                                }
+                              }}
+                              className="text-xs text-red-600"
+                            >
+                              删除
+                            </button>
+                          </>
+                        }
+                      />
+                  ))}
+                </CompactList>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">
+                暂无小岗位。请切换到「详情卡片」在大场景下添加。
+              </p>
+            )}
+            {macros.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">大场景一览</p>
+                <CompactList>
+                  {macros.map((m) => (
+                    <CompactListRow
+                      key={m.id}
+                      primary={m.title}
+                      secondary={m.description ?? undefined}
+                      meta={[m.address_province, m.address_city, m.address_district].filter(Boolean).join(" ")}
+                    />
+                  ))}
+                </CompactList>
+              </div>
+            )}
+            {editingId && rows.find((r) => r.id === editingId) && (
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+                {renderPosEditForm(rows.find((r) => r.id === editingId)!)}
+              </div>
+            )}
+          </div>
+        }
+      >
+      <div className="space-y-4">
         <BatchSelectToolbar
           total={macros.length}
           selectedCount={macroBatch.count}
@@ -1816,7 +1938,8 @@ function ScenarioWorkstationsTab({
             })}
           </div>
         )}
-      </section>
+      </div>
+      </ListViewSection>
     </div>
   );
 }
