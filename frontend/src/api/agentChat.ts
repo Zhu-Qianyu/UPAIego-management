@@ -23,6 +23,29 @@ function isMissingTableError(message: string): boolean {
   return message.includes("does not exist") || message.includes("Could not find");
 }
 
+export async function searchAgentChatMessages(args: {
+  groupId: string;
+  query: string;
+  limit?: number;
+}): Promise<AgentChatMessageRow[]> {
+  const q = args.query.trim();
+  if (!q) return [];
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("*")
+    .eq("group_id", args.groupId)
+    .ilike("content", `%${q}%`)
+    .order("created_at", { ascending: false })
+    .limit(args.limit ?? 50);
+
+  if (error) {
+    if (isMissingTableError(error.message)) return [];
+    throw new Error(error.message);
+  }
+  return (data ?? []).map(normalizeRow);
+}
+
 export async function listAgentChatMessages(args: {
   groupId: string;
   limit?: number;

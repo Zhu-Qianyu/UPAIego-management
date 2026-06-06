@@ -4,6 +4,7 @@ import {
   appendAgentChatMessage,
   clearAgentChatHistory,
   listAgentChatMessages,
+  searchAgentChatMessages,
   type AgentChatMessageRow,
 } from "../api/agentChat";
 import {
@@ -151,6 +152,46 @@ function IconPlus({ className }: { className?: string }) {
   );
 }
 
+function IconSearch({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="11" cy="11" r="6" />
+      <path d="M16 16l4 4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function formatChatTime(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) {
+    return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleString("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function snippetAroundKeyword(text: string, keyword: string, maxLen = 72): string {
+  const lower = text.toLowerCase();
+  const kw = keyword.toLowerCase();
+  const idx = lower.indexOf(kw);
+  if (idx < 0) return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text;
+  const start = Math.max(0, idx - 20);
+  const end = Math.min(text.length, idx + keyword.length + 40);
+  const chunk = text.slice(start, end);
+  return `${start > 0 ? "…" : ""}${chunk}${end < text.length ? "…" : ""}`;
+}
+
 export default function SceneAiAssistant() {
   const enabled = sceneAiFeatureEnabled();
   const { role } = useAuth();
@@ -173,8 +214,15 @@ export default function SceneAiAssistant() {
   const [executing, setExecuting] = useState(false);
   const [err, setErr] = useState("");
   const [nextImageIndex, setNextImageIndex] = useState(0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [searchResults, setSearchResults] = useState<AgentChatMessageRow[]>([]);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const holdTranscriptRef = useRef("");
   const shownInboxIdsRef = useRef<Set<string>>(new Set());
@@ -272,6 +320,42 @@ export default function SceneAiAssistant() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    searchInputRef.current?.focus();
+  }, [searchOpen]);
+
+  useEffect(() => {
+    if (!searchOpen || !groupId) {
+      setSearchResults([]);
+      return;
+    }
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults([]);
+      return;
+    }
+    setSearchBusy(true);
+    const t = window.setTimeout(() => {
+      void searchAgentChatMessages({ groupId, query: q, limit: 40 })
+        .then(setSearchResults)
+        .catch(() => setSearchResults([]))
+        .finally(() => setSearchBusy(false));
+    }, 280);
+    return () => window.clearTimeout(t);
+  }, [searchOpen, searchQuery, groupId]);
+
+  const scrollToMessage = useCallback((messageId: string) => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchResults([]);
+    setHighlightId(messageId);
+    window.setTimeout(() => {
+      messageRefs.current.get(messageId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+    window.setTimeout(() => setHighlightId(null), 2800);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -522,16 +606,16 @@ export default function SceneAiAssistant() {
             onClick={() => setOpen(false)}
           />
           <div
-            className="fixed bottom-0 left-0 right-0 z-50 flex h-[33.333vh] min-h-[320px] max-h-[560px] flex-col overflow-hidden bg-[#f5f5f5] shadow-[0_-8px_32px_rgba(0,0,0,0.12)] animate-[slideUp_0.25s_ease-out]"
+            className="fixed bottom-0 left-0 right-0 z-50 flex h-[75vh] min-h-[420px] flex-col overflow-hidden bg-[#f5f5f5] shadow-[0_-8px_32px_rgba(0,0,0,0.12)] animate-[slideUp_0.25s_ease-out]"
             role="dialog"
             aria-label={BOT_NAME}
           >
             <header className="flex shrink-0 items-center justify-between border-b border-gray-200/80 bg-white px-4 py-2.5">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <DouXiaoMiAvatar size="md" />
-                <div>
+                <div className="min-w-0">
                   <p className="font-semibold text-gray-900">{BOT_NAME}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500 truncate">
                     群组智能体 · {ROLE_LABELS[userRole]} · {pageContext.pageTitle}
                     {pageContext.sceneTab
                       ? ` · ${pageContext.sceneTab === "tasks" ? "采集排班" : pageContext.sceneTab === "demands" ? "甲方业务" : "场景岗位"}`
@@ -539,14 +623,88 @@ export default function SceneAiAssistant() {
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="text-sm text-gray-500 hover:text-gray-800 px-2 py-1"
-              >
-                收起
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchOpen((v) => !v);
+                    if (searchOpen) {
+                      setSearchQuery("");
+                      setSearchResults([]);
+                    }
+                  }}
+                  className={`p-2 rounded-lg ${searchOpen ? "bg-rose-50 text-rose-600" : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}
+                  aria-label="搜索聊天记录"
+                  title="搜索聊天记录"
+                >
+                  <IconSearch className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="text-sm text-gray-500 hover:text-gray-800 px-2 py-1"
+                >
+                  收起
+                </button>
+              </div>
             </header>
+
+            {searchOpen && (
+              <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-2.5">
+                <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                  <IconSearch className="h-4 w-4 text-gray-400 shrink-0" />
+                  <input
+                    ref={searchInputRef}
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="搜索聊天记录关键词…"
+                    className="flex-1 min-w-0 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 outline-none"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      className="text-xs text-gray-500 hover:text-gray-800"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSearchResults([]);
+                      }}
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+                <div className="mt-2 max-h-[28vh] overflow-y-auto rounded-xl border border-gray-100 bg-white">
+                  {!searchQuery.trim() && (
+                    <p className="px-3 py-4 text-xs text-gray-400 text-center">输入关键词检索历史对话</p>
+                  )}
+                  {searchQuery.trim() && searchBusy && (
+                    <p className="px-3 py-4 text-xs text-gray-400 text-center">搜索中…</p>
+                  )}
+                  {searchQuery.trim() && !searchBusy && searchResults.length === 0 && (
+                    <p className="px-3 py-4 text-xs text-gray-400 text-center">未找到相关记录</p>
+                  )}
+                  {searchResults.map((row) => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      onClick={() => scrollToMessage(row.id)}
+                      className="w-full text-left px-3 py-2.5 border-b border-gray-50 last:border-0 hover:bg-rose-50/60"
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                        <span className="text-xs font-medium text-gray-700">
+                          {row.role === "user" ? "我" : BOT_NAME}
+                        </span>
+                        <span className="text-[10px] text-gray-400 shrink-0">{formatChatTime(row.created_at)}</span>
+                      </div>
+                      <p className="text-xs text-gray-600 line-clamp-2">
+                        {snippetAroundKeyword(row.content, searchQuery.trim())}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4">
               {historyLoading && (
@@ -561,7 +719,16 @@ export default function SceneAiAssistant() {
               )}
               {!historyLoading &&
                 messages.map((m) => (
-                <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                <div
+                  key={m.id}
+                  ref={(el) => {
+                    if (el) messageRefs.current.set(m.id, el);
+                    else messageRefs.current.delete(m.id);
+                  }}
+                  className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : "flex-row"} ${
+                    highlightId === m.id ? "rounded-2xl ring-2 ring-rose-300 ring-offset-2 bg-rose-50/40 p-1 -mx-1" : ""
+                  }`}
+                >
                   {m.role === "assistant" && <DouXiaoMiAvatar size="sm" className="mt-0.5" />}
                   <div
                     className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap ${
