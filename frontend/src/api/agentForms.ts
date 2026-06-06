@@ -291,15 +291,16 @@ export async function executeAgentFormFill(
         const count = Math.min(50, Math.max(1, Math.floor(num(d, "count", true))));
         const partyId = await resolvePartyDemandId(groupId, d);
         const deviceType = optionalStr(d, "device_type");
-        const prefix =
-          optionalStr(d, "label_prefix") || (deviceType ? defaultLabelPrefix(deviceType) : "设备");
+        const shortLabel =
+          optionalStr(d, "device_short_label") ||
+          optionalStr(d, "label_prefix") ||
+          (deviceType ? defaultLabelPrefix(deviceType) : "设备");
         const codes: string[] = [];
         for (let i = 1; i <= count; i++) {
-          const label = `${prefix}${String(i).padStart(2, "0")}`;
           const created = await createManualTrackedDevice({
             group_id: groupId,
             party_demand_id: partyId,
-            device_short_label: label,
+            device_short_label: shortLabel,
           });
           codes.push(created.public_code);
         }

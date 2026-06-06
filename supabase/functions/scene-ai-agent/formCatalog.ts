@@ -21,6 +21,7 @@ export const FORM_FILL_SKILL_PROMPT = `## 代填表单 form_fills（须先请示
 ### 示例 B — 批量离线设备（一条 form 登记多台，不要 toast）
 用户：「增加15台离线设备，甲方是智元觅蜂，类型是头戴单目设备」
 → form_fills: [{ "form":"manual_devices_batch_create", "label":"为智元觅蜂登记15台离线设备", "data":{ "client_company":"智元觅蜂", "count":15, "device_type":"头戴单目设备", "label_prefix":"头戴单目" }}]
+→ 设备简称不含序号（统一「头戴单目」）；序号仅在登记编号 SKAX0001…
 → actions: []
 
 ### 示例 C — 大场景
@@ -42,8 +43,8 @@ target_id + data（部分字段）
 data: party_demand_id 或 client_company, device_short_label
 
 ### manual_devices_batch_create（admin, device_operator）★批量
-一次登记多台离线设备（最多50）。data: client_company(必填), count(1-50), device_type?(匹配甲方), label_prefix?(简称前缀，默认从 device_type 去掉「设备」)
-登记编号按甲方前缀自动递增 ZYMF0001…
+一次登记多台离线设备（最多50）。data: client_company(必填), count(1-50), device_type?(匹配甲方), label_prefix 或 device_short_label（设备简称/类型名，**不含序号**，如「头戴单目」）
+登记编号按甲方 4 字母前缀自动递增 SKAX0001…；**禁止**在 device_short_label 里加 01、11 等序号
 
 ### group_topic_create、collection_shift_create、profile_update、bounty_publish、device_register
 （同前）

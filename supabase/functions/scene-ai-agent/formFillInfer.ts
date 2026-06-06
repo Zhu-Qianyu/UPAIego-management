@@ -183,7 +183,11 @@ export function buildFormFillConfirmMessage(fills: FormFillSpec[]): string {
   const summary = fills.map((f) => {
     if (f.form === "manual_devices_batch_create") {
       const d = f.data;
-      return `为「${d.client_company}」登记 ${d.count} 台离线设备`;
+      const typeLabel =
+        (typeof d.label_prefix === "string" && d.label_prefix.trim()) ||
+        (typeof d.device_type === "string" && d.device_type.trim()) ||
+        "设备";
+      return `为「${d.client_company}」登记 ${d.count} 台「${typeLabel}」离线设备`;
     }
     if (f.form === "party_demand_create") {
       return `甲方业务「${f.data.client_company}」，设备类型 ${f.data.device_type}`;

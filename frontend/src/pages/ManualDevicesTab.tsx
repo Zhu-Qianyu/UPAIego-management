@@ -5,6 +5,7 @@ import {
   formatManualTrackedDeviceLabel,
   groupManualTrackedDevicesByParty,
   labelExternalDeviceStatus,
+  listAllManualTrackedDevices,
   listManualTrackedDevices,
   listPartyDemands,
   updateManualTrackedDevice,
@@ -114,7 +115,7 @@ const ManualTrackedDeviceRow = memo(function ManualTrackedDeviceRow({
             type="button"
             className="text-xs text-red-600"
             onClick={() => {
-              if (!confirm("删除该离线设备登记？登记编号将作废。")) return;
+              if (!confirm("删除该设备登记？登记编号将作废。")) return;
               void (async () => {
                 try {
                   await deleteManualTrackedDevice(row.id);
@@ -125,7 +126,7 @@ const ManualTrackedDeviceRow = memo(function ManualTrackedDeviceRow({
               })();
             }}
           >
-            删除离线设备
+            删除设备
           </button>
         </div>
       </div>
@@ -133,7 +134,7 @@ const ManualTrackedDeviceRow = memo(function ManualTrackedDeviceRow({
   );
 });
 
-export default function ManualDevicesTab() {
+export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: boolean }) {
   const [groupId, setGroupId] = useState<string | null>(null);
   const [rows, setRows] = useState<ManualTrackedDevice[]>([]);
   const [demands, setDemands] = useState<PartyDemand[]>([]);
@@ -160,6 +161,12 @@ export default function ManualDevicesTab() {
   const load = useCallback(async () => {
     const gid = await fetchActiveGroupId();
     setGroupId(gid);
+    if (fleetMode) {
+      const list = await listAllManualTrackedDevices();
+      setRows(list);
+      setDemands(gid ? await listPartyDemands(gid) : []);
+      return;
+    }
     if (!gid) {
       setRows([]);
       setDemands([]);
@@ -168,7 +175,7 @@ export default function ManualDevicesTab() {
     const [list, pd] = await Promise.all([listManualTrackedDevices(gid), listPartyDemands(gid)]);
     setRows(list);
     setDemands(pd);
-  }, []);
+  }, [fleetMode]);
 
   useEffect(() => {
     let cancel = false;
@@ -233,10 +240,10 @@ export default function ManualDevicesTab() {
 
   if (boot) return <Spinner />;
 
-  if (!groupId) {
+  if (!fleetMode && !groupId) {
     return (
       <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-        请先加入已审批的工作群组后再登记离线设备。
+        请先加入已审批的工作群组后再登记设备。
       </p>
     );
   }
@@ -244,15 +251,21 @@ export default function ManualDevicesTab() {
   return (
     <div className="w-full min-w-0 space-y-6">
       <RefreshStrip active={refreshing} />
-      <p className="text-sm text-gray-600">
-        <strong>离线设备</strong>指无法接入本站心跳的设备，由<strong>设备运维员</strong>据现场或人员反馈维护。
-        每条保留<strong>运行是否正常</strong>、系统分配的<strong>登记编号与二维码</strong>，以及由<strong>甲方公司名 + 设备简称</strong>组成的设备类型（甲方请在「场景业务 → 甲方业务」中维护）。
-        同一甲方业务的登记编号共用<strong> 4 位随机大写字母</strong>前缀，后接顺序号（如 <span className="font-mono">SKAX0001</span>）。列表可按甲方分类查看。
-      </p>
+      {!fleetMode && (
+        <p className="text-sm text-gray-600">
+          由<strong>设备运维员</strong>维护运行状态与贴签；列表为<strong>当前工作群</strong>内登记。同一甲方共用 4 位字母登记编号前缀，顺序递增（如 SKAX0001）。
+        </p>
+      )}
+      {fleetMode && (
+        <p className="text-sm text-gray-600">
+          管理员可见范围内全部登记设备；新增登记仍归属<strong>当前工作群</strong>。
+        </p>
+      )}
       {err && <p className="text-sm text-red-600">{err}</p>}
 
+      {!fleetMode && (
       <form onSubmit={onAdd} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-3">
-        <p className="text-xs font-medium text-gray-800">新增离线设备</p>
+        <p className="text-xs font-medium text-gray-800">新增设备</p>
         <label className="block text-xs text-gray-500">关联甲方业务（取公司名）</label>
         <select
           value={partyId}
@@ -284,9 +297,10 @@ export default function ManualDevicesTab() {
           {adding ? "提交中…" : "生成登记编号与二维码"}
         </button>
       </form>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-gray-800">本群已登记</h2>
+        <h2 className="text-sm font-semibold text-gray-800">{fleetMode ? "全量已登记" : "本群已登记"}</h2>
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs text-gray-600">
             <span>按甲方</span>
@@ -309,10 +323,10 @@ export default function ManualDevicesTab() {
             type="button"
             onClick={() => {
               void (async () => {
-                if (!groupId) return;
+                if ((!fleetMode && !groupId) || visibleRows.length === 0) return;
                 setErr("");
                 try {
-                  await openManualDevicesPrint("离线设备贴签列表", `工作群 ${groupId}`, visibleRows);
+                  await openManualDevicesPrint("设备贴签列表", fleetMode ? "全量设备" : `工作群 ${groupId}`, visibleRows);
                 } catch (e: unknown) {
                   setErr(e instanceof Error ? e.message : "无法打开打印窗口");
                 }
@@ -329,7 +343,7 @@ export default function ManualDevicesTab() {
         </div>
       </div>
       {rows.length === 0 ? (
-        <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">暂无离线设备</p>
+        <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">暂无设备</p>
       ) : visibleGroups.length === 0 ? (
         <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">该甲方下暂无设备</p>
       ) : (

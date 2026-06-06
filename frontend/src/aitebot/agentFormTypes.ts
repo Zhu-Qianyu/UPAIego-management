@@ -65,7 +65,9 @@ export type ManualDevicesBatchFormData = {
   client_company: string;
   count: number;
   device_type?: string | null;
+  /** 批量登记共用设备简称（不含序号），如「头戴单目」 */
   label_prefix?: string | null;
+  device_short_label?: string | null;
   party_demand_id?: string | null;
 };
 

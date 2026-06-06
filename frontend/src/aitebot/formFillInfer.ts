@@ -171,7 +171,12 @@ export function buildFormFillConfirmMessage(fills: AgentPendingFormFill[]): stri
   const summary = fills.map((f) => {
     if (f.form === "manual_devices_batch_create") {
       const d = f.data;
-      return `为「${d.client_company}」登记 ${d.count} 台离线设备（简称前缀 ${d.label_prefix ?? "设备"}）`;
+      const typeLabel =
+        (typeof d.device_short_label === "string" && d.device_short_label.trim()) ||
+        (typeof d.label_prefix === "string" && d.label_prefix.trim()) ||
+        (typeof d.device_type === "string" && d.device_type.trim()) ||
+        "设备";
+      return `为「${d.client_company}」登记 ${d.count} 台「${typeLabel}」离线设备（登记编号自动递增）`;
     }
     if (f.form === "scene_macro_create") {
       const d = f.data;

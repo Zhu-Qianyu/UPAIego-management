@@ -74,7 +74,7 @@ const QUICK_TOPICS_BY_ROLE: Record<UserRole, { icon: string; label: string; prom
   ],
   device_operator: [
     { icon: "🔧", label: "运维工作台", prompt: "带我打开运维工作台，说明悬赏借还设备流程。" },
-    { icon: "📱", label: "登记设备", prompt: "如何登记离线设备？需要关联什么？" },
+    { icon: "📱", label: "登记设备", prompt: "如何登记设备？需要关联什么甲方业务？" },
     { icon: "📋", label: "设备状态", prompt: "设备故障或离线时我应该怎么处理？" },
   ],
   collection_executor: [

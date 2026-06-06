@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { searchDevices, type Device, type DeviceListScope } from "../api/client";
 import {
   externalDeviceStatusAttentionRank,
   formatManualTrackedDeviceLabel,
@@ -10,88 +9,39 @@ import {
 } from "../api/operations";
 import { fetchActiveGroupId } from "../api/groups";
 import { useAuth } from "../auth/AuthContext";
-import StatusBadge from "../components/StatusBadge";
 import Spinner from "../components/Spinner";
-import DeviceOnlineRefreshButton from "../components/DeviceOnlineRefreshButton";
-import {
-  getEffectiveDeviceStatus,
-  onlineDeviceAttentionRank,
-  resetDeviceConnectivityHysteresis,
-} from "../utils/deviceStatus";
-import { bumpNowMs, useNowMs } from "../hooks/useNowMs";
 
 export default function Search({ embedded }: { embedded?: boolean }) {
   const { profile } = useAuth();
-  const searchScope: DeviceListScope = profile?.role === "admin" ? "fleet" : "own";
+  const searchScope = profile?.role === "admin" ? "fleet" : "own";
 
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Device[]>([]);
-  const [manualResults, setManualResults] = useState<ManualTrackedDevice[]>([]);
-  const [total, setTotal] = useState<number | null>(null);
+  const [results, setResults] = useState<ManualTrackedDevice[]>([]);
+  const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
-  const nowMs = useNowMs();
 
   const sortedResults = useMemo(
     () =>
-      [...results].sort(
-        (a, b) => onlineDeviceAttentionRank(b, nowMs) - onlineDeviceAttentionRank(a, nowMs)
-      ),
-    [results, nowMs]
-  );
-
-  const sortedManualResults = useMemo(
-    () =>
-      [...manualResults].sort((a, b) => {
+      [...results].sort((a, b) => {
         const ra = externalDeviceStatusAttentionRank(a.external_status);
         const rb = externalDeviceStatusAttentionRank(b.external_status);
         if (rb !== ra) return rb - ra;
         return b.created_at.localeCompare(a.created_at);
       }),
-    [manualResults]
+    [results]
   );
 
   async function handleSearch(e?: React.FormEvent) {
     e?.preventDefault();
     if (!query.trim()) return;
     setLoading(true);
+    setSearched(true);
     try {
-      const q = query.trim();
       const groupId = await fetchActiveGroupId();
-      const [res, manuals] = await Promise.all([
-        searchDevices(q, { scope: searchScope }),
-        searchManualTrackedDevices(q, { scope: searchScope, groupId }),
-      ]);
-      setResults(res.devices);
-      setTotal(res.total);
-      setManualResults(manuals);
+      const rows = await searchManualTrackedDevices(query.trim(), { scope: searchScope, groupId });
+      setResults(rows);
     } catch {
       setResults([]);
-      setManualResults([]);
-      setTotal(0);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function refreshSearchStatuses() {
-    if (!query.trim()) return;
-    resetDeviceConnectivityHysteresis();
-    bumpNowMs();
-    setLoading(true);
-    try {
-      const q = query.trim();
-      const groupId = await fetchActiveGroupId();
-      const [res, manuals] = await Promise.all([
-        searchDevices(q, { scope: searchScope }),
-        searchManualTrackedDevices(q, { scope: searchScope, groupId }),
-      ]);
-      setResults(res.devices);
-      setTotal(res.total);
-      setManualResults(manuals);
-    } catch {
-      setResults([]);
-      setManualResults([]);
-      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -106,7 +56,7 @@ export default function Search({ embedded }: { embedded?: boolean }) {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="设备 ID、名称、序列号、备注，或离线设备登记编号 / UUID / 设备简称…"
+          placeholder="登记编号、设备简称、甲方名称或内部 ID…"
           className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
         <button
@@ -120,59 +70,49 @@ export default function Search({ embedded }: { embedded?: boolean }) {
 
       {loading && <Spinner />}
 
-      {!loading && total !== null && (
+      {!loading && searched && (
         <>
-          <p className="text-sm text-gray-500 mb-4">
-            联网设备 {total} 条；离线设备 {manualResults.length} 条
-          </p>
+          <p className="text-sm text-gray-500 mb-4">共 {sortedResults.length} 条</p>
 
-          {results.length === 0 && manualResults.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              没有匹配的设备或离线设备。
-            </div>
+          {sortedResults.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">没有匹配的设备。</div>
           ) : (
-            <>
-            {results.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600 w-24">来源</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">设备名称</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">设备 ID</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">序列号</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                      <div className="flex items-center gap-2">
-                        <DeviceOnlineRefreshButton
-                          disabled={loading}
-                          onRefresh={refreshSearchStatuses}
-                        />
-                        <span>状态</span>
-                      </div>
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">校准</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-600">备注</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">设备类型</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">登记编号</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">内部 ID</th>
+                    <th className="px-4 py-3 text-left font-semibold text-gray-600">状态</th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {sortedResults.map((d) => (
-                    <tr key={d.device_id} className="hover:bg-indigo-50/40 transition-colors">
-                      <td className="px-4 py-3 text-xs text-gray-500">联网</td>
-                      <td className="px-4 py-3 font-medium text-indigo-700">{d.readable_name}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-500">{d.device_id}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-500">{d.serial_id ?? "-"}</td>
-                      <td className="px-4 py-3"><StatusBadge value={getEffectiveDeviceStatus(d, nowMs)} /></td>
-                      <td className="px-4 py-3"><StatusBadge value={d.calibration_status} /></td>
-                      <td className="px-4 py-3 text-gray-500 text-xs max-w-[200px] truncate">
-                        {d.notes ?? "-"}
+                <tbody className="divide-y divide-slate-100">
+                  {sortedResults.map((m) => (
+                    <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-4 py-3 font-medium text-slate-900">{formatManualTrackedDeviceLabel(m)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-indigo-700">{m.public_code}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-500 break-all max-w-[200px]">{m.id}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <span
+                          className={
+                            m.external_status === "normal"
+                              ? "text-emerald-700"
+                              : m.external_status === "fault"
+                                ? "text-amber-800"
+                                : "text-violet-800"
+                          }
+                        >
+                          {labelExternalDeviceStatus(m.external_status)}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <Link
-                          to={`/devices/${encodeURIComponent(d.device_id)}`}
+                          to={`/devices/manual/${encodeURIComponent(m.public_code)}`}
                           className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
                         >
-                          查看
+                          打开
                         </Link>
                       </td>
                     </tr>
@@ -180,55 +120,6 @@ export default function Search({ embedded }: { embedded?: boolean }) {
                 </tbody>
               </table>
             </div>
-            )}
-
-            {manualResults.length > 0 && (
-              <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/80 shadow-sm">
-                <p className="text-xs font-semibold text-slate-700 px-4 py-2 border-b border-slate-200">离线设备</p>
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                  <thead className="bg-slate-100/80">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-600">设备类型</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-600">登记编号</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-600">内部 ID</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-600">状态</th>
-                      <th className="px-4 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {sortedManualResults.map((m) => (
-                      <tr key={m.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-4 py-3 font-medium text-slate-900">{formatManualTrackedDeviceLabel(m)}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-indigo-700">{m.public_code}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-gray-500 break-all max-w-[200px]">{m.id}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <span
-                            className={
-                              m.external_status === "normal"
-                                ? "text-emerald-700"
-                                : m.external_status === "fault"
-                                  ? "text-amber-800"
-                                  : "text-violet-800"
-                            }
-                          >
-                            {labelExternalDeviceStatus(m.external_status)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Link
-                            to={`/devices/manual/${encodeURIComponent(m.public_code)}`}
-                            className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
-                          >
-                            打开
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            </>
           )}
         </>
       )}

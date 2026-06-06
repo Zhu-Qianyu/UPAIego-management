@@ -7,7 +7,7 @@ import {
 /** 离线设备贴签二维码：纯文本，扫码后直接显示登记信息（非网址）。 */
 export function buildManualTrackedDeviceQrText(d: ManualTrackedDevice): string {
   return [
-    "UPAIEGO离线设备",
+    "UPAIEGO设备",
     `登记编号：${d.public_code}`,
     `设备：${formatManualTrackedDeviceLabel(d)}`,
     `内部ID：${d.id}`,

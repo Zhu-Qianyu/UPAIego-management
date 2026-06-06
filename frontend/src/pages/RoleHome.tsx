@@ -1,6 +1,5 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import Dashboard from "./Dashboard";
 
 export default function RoleHome() {
   const { profile, loading } = useAuth();
@@ -13,5 +12,5 @@ export default function RoleHome() {
   if (profile.role === "scene_operator") return <Navigate to="/scene" replace />;
   if (profile.role === "collection_executor") return <Navigate to="/map" replace />;
 
-  return <Dashboard />;
+  return <Navigate to="/devices/manage" replace />;
 }

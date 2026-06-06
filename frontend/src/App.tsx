@@ -17,7 +17,6 @@ import { accountDisplayLabel } from "./utils/phoneAuth";
 import SceneAiAssistant from "./components/SceneAiAssistant";
 import { AitebotProvider } from "./aitebot/AitebotContext";
 
-const DeviceDetail = lazy(() => import("./pages/DeviceDetail"));
 const DeviceManagePage = lazy(() => import("./pages/DeviceManagePage"));
 const ManualDeviceByCodePage = lazy(() => import("./pages/ManualDeviceByCodePage"));
 const RoleHome = lazy(() => import("./pages/RoleHome"));
@@ -447,7 +446,7 @@ export default function App() {
             path="/devices/:id"
             element={
               <RoleRoute allow={["admin", "device_operator"]}>
-                <DeviceDetail />
+                <Navigate to="/devices/manage" replace />
               </RoleRoute>
             }
           />

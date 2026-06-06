@@ -41,6 +41,11 @@ export function defaultLabelPrefix(deviceType: string): string {
   return t || "设备";
 }
 
+/** 批量离线设备共用设备简称（不含登记编号序号） */
+export function batchDeviceShortLabel(deviceType: string): string {
+  return defaultLabelPrefix(deviceType);
+}
+
 export function partyDemandDefaults(client_company: string, device_type?: string | null) {
   return {
     client_company,
