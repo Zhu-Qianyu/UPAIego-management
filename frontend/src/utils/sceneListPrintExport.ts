@@ -74,17 +74,22 @@ export async function buildPartyDemandsPrintHtml(docTitle: string, subtitle: str
   const imgStyle = "max-width:140px;max-height:100px;object-fit:contain;display:block;margin:0 auto;border:1px solid #ccc";
   const tbody =
     rows.length === 0
-      ? `<tr><td colspan="9" style="text-align:center">暂无数据</td></tr>`
+      ? `<tr><td colspan="10" style="text-align:center">暂无数据</td></tr>`
       : (
           await Promise.all(
             rows.map(async (r, i) => {
               const company = (r.client_company || r.title || "").trim();
               const snap = await snapshotImgCell(r.device_snapshot_path, imgStyle);
+              const price =
+                r.client_hourly_rate != null && r.client_hourly_rate > 0
+                  ? `${Number(r.client_hourly_rate).toFixed(2)}`
+                  : "—";
               return `<tr>
         <td style="text-align:center">${i + 1}</td>
         <td style="text-align:center;vertical-align:middle;width:150px">${snap}</td>
         <td>${escapeHtml(company)}</td>
         <td>${escapeHtml(r.device_type?.trim() || "—")}</td>
+        <td style="text-align:right">${escapeHtml(price)}</td>
         <td>${escapeHtml(labelSceneCategories(r.scene_categories))}</td>
         <td style="text-align:right">${r.max_hours_per_scene}</td>
         <td style="text-align:right">${r.total_hours_required != null ? r.total_hours_required : "无限"}</td>
@@ -107,6 +112,7 @@ export async function buildPartyDemandsPrintHtml(docTitle: string, subtitle: str
         <th style="width:150px">设备快照</th>
         <th>甲方公司</th>
         <th>设备类型</th>
+        <th style="width:72px">甲方价格(元/h)</th>
         <th>场景大类</th>
         <th style="width:52px">每场景上限(h)</th>
         <th style="width:52px">需求总计(h)</th>
@@ -119,19 +125,29 @@ export async function buildPartyDemandsPrintHtml(docTitle: string, subtitle: str
 </div>`;
 }
 
-export async function buildScenarioPositionsPrintHtml(docTitle: string, subtitle: string, rows: ScenarioPosition[]): Promise<string> {
+export async function buildScenarioPositionsPrintHtml(
+  docTitle: string,
+  subtitle: string,
+  rows: ScenarioPosition[],
+  macroById?: Map<string, { title: string }>
+): Promise<string> {
   const when = fmtZhDateTime(new Date().toISOString());
   const imgStyle = "max-width:140px;max-height:100px;object-fit:contain;display:block;margin:0 auto;border:1px solid #ccc";
   const tbody =
     rows.length === 0
-      ? `<tr><td colspan="10" style="text-align:center">暂无数据</td></tr>`
+      ? `<tr><td colspan="11" style="text-align:center">暂无数据</td></tr>`
       : (
           await Promise.all(
             rows.map(async (r, i) => {
               const snap = await snapshotImgCell(r.snapshot_path, imgStyle);
+              const macroTitle =
+                r.macro_scene_id && macroById?.get(r.macro_scene_id)?.title
+                  ? macroById.get(r.macro_scene_id)!.title
+                  : "—";
               return `<tr>
         <td style="text-align:center">${i + 1}</td>
         <td style="text-align:center;vertical-align:middle;width:150px">${snap}</td>
+        <td>${escapeHtml(macroTitle)}</td>
         <td>${escapeHtml(r.title.trim() || "—")}</td>
         <td>${escapeHtml(r.process_description?.trim() || "—")}</td>
         <td>${escapeHtml(labelSceneCategories(r.scene_categories))}</td>
@@ -155,7 +171,8 @@ export async function buildScenarioPositionsPrintHtml(docTitle: string, subtitle
       <tr>
         <th style="width:36px">序号</th>
         <th style="width:150px">现场快照</th>
-        <th>工序 / 岗位</th>
+        <th>大场景</th>
+        <th>工序 / 小岗位</th>
         <th>具体描述</th>
         <th>场景大类</th>
         <th>省</th>

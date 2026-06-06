@@ -82,7 +82,7 @@ function navForRole(role: UserRole): { to: string; label: string }[] {
       { to: "/map", label: "数采地图" },
       { to: "/bounties", label: "悬赏令" },
       { to: "/wallet", label: "我的钱包" },
-      { to: "/scene", label: "场景采集" },
+      { to: "/scene", label: "采集排班" },
       { to: "/group", label: "群组" },
     ],
   };

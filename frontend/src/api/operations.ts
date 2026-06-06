@@ -3,6 +3,7 @@ import type { SceneCategoryKey } from "../utils/sceneCategories";
 
 const PD = "party_demands";
 const SP = "scenario_positions";
+const SMS = "scene_macro_sites";
 const STA = "scene_task_assignments";
 export const SNAPSHOT_BUCKET = "scenario-workstation-snapshots";
 
@@ -25,9 +26,23 @@ export interface PartyDemand {
   created_at: string;
 }
 
+export interface SceneMacroSite {
+  id: string;
+  group_id: string;
+  title: string;
+  description: string | null;
+  address_province: string;
+  address_city: string;
+  address_district: string;
+  address_detail: string | null;
+  created_by: string;
+  created_at: string;
+}
+
 export interface ScenarioPosition {
   id: string;
   group_id: string;
+  macro_scene_id: string | null;
   party_demand_id: string | null;
   title: string;
   process_description: string | null;
@@ -91,9 +106,7 @@ export async function createPartyDemand(row: {
       scene_categories: row.scene_categories,
       requirement_summary: row.requirement_summary?.trim() || null,
       created_by: u.id,
-      ...(row.client_hourly_rate != null && row.client_hourly_rate > 0
-        ? { client_hourly_rate: row.client_hourly_rate }
-        : {}),
+      client_hourly_rate: row.client_hourly_rate ?? null,
     })
     .select()
     .single();
@@ -140,6 +153,107 @@ export async function updatePartyDemand(id: string, patch: PartyDemandUpdatePatc
 export async function deletePartyDemand(id: string): Promise<void> {
   const { error } = await supabase.from(PD).delete().eq("id", id);
   if (error) throw new Error(error.message);
+}
+
+export async function deletePartyDemands(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const { error } = await supabase.from(PD).delete().in("id", ids);
+  if (error) throw new Error(error.message);
+}
+
+export async function listSceneMacroSites(groupId: string): Promise<SceneMacroSite[]> {
+  const { data, error } = await supabase
+    .from(SMS)
+    .select("*")
+    .eq("group_id", groupId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as SceneMacroSite[];
+}
+
+export async function createSceneMacroSite(row: {
+  group_id: string;
+  title: string;
+  description?: string;
+  address_province: string;
+  address_city: string;
+  address_district: string;
+  address_detail?: string;
+}): Promise<SceneMacroSite> {
+  const u = (await supabase.auth.getUser()).data.user;
+  if (!u) throw new Error("未登录");
+  const { data, error } = await supabase
+    .from(SMS)
+    .insert({
+      group_id: row.group_id,
+      title: row.title.trim(),
+      description: row.description?.trim() || null,
+      address_province: row.address_province.trim(),
+      address_city: row.address_city.trim(),
+      address_district: row.address_district.trim(),
+      address_detail: row.address_detail?.trim() || null,
+      created_by: u.id,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as SceneMacroSite;
+}
+
+export async function updateSceneMacroSite(
+  id: string,
+  patch: Partial<{
+    title: string;
+    description: string | null;
+    address_province: string;
+    address_city: string;
+    address_district: string;
+    address_detail: string | null;
+  }>
+): Promise<void> {
+  const payload: Record<string, unknown> = {};
+  if (patch.title !== undefined) payload.title = patch.title.trim();
+  if (patch.description !== undefined) {
+    payload.description = patch.description === null ? null : patch.description.trim() || null;
+  }
+  if (patch.address_province !== undefined) payload.address_province = patch.address_province.trim();
+  if (patch.address_city !== undefined) payload.address_city = patch.address_city.trim();
+  if (patch.address_district !== undefined) payload.address_district = patch.address_district.trim();
+  if (patch.address_detail !== undefined) {
+    payload.address_detail = patch.address_detail === null ? null : patch.address_detail.trim() || null;
+  }
+  if (Object.keys(payload).length === 0) return;
+  const { error } = await supabase.from(SMS).update(payload).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteSceneMacroSite(id: string): Promise<void> {
+  const { count, error: cErr } = await supabase
+    .from(SP)
+    .select("id", { count: "exact", head: true })
+    .eq("macro_scene_id", id);
+  if (cErr) throw new Error(cErr.message);
+  if ((count ?? 0) > 0) {
+    throw new Error("该大场景下仍有小岗位，请先删除或迁移小岗位");
+  }
+  const { error } = await supabase.from(SMS).delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteSceneMacroSites(ids: string[]): Promise<void> {
+  for (const id of ids) {
+    await deleteSceneMacroSite(id);
+  }
+}
+
+export function formatScenarioPositionLabel(
+  pos: Pick<ScenarioPosition, "title" | "macro_scene_id">,
+  macros: Map<string, SceneMacroSite> | SceneMacroSite[]
+): string {
+  const macroId = pos.macro_scene_id;
+  if (!macroId) return pos.title;
+  const macro = macros instanceof Map ? macros.get(macroId) : macros.find((m) => m.id === macroId);
+  return macro ? `${macro.title} · ${pos.title}` : pos.title;
 }
 
 export async function listScenarioPositions(groupId: string): Promise<ScenarioPosition[]> {
@@ -191,6 +305,7 @@ export async function getSnapshotPublicUrl(path: string, expiresIn = 3600): Prom
 
 export async function createScenarioPosition(row: {
   group_id: string;
+  macro_scene_id: string;
   title: string;
   process_description?: string;
   party_demand_id?: string | null;
@@ -207,6 +322,7 @@ export async function createScenarioPosition(row: {
     .from(SP)
     .insert({
       group_id: row.group_id,
+      macro_scene_id: row.macro_scene_id,
       title: row.title.trim(),
       process_description: row.process_description?.trim() || null,
       party_demand_id: row.party_demand_id ?? null,
@@ -229,6 +345,7 @@ export async function updateScenarioPosition(
   id: string,
   patch: {
     title?: string;
+    macro_scene_id?: string;
     process_description?: string | null;
     scene_categories?: SceneCategoryKey[];
     address_province?: string;
@@ -240,6 +357,7 @@ export async function updateScenarioPosition(
 ): Promise<void> {
   const payload: Record<string, unknown> = {};
   if (patch.title !== undefined) payload.title = patch.title.trim();
+  if (patch.macro_scene_id !== undefined) payload.macro_scene_id = patch.macro_scene_id;
   if (patch.process_description !== undefined) {
     payload.process_description = patch.process_description === null ? null : patch.process_description.trim() || null;
   }
@@ -261,6 +379,12 @@ export async function updateScenarioPosition(
 
 export async function deleteScenarioPosition(id: string): Promise<void> {
   const { error } = await supabase.from(SP).delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteScenarioPositions(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const { error } = await supabase.from(SP).delete().in("id", ids);
   if (error) throw new Error(error.message);
 }
 

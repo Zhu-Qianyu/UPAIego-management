@@ -24,6 +24,7 @@ export interface PartyDemandDashboardRow {
   income_month: number | null;
   income_year: number | null;
   income_total: number | null;
+  profit_total: number | null;
 }
 
 export interface AdminFinanceSummary {
@@ -35,6 +36,10 @@ export interface AdminFinanceSummary {
   income_month: number | null;
   income_year: number | null;
   income_total: number | null;
+  profit_week: number | null;
+  profit_month: number | null;
+  profit_year: number | null;
+  profit_total: number | null;
   income_configured: boolean;
 }
 
@@ -50,13 +55,17 @@ interface HourLogRow {
   device_id: string;
   registered_hours: number;
   created_at: string;
+  bounty_claim_id: string | null;
 }
 
 interface SettlementRow {
   amount: number;
   settled_at: string;
   status: string;
+  bounty_claim_id: string;
 }
+
+type CostBucket = { week: number; month: number; year: number; total: number };
 
 function num(v: unknown): number {
   const n = Number(v);
@@ -106,6 +115,18 @@ function sumIncome(rows: PartyDemandDashboardRow[], key: "week" | "month" | "yea
   return hasAny ? Math.round(sum * 100) / 100 : null;
 }
 
+function netProfit(income: number | null, cost: number): number | null {
+  if (income == null) return null;
+  return Math.round((income - cost) * 100) / 100;
+}
+
+function bumpCost(bucket: CostBucket, amount: number, settledAt: string, periods: ReturnType<typeof shanghaiPeriodStarts>) {
+  bucket.total += amount;
+  if (isOnOrAfter(settledAt, periods.year)) bucket.year += amount;
+  if (isOnOrAfter(settledAt, periods.month)) bucket.month += amount;
+  if (isOnOrAfter(settledAt, periods.week)) bucket.week += amount;
+}
+
 /** Aggregate admin dashboard metrics for the given work group (client-side). */
 export async function fetchAdminDashboardStats(groupId: string): Promise<AdminDashboardStats> {
   const periods = shanghaiPeriodStarts();
@@ -116,11 +137,11 @@ export async function fetchAdminDashboardStats(groupId: string): Promise<AdminDa
     listDevices({ scope: "fleet", limit: 5000, offset: 0 }),
     supabase
       .from("device_data_hour_logs")
-      .select("device_id, registered_hours, created_at")
+      .select("device_id, registered_hours, created_at, bounty_claim_id")
       .eq("group_id", groupId),
     supabase
       .from("executor_settlement_lines")
-      .select("amount, settled_at, status")
+      .select("amount, settled_at, status, bounty_claim_id")
       .eq("group_id", groupId)
       .eq("status", "settled"),
     listAssignmentsForWorkGroup(groupId),
@@ -174,6 +195,26 @@ export async function fetchAdminDashboardStats(groupId: string): Promise<AdminDa
     bump(pdId, h, log.created_at);
   }
 
+  const claimToParty = new Map<string, string>();
+  for (const log of hourLogs) {
+    if (!log.bounty_claim_id) continue;
+    const pdId = resolvePartyDemandIdForDevice(log.device_id, onlineById, manualByCode);
+    if (pdId) claimToParty.set(log.bounty_claim_id, pdId);
+  }
+
+  const costByParty = new Map<string, CostBucket>();
+  const groupCost: CostBucket = { week: 0, month: 0, year: 0, total: 0 };
+  for (const line of settlements) {
+    const amt = num(line.amount);
+    if (amt <= 0) continue;
+    bumpCost(groupCost, amt, line.settled_at, periods);
+    const pdId = claimToParty.get(line.bounty_claim_id);
+    if (!pdId) continue;
+    const cur = costByParty.get(pdId) ?? { week: 0, month: 0, year: 0, total: 0 };
+    bumpCost(cur, amt, line.settled_at, periods);
+    costByParty.set(pdId, cur);
+  }
+
   const sceneHoursByParty = new Map<string, number>();
   for (const a of assignments) {
     const h = num(a.executed_hours);
@@ -192,6 +233,8 @@ export async function fetchAdminDashboardStats(groupId: string): Promise<AdminDa
     const sceneTotal = sceneHoursByParty.get(pd.id) ?? 0;
     const rate = rateByParty.get(pd.id) ?? null;
     const totalHours = hours.total + sceneTotal;
+    const incomeTotal = incomeFromHours(totalHours, rate);
+    const partyCost = costByParty.get(pd.id)?.total ?? 0;
     return {
       id: pd.id,
       label: partyLabel(pd),
@@ -207,37 +250,32 @@ export async function fetchAdminDashboardStats(groupId: string): Promise<AdminDa
       income_week: incomeFromHours(hours.week, rate),
       income_month: incomeFromHours(hours.month, rate),
       income_year: incomeFromHours(hours.year, rate),
-      income_total: incomeFromHours(totalHours, rate),
+      income_total: incomeTotal,
+      profit_total: netProfit(incomeTotal, partyCost),
     };
   });
 
   partyRows.sort((a, b) => b.hours_year - a.hours_year || a.label.localeCompare(b.label, "zh-CN"));
 
-  let costWeek = 0;
-  let costMonth = 0;
-  let costYear = 0;
-  let costTotal = 0;
-  for (const line of settlements) {
-    const amt = num(line.amount);
-    if (amt <= 0) continue;
-    costTotal += amt;
-    const at = line.settled_at;
-    if (isOnOrAfter(at, periods.year)) costYear += amt;
-    if (isOnOrAfter(at, periods.month)) costMonth += amt;
-    if (isOnOrAfter(at, periods.week)) costWeek += amt;
-  }
-
   const incomeConfigured = demands.some((pd) => num(pd.client_hourly_rate) > 0);
+  const incomeWeek = sumIncome(partyRows, "week");
+  const incomeMonth = sumIncome(partyRows, "month");
+  const incomeYear = sumIncome(partyRows, "year");
+  const incomeTotal = sumIncome(partyRows, "total");
 
   const finance: AdminFinanceSummary = {
-    cost_week: Math.round(costWeek * 100) / 100,
-    cost_month: Math.round(costMonth * 100) / 100,
-    cost_year: Math.round(costYear * 100) / 100,
-    cost_total: Math.round(costTotal * 100) / 100,
-    income_week: sumIncome(partyRows, "week"),
-    income_month: sumIncome(partyRows, "month"),
-    income_year: sumIncome(partyRows, "year"),
-    income_total: sumIncome(partyRows, "total"),
+    cost_week: Math.round(groupCost.week * 100) / 100,
+    cost_month: Math.round(groupCost.month * 100) / 100,
+    cost_year: Math.round(groupCost.year * 100) / 100,
+    cost_total: Math.round(groupCost.total * 100) / 100,
+    income_week: incomeWeek,
+    income_month: incomeMonth,
+    income_year: incomeYear,
+    income_total: incomeTotal,
+    profit_week: netProfit(incomeWeek, groupCost.week),
+    profit_month: netProfit(incomeMonth, groupCost.month),
+    profit_year: netProfit(incomeYear, groupCost.year),
+    profit_total: netProfit(incomeTotal, groupCost.total),
     income_configured: incomeConfigured,
   };
 

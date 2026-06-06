@@ -16,9 +16,15 @@ function formatHours(h: number): string {
   return h % 1 === 0 ? String(h) : h.toFixed(2);
 }
 
-function formatIncome(amount: number | null): string {
+function formatEstimate(amount: number | null): string {
   if (amount == null) return "—";
   return formatCny(amount);
+}
+
+function profitClass(amount: number | null): string {
+  if (amount == null) return "text-emerald-700";
+  if (amount < 0) return "text-rose-700";
+  return "text-emerald-700";
 }
 
 function StatCard({
@@ -52,17 +58,19 @@ function StatCard({
 function FinancePeriodRow({
   label,
   cost,
-  income,
+  profit,
 }: {
   label: string;
   cost: number;
-  income: number | null;
+  profit: number | null;
 }) {
   return (
     <tr className="border-t border-slate-100">
       <td className="py-3 pr-4 text-sm font-medium text-slate-700">{label}</td>
       <td className="py-3 px-4 text-sm text-right tabular-nums text-rose-700">{formatCny(cost)}</td>
-      <td className="py-3 pl-4 text-sm text-right tabular-nums text-emerald-700">{formatIncome(income)}</td>
+      <td className={`py-3 pl-4 text-sm text-right tabular-nums ${profitClass(profit)}`}>
+        {formatEstimate(profit)}
+      </td>
     </tr>
   );
 }
@@ -173,12 +181,12 @@ export default function AdminConsole() {
               tone="cost"
             />
             <StatCard
-              label="本年收入估算"
-              value={formatIncome(finance?.income_year ?? null)}
+              label="本年净利润估算"
+              value={formatEstimate(finance?.profit_year ?? null)}
               hint={
                 finance?.income_configured
-                  ? "按各业务甲方单价 × 已采工时估算"
-                  : "请在场景业务 → 甲方业务中配置客户单价"
+                  ? "甲方价格 × 已采工时 − 执行员结算成本"
+                  : "请在场景业务 → 甲方业务中填写甲方价格"
               }
               tone="income"
             />
@@ -188,7 +196,7 @@ export default function AdminConsole() {
             <div className="px-5 py-4 border-b border-slate-100">
               <h2 className="text-lg font-semibold text-slate-900">收支概览</h2>
               <p className="text-xs text-slate-500 mt-1">
-                成本为执行员结算支出；收入为甲方单价 × 数采登记工时（场景累计工时计入总量，暂不按周月拆分）。
+                成本为执行员结算支出；净利润估算 = 甲方价格 × 数采登记工时 − 成本（场景累计工时计入收入侧，暂不按周月拆分）。
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -197,14 +205,14 @@ export default function AdminConsole() {
                   <tr className="bg-slate-50/80 text-xs uppercase tracking-wider text-slate-500">
                     <th className="py-3 pr-4 pl-5 font-semibold">周期</th>
                     <th className="py-3 px-4 font-semibold text-right">成本（执行员）</th>
-                    <th className="py-3 pl-4 pr-5 font-semibold text-right">收入估算（甲方）</th>
+                    <th className="py-3 pl-4 pr-5 font-semibold text-right">净利润估算</th>
                   </tr>
                 </thead>
                 <tbody className="px-5">
-                  <FinancePeriodRow label="本周" cost={finance?.cost_week ?? 0} income={finance?.income_week ?? null} />
-                  <FinancePeriodRow label="本月" cost={finance?.cost_month ?? 0} income={finance?.income_month ?? null} />
-                  <FinancePeriodRow label="本年" cost={finance?.cost_year ?? 0} income={finance?.income_year ?? null} />
-                  <FinancePeriodRow label="累计" cost={finance?.cost_total ?? 0} income={finance?.income_total ?? null} />
+                  <FinancePeriodRow label="本周" cost={finance?.cost_week ?? 0} profit={finance?.profit_week ?? null} />
+                  <FinancePeriodRow label="本月" cost={finance?.cost_month ?? 0} profit={finance?.profit_month ?? null} />
+                  <FinancePeriodRow label="本年" cost={finance?.cost_year ?? 0} profit={finance?.profit_year ?? null} />
+                  <FinancePeriodRow label="累计" cost={finance?.cost_total ?? 0} profit={finance?.profit_total ?? null} />
                 </tbody>
               </table>
             </div>
@@ -239,8 +247,8 @@ export default function AdminConsole() {
                       <th className="py-3 px-2 font-semibold text-right">本年 h</th>
                       <th className="py-3 px-2 font-semibold text-right">场景累计 h</th>
                       <th className="py-3 px-2 font-semibold text-right">累计 h</th>
-                      <th className="py-3 px-2 font-semibold text-right">甲方单价</th>
-                      <th className="py-3 pl-2 pr-5 font-semibold text-right">累计收入估</th>
+                      <th className="py-3 px-2 font-semibold text-right">甲方价格</th>
+                      <th className="py-3 pl-2 pr-5 font-semibold text-right">累计净利润估算</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -260,8 +268,8 @@ export default function AdminConsole() {
                             ? `${formatCny(row.client_hourly_rate)}/h`
                             : "—"}
                         </td>
-                        <td className="py-3 pl-2 pr-5 text-right tabular-nums text-emerald-700">
-                          {formatIncome(row.income_total)}
+                        <td className={`py-3 pl-2 pr-5 text-right tabular-nums ${profitClass(row.profit_total)}`}>
+                          {formatEstimate(row.profit_total)}
                         </td>
                       </tr>
                     ))}
