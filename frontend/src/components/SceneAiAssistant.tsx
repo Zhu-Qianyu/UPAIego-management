@@ -129,7 +129,7 @@ function quoteAuthorLabel(role: "user" | "assistant"): string {
 
 function formatMessageForAi(m: UiMessage): string {
   if (!m.quote) return m.text;
-  return `[引用 ${quoteAuthorLabel(m.quote.role)}: 「${m.quote.text}」]\n${m.text}`;
+  return `[回复 ${quoteAuthorLabel(m.quote.role)}: 「${m.quote.text}」]\n${m.text}`;
 }
 
 function MessageQuoteBlock({
@@ -476,7 +476,7 @@ export default function SceneAiAssistant() {
     recognitionRef.current = rec;
     rec.lang = voiceLang;
     rec.interimResults = true;
-    rec.continuous = true;
+    rec.continuous = false;
 
     rec.onstart = () => {
       setListening(true);
@@ -486,6 +486,7 @@ export default function SceneAiAssistant() {
     rec.onend = () => {
       setListening(false);
       setHolding(false);
+      recognitionRef.current = null;
       const t = holdTranscriptRef.current.trim();
       if (t) setInput((prev) => (prev ? `${prev}${t}` : t));
       holdTranscriptRef.current = "";
@@ -495,13 +496,11 @@ export default function SceneAiAssistant() {
       setErr("语音识别失败，请检查麦克风权限");
     };
     rec.onresult = (event: SpeechRecognitionEvent) => {
-      let chunk = "";
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        chunk += event.results[i][0].transcript;
-      }
-      holdTranscriptRef.current += chunk;
-      if (event.results[event.results.length - 1]?.isFinal) {
-        setInput((prev) => (prev ? `${prev}${chunk}` : chunk));
+        const result = event.results[i];
+        if (result.isFinal) {
+          holdTranscriptRef.current += result[0].transcript;
+        }
       }
     };
 
@@ -840,7 +839,7 @@ export default function SceneAiAssistant() {
                         onClick={() => startQuote(m)}
                         className="mt-1 px-1 text-[11px] text-gray-400 hover:text-rose-600"
                       >
-                        引用
+                        回复
                       </button>
                     )}
                   </div>
@@ -892,14 +891,14 @@ export default function SceneAiAssistant() {
               <div className="shrink-0 mx-4 mb-1 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50/90 px-3 py-2">
                 <div className="flex-1 min-w-0 border-l-[3px] border-rose-400 pl-2.5">
                   <p className="text-[10px] font-medium text-rose-600">
-                    引用 {quoteAuthorLabel(quotedMessage.role)}
+                    回复 {quoteAuthorLabel(quotedMessage.role)}
                   </p>
                   <p className="text-xs text-gray-700 line-clamp-2">{quotedMessage.text}</p>
                 </div>
                 <button
                   type="button"
                   className="shrink-0 text-gray-400 hover:text-gray-700 text-lg leading-none px-1"
-                  aria-label="取消引用"
+                  aria-label="取消回复"
                   onClick={() => setQuotedMessage(null)}
                 >
                   ×
