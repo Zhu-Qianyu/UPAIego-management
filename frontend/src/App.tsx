@@ -15,6 +15,7 @@ import Spinner from "./components/Spinner";
 import { SITE_DISPLAY_NAME } from "./branding";
 import { accountDisplayLabel } from "./utils/phoneAuth";
 import SceneAiAssistant from "./components/SceneAiAssistant";
+import { AitebotProvider } from "./aitebot/AitebotContext";
 
 const DeviceDetail = lazy(() => import("./pages/DeviceDetail"));
 const DeviceManagePage = lazy(() => import("./pages/DeviceManagePage"));
@@ -257,6 +258,7 @@ export default function App() {
           : "/";
 
   return (
+    <AitebotProvider>
     <div
       className="min-h-screen flex bg-gradient-to-b from-indigo-50 via-slate-50 to-gray-50"
       data-app-shell="sidebar-v2"
@@ -511,5 +513,6 @@ export default function App() {
         {(profile.role === "admin" || profile.role === "scene_operator") && <SceneAiAssistant />}
       </div>
     </div>
+    </AitebotProvider>
   );
 }

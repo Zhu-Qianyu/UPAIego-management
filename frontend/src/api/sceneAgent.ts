@@ -6,6 +6,7 @@ import {
   uploadWorkstationSnapshot,
   type SceneMacroSite,
 } from "./operations";
+import type { AgentAction, AitebotPageContext, AgentResponsePayload } from "../aitebot/types";
 import { supabase } from "./supabase";
 import type { SceneCategoryKey } from "../utils/sceneCategories";
 import { SCENE_CATEGORY_KEYS } from "../utils/sceneCategories";
@@ -54,6 +55,7 @@ export type AgentResponse = {
   assistant_message: string;
   proposals: AgentProposal[];
   questions: string[];
+  actions: AgentAction[];
 };
 
 export type PendingImage = {
@@ -91,6 +93,7 @@ export async function sendSceneAgentMessage(args: {
   images: PendingImage[];
   groupId: string;
   existingMacros?: Pick<SceneMacroSite, "id" | "title">[];
+  pageContext?: AitebotPageContext;
 }): Promise<AgentResponse> {
   if (!isSceneAiEnabled()) {
     throw new Error("智能助手未启用。请在环境变量中设置 VITE_SCENE_AI_ENABLED=true 并部署 Edge Function（豆包：ARK_API_KEY + ARK_MODEL）。");
@@ -111,6 +114,7 @@ export async function sendSceneAgentMessage(args: {
       images: imagePayload,
       groupId: args.groupId,
       existingMacros: args.existingMacros ?? [],
+      pageContext: args.pageContext ?? null,
     },
   });
 
@@ -118,7 +122,7 @@ export async function sendSceneAgentMessage(args: {
     throw new Error(error.message || "调用智能助手失败");
   }
 
-  const payload = data as AgentResponse & { error?: string };
+  const payload = data as AgentResponsePayload & { error?: string };
   if (payload?.error) {
     throw new Error(payload.error);
   }
@@ -127,7 +131,32 @@ export async function sendSceneAgentMessage(args: {
     assistant_message: payload.assistant_message ?? "",
     proposals: normalizeProposals(payload.proposals),
     questions: payload.questions ?? [],
+    actions: normalizeActions(payload.actions),
   };
+}
+
+function normalizeActions(raw: unknown): AgentAction[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AgentAction[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const type = o.type;
+    if (type === "navigate" && typeof o.path === "string" && o.path.startsWith("/")) {
+      out.push({ type: "navigate", path: o.path, label: o.label != null ? String(o.label) : undefined });
+    } else if (type === "scene_tab" && (o.tab === "tasks" || o.tab === "demands" || o.tab === "stations")) {
+      out.push({
+        type: "scene_tab",
+        tab: o.tab,
+        label: o.label != null ? String(o.label) : undefined,
+      });
+    } else if (type === "toast" && typeof o.message === "string") {
+      out.push({ type: "toast", message: o.message.slice(0, 200) });
+    } else if (type === "refresh" && (o.target === "scene" || o.target === "current")) {
+      out.push({ type: "refresh", target: o.target });
+    }
+  }
+  return out;
 }
 
 function normalizeProposals(raw: unknown): AgentProposal[] {

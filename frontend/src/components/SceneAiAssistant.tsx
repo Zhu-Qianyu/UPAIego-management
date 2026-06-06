@@ -9,6 +9,7 @@ import {
   type PendingImage,
 } from "../api/sceneAgent";
 import { labelSceneCategories } from "../utils/sceneCategories";
+import { useAitebot } from "../aitebot/AitebotContext";
 
 const BOT_NAME = "aitebot";
 
@@ -40,7 +41,7 @@ function welcomeMessage(enabled: boolean): UiMessage {
     id: "welcome",
     role: "assistant",
     text: enabled
-      ? `你好，我是 ${BOT_NAME}。数据采集相关的话题都可以聊：新场景能不能采、流程怎么走、现场要注意什么；也可以发图让我整理录入方案。`
+      ? `你好，我是 ${BOT_NAME}，你的数据采集数字员工。我可以讨论新场景能否采集，也可以帮你在系统里跳转页面、切换场景标签；有录入方案时会请你确认后再写入。`
       : `${BOT_NAME} 尚未启用，请联系管理员配置 scene-ai-agent。`,
   };
 }
@@ -80,6 +81,7 @@ function IconPlus({ className }: { className?: string }) {
 
 export default function SceneAiAssistant() {
   const enabled = sceneAiFeatureEnabled();
+  const { pageContext, executeActions, toast, clearToast } = useAitebot();
   const [open, setOpen] = useState(false);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<InputMode>("text");
@@ -266,14 +268,21 @@ export default function SceneAiAssistant() {
         images: pendingImages,
         groupId,
         existingMacros: macros.map((m) => ({ id: m.id, title: m.title })),
+        pageContext,
       });
+
+      let actionNote = "";
+      if (res.actions.length > 0) {
+        const summaries = executeActions(res.actions);
+        if (summaries.length > 0) actionNote = `\n\n⚡ 已执行：${summaries.join("；")}`;
+      }
 
       setMessages((prev) => [
         ...prev,
         {
           id: uid(),
           role: "assistant",
-          text: res.assistant_message + (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : ""),
+          text: res.assistant_message + (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : "") + actionNote,
           proposals: res.proposals.length ? res.proposals : undefined,
         },
       ]);
@@ -351,7 +360,15 @@ export default function SceneAiAssistant() {
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1a1a1a] text-base text-white">
                   🤖
                 </span>
-                <p className="font-semibold text-gray-900">{BOT_NAME}</p>
+                <div>
+                  <p className="font-semibold text-gray-900">{BOT_NAME}</p>
+                  <p className="text-xs text-gray-500">
+                    数字员工 · 当前：{pageContext.pageTitle}
+                    {pageContext.sceneTab
+                      ? ` · ${pageContext.sceneTab === "tasks" ? "采集排班" : pageContext.sceneTab === "demands" ? "甲方业务" : "场景岗位"}`
+                      : ""}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
@@ -406,6 +423,15 @@ export default function SceneAiAssistant() {
                 </div>
               )}
             </div>
+
+            {toast && (
+              <div className="shrink-0 mx-4 mt-2 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-900 flex justify-between gap-2">
+                <span>{toast}</span>
+                <button type="button" className="text-emerald-700" onClick={clearToast}>
+                  知道了
+                </button>
+              </div>
+            )}
 
             {err && <p className="shrink-0 px-4 py-1 text-xs text-red-600">{err}</p>}
 

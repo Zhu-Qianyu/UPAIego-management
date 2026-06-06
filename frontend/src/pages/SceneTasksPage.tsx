@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { fetchActiveGroupId } from "../api/groups";
 import {
   createPartyDemand,
@@ -1950,6 +1950,7 @@ type SceneShellCacheV1 = { v: 1; groupId: string | null; demands: PartyDemand[];
 export default function SceneTasksPage() {
   const { session, profile } = useAuth();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const shellKey = useMemo(
     () => routeViewCacheKey(session?.user?.id, location.pathname),
@@ -1958,12 +1959,57 @@ export default function SceneTasksPage() {
 
   const isExecutorView = profile?.role === "collection_executor";
 
-  const [tab, setTab] = useState<Tab>("tasks");
+  const tabFromUrl = searchParams.get("tab");
+  const initialTab: Tab =
+    tabFromUrl === "demands" || tabFromUrl === "stations" || tabFromUrl === "tasks" ? tabFromUrl : "tasks";
+
+  const [tab, setTabState] = useState<Tab>(initialTab);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [demands, setDemands] = useState<PartyDemand[]>([]);
   const [err, setErr] = useState("");
+
+  const setTab = useCallback(
+    (next: Tab) => {
+      setTabState(next);
+      if (!isExecutorView) {
+        setSearchParams({ tab: next }, { replace: true });
+      }
+    },
+    [isExecutorView, setSearchParams]
+  );
+
+  useEffect(() => {
+    if (isExecutorView) return;
+    if (tabFromUrl === "demands" || tabFromUrl === "stations" || tabFromUrl === "tasks") {
+      setTabState(tabFromUrl);
+    }
+  }, [tabFromUrl, isExecutorView]);
+
+  useEffect(() => {
+    const onTab = (e: Event) => {
+      const detail = (e as CustomEvent<{ tab: Tab }>).detail;
+      if (detail?.tab) setTab(detail.tab);
+    };
+    const onRefresh = () => {
+      void (async () => {
+        try {
+          const gid = await fetchActiveGroupId();
+          setGroupId(gid);
+          if (gid && !isExecutorView) setDemands(await listPartyDemands(gid));
+        } catch {
+          /* ignore */
+        }
+      })();
+    };
+    window.addEventListener("aitebot:scene-tab", onTab);
+    window.addEventListener("aitebot:refresh", onRefresh);
+    return () => {
+      window.removeEventListener("aitebot:scene-tab", onTab);
+      window.removeEventListener("aitebot:refresh", onRefresh);
+    };
+  }, [isExecutorView, setTab]);
 
   useLayoutEffect(() => {
     if (!shellKey) return;

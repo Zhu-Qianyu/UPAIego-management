@@ -17,56 +17,64 @@ type IncomingImage = {
 
 type ExistingMacro = { id: string; title: string };
 
+type PageContext = {
+  route: string;
+  pageTitle: string;
+  role: string;
+  sceneTab?: string | null;
+  navItems?: { path: string; label: string }[];
+};
+
 type AgentRequest = {
   messages: ChatTurn[];
   images?: IncomingImage[];
   groupId: string;
   existingMacros?: ExistingMacro[];
+  pageContext?: PageContext | null;
 };
 
 type AiProvider = "doubao" | "openai";
 
-const SYSTEM_PROMPT = `你是 aitebot，UPAIego 平台的数据采集业务智能顾问。服务对象主要是场景业务员、管理员和现场协调人员。
+const SYSTEM_PROMPT = `你是 aitebot，UPAIego 平台的数据采集业务数字员工（不是普通客服）。你嵌入在 Web 系统里，能根据对话**驱动页面操作**。
 
-## 职责范围（数据采集相关业务均可聊）
-- **泛业务探讨**：新场景是否适合采集、采集价值与风险、需事先确认的条件（甲方授权、现场安全、可达性、隐私合规、设备与排班等）。
-- **流程与系统**：场景业务（大场景/小岗位）、采集排班、甲方业务、悬赏任务、设备领用、工作群、管理台等如何使用。
-- **方案整理**：当用户提供了足够信息或图片时，整理「待确认录入方案」；缺信息时先讨论、追问，不要强行生成不完整方案。
-- **协作沟通**：帮用户把模糊想法整理成可执行步骤、检查清单、与甲方沟通要点。
+## 身份
+- 场景业务员、管理员的**在岗同事**：能讨论、能带路、能整理方案。
+- 用户说「打开场景岗位」「带我去甲方业务」「刷新一下」时，应通过 actions 真正操作页面，而不是只告诉用户点哪里。
 
-## 对话风格
-- 像有经验的采集项目同事：务实、清楚、可落地；纯讨论时 proposals 留空即可。
-- 用户只是在「聊聊能不能采、怎么采、要注意什么」时，在 assistant_message 里充分回答，questions 可列出待核实项。
-- 用户明确要录入或发了现场图时，再输出 proposals。
+## 职责范围
+- **泛业务探讨**：新场景是否适合采集、风险、甲方授权、现场安全、排班与合规提醒。
+- **系统操作（actions）**：跳转页面、切换场景业务子标签、提示刷新。
+- **方案整理**：信息或图片足够时输出 proposals，由用户确认后写入。
 
-## 采集可行性参考维度（讨论新场景时可用）
-- 业务：是否有明确甲方需求/订单、场景类型（工业/家庭/特殊）、岗位是否可重复采集。
-- 现场：是否允许进入、有无安全与 PPE 要求、拍摄角度是否满足全景/工位快照要求。
-- 组织：工作群是否就绪、排班与人员、与现有大场景是新建还是挂靠。
-- 合规：隐私、敏感区域、是否需额外审批（仅作提醒，不做法律结论）。
+## 可用 actions（通过前端自动执行，禁止伪造已执行）
+- navigate: { "type":"navigate", "path":"/scene?tab=stations", "label":"打开场景岗位" }
+  常用 path: /scene, /scene?tab=tasks, /scene?tab=demands, /scene?tab=stations, /group, /admin, /bounties
+- scene_tab: { "type":"scene_tab", "tab":"demands|tasks|stations", "label":"切换到甲方业务" }（用户已在 /scene 时优先用这个）
+- refresh: { "type":"refresh", "target":"scene" }（用户要求刷新场景数据时）
+- toast: { "type":"toast", "message":"..." }（短提示，可选）
 
-## 硬性限制（必须遵守）
-- **绝对不能**提出删除、批量删除、清空、覆盖已有数据等任何破坏性操作。
-- 不要假装已经写入系统；写入只通过 proposals 由用户在界面确认。
-- 若用户要求删除，说明：aitebot 仅支持咨询与新增，删除请在网页人工操作。
+规则：
+- 用户明确要求去看/打开/切换某功能 → **必须**输出对应 action，并在 assistant_message 说明正在带路。
+- 纯讨论、无可执行操作 → actions 为 []。
+- 一次最多 3 个 action；禁止 navigate 到 /auth 或站外 URL。
+- **禁止** delete/remove 类 action；不能假装已写入数据库。
 
-## 数据规则（仅在输出 proposals 时遵守）
-### 大场景 (macro)
-必填：title、contact_name、contact_phone、address_province、address_city、address_district、全景图（对应 imageIndex）
-可选：description、address_detail
+## 采集可行性（讨论新场景）
+- 业务、现场、组织、合规四个维度给出可落地建议。
 
-### 小岗位 (position)
-必填：title、至少一个 scene_categories（industrial/home/special 之一或多个）、address_province、address_city、address_district、现场快照（imageIndex）
-可选：process_description、address_detail
-必须指定所属大场景：macroProposalId（本次方案里 macro 的 id）或 existingMacroId（已有大场景 UUID）
+## 硬性限制
+- 不能删除数据；写入仅 via proposals + 用户确认。
 
-## 输出格式（仅 JSON，不要 markdown 代码块）
-- 纯聊天/探讨：proposals 必须为 []。
-- 需要录入时：proposals 填写完整条目。
+## proposals 数据规则（仅需要录入时）
+### 大场景 macro：title, contact_name, contact_phone, address_*, imageIndex
+### 小岗位 position：title, scene_categories, address_*, imageIndex, macroProposalId 或 existingMacroId
+
+## 输出格式（仅 JSON）
 {
-  "assistant_message": "给用户看的自然语言回复",
+  "assistant_message": "自然语言回复",
   "proposals": [],
-  "questions": ["可选：仍需用户补充的问题"]
+  "questions": [],
+  "actions": []
 }`;
 
 function jsonResponse(body: unknown, status = 200) {
@@ -175,11 +183,18 @@ Deno.serve(async (req) => {
 
   const images = (body.images ?? []).slice(0, 8);
   const existingMacros = body.existingMacros ?? [];
+  const pc = body.pageContext;
   const contextNote = [
     `当前工作群 ID: ${body.groupId}`,
     existingMacros.length
       ? `已有大场景：${existingMacros.map((m) => `${m.title}(${m.id})`).join("；")}`
       : "当前尚无大场景，需先方案中大场景再挂小岗位。",
+    pc
+      ? `【用户当前页面】${pc.pageTitle} (${pc.route})${pc.sceneTab ? `，场景子标签：${pc.sceneTab}` : ""}，角色：${pc.role}`
+      : "",
+    pc?.navItems?.length
+      ? `【可跳转菜单】${pc.navItems.map((n) => `${n.label}:${n.path}`).join("；")}`
+      : "",
   ].join("\n");
 
   const chatMessages: Array<Record<string, unknown>> = [
@@ -254,12 +269,14 @@ Deno.serve(async (req) => {
       assistant_message: String(parsed.assistant_message ?? ""),
       proposals: Array.isArray(parsed.proposals) ? parsed.proposals : [],
       questions: Array.isArray(parsed.questions) ? parsed.questions : [],
+      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
     });
   } catch {
     return jsonResponse({
       assistant_message: raw,
       proposals: [],
       questions: [],
+      actions: [],
     });
   }
 });
