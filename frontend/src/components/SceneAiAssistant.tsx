@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchActiveGroupId } from "../api/groups";
 import {
+  appendAgentChatMessage,
+  clearAgentChatHistory,
+  listAgentChatMessages,
+  type AgentChatMessageRow,
+} from "../api/agentChat";
+import {
   countAgentInboxUnread,
   listAgentInboxMessages,
   markAgentInboxRead,
@@ -91,6 +97,27 @@ function inboxToUiMessage(msg: AgentInboxMessage): UiMessage {
   };
 }
 
+function chatRowToUiMessage(row: AgentChatMessageRow): UiMessage {
+  return {
+    id: row.id,
+    role: row.role,
+    text: row.content,
+    proposals: row.metadata.proposals?.length ? row.metadata.proposals : undefined,
+    inboxId: row.metadata.inbox_id,
+  };
+}
+
+async function saveChatMessage(
+  groupId: string,
+  role: "user" | "assistant",
+  content: string,
+  metadata?: { proposals?: AgentProposal[]; inbox_id?: string; source?: "inbox" | "chat" }
+): Promise<UiMessage> {
+  const row = await appendAgentChatMessage({ groupId, role, content, metadata });
+  if (row) return chatRowToUiMessage(row);
+  return { id: uid(), role, text: content, proposals: metadata?.proposals };
+}
+
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   const w = window as Window & {
     SpeechRecognition?: new () => SpeechRecognition;
@@ -137,7 +164,8 @@ export default function SceneAiAssistant() {
   const [listening, setListening] = useState(false);
   const [holding, setHolding] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
-  const [messages, setMessages] = useState<UiMessage[]>(() => [welcomeMessage(enabled, userRole)]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [messages, setMessages] = useState<UiMessage[]>([]);
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [imageHint, setImageHint] = useState<"unknown" | "macro" | "position">("unknown");
@@ -170,7 +198,15 @@ export default function SceneAiAssistant() {
       const fresh = rows.filter((r) => !shownInboxIdsRef.current.has(r.id));
       if (!fresh.length) return;
       for (const r of fresh) shownInboxIdsRef.current.add(r.id);
-      setMessages((prev) => [...prev, ...fresh.reverse().map(inboxToUiMessage)]);
+      const uiRows = fresh.reverse().map(inboxToUiMessage);
+      setMessages((prev) => [...prev, ...uiRows]);
+      for (const r of fresh) {
+        const text = `📬 ${r.title}\n\n${r.body}`;
+        await saveChatMessage(gid, "assistant", text, {
+          inbox_id: r.id,
+          source: "inbox",
+        });
+      }
       await markAgentInboxRead(fresh.map((r) => r.id));
       await refreshUnread(gid);
     } catch {
@@ -178,14 +214,46 @@ export default function SceneAiAssistant() {
     }
   }, [refreshUnread]);
 
+  const loadChatHistory = useCallback(async (gid: string) => {
+    setHistoryLoading(true);
+    try {
+      const rows = await listAgentChatMessages({ groupId: gid, limit: 200 });
+      for (const r of rows) {
+        if (r.metadata.inbox_id) shownInboxIdsRef.current.add(r.metadata.inbox_id);
+      }
+      if (rows.length > 0) {
+        setMessages(rows.map(chatRowToUiMessage));
+        const inboxIds = rows
+          .map((r) => r.metadata.inbox_id)
+          .filter((id): id is string => Boolean(id));
+        if (inboxIds.length) await markAgentInboxRead(inboxIds);
+      } else {
+        setMessages([welcomeMessage(enabled, userRole)]);
+      }
+    } catch {
+      setMessages([welcomeMessage(enabled, userRole)]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [enabled, userRole]);
+
   useEffect(() => {
     void fetchActiveGroupId()
       .then((gid) => {
         setGroupId(gid);
         void refreshUnread(gid);
+        if (gid) void loadChatHistory(gid);
+        else {
+          setMessages([welcomeMessage(enabled, userRole)]);
+          setHistoryLoading(false);
+        }
       })
-      .catch(() => setGroupId(null));
-  }, [refreshUnread]);
+      .catch(() => {
+        setGroupId(null);
+        setMessages([welcomeMessage(enabled, userRole)]);
+        setHistoryLoading(false);
+      });
+  }, [refreshUnread, loadChatHistory, enabled, userRole]);
 
   useEffect(() => {
     if (!groupId) return;
@@ -200,11 +268,6 @@ export default function SceneAiAssistant() {
     if (!open || !groupId) return;
     void pullInboxIntoChat(groupId);
   }, [open, groupId, pullInboxIntoChat]);
-
-  useEffect(() => {
-    setMessages([welcomeMessage(enabled, userRole)]);
-    shownInboxIdsRef.current.clear();
-  }, [enabled, userRole]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -312,15 +375,19 @@ export default function SceneAiAssistant() {
   };
 
   const onNewTopic = () => {
-    setMessages([welcomeMessage(enabled, userRole)]);
-    setInput("");
-    setPendingImages((prev) => {
-      for (const p of prev) URL.revokeObjectURL(p.previewUrl);
-      return [];
-    });
-    setNextImageIndex(0);
-    setErr("");
-    setExtraOpen(false);
+    void (async () => {
+      if (groupId) await clearAgentChatHistory(groupId);
+      shownInboxIdsRef.current.clear();
+      setMessages([welcomeMessage(enabled, userRole)]);
+      setInput("");
+      setPendingImages((prev) => {
+        for (const p of prev) URL.revokeObjectURL(p.previewUrl);
+        return [];
+      });
+      setNextImageIndex(0);
+      setErr("");
+      setExtraOpen(false);
+    })();
   };
 
   const applyQuickTopic = (prompt: string) => {
@@ -347,10 +414,11 @@ export default function SceneAiAssistant() {
       id: uid(),
       role: "user",
       text: text || "（见附件图片）",
-      imagePreviews: pendingImages.map((p) => p.previewUrl),
+      imagePreviews: pendingImages.length ? pendingImages.map((p) => p.previewUrl) : undefined,
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
+    void saveChatMessage(groupId, "user", userMsg.text);
 
     const history = [...messages, userMsg]
       .filter((m) => m.id !== "welcome")
@@ -381,25 +449,24 @@ export default function SceneAiAssistant() {
         }
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uid(),
-          role: "assistant",
-          text: res.assistant_message + (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : "") + actionNote + broadcastNote,
-          proposals: res.proposals.length ? res.proposals : undefined,
-        },
-      ]);
+      const assistantText =
+        res.assistant_message +
+        (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : "") +
+        actionNote +
+        broadcastNote;
+
+      const assistantMsg = await saveChatMessage(groupId, "assistant", assistantText, {
+        proposals: res.proposals.length ? res.proposals : undefined,
+        source: "chat",
+      });
+      setMessages((prev) => [...prev, assistantMsg]);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "发送失败");
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uid(),
-          role: "assistant",
-          text: "抱歉，这次没能处理你的请求。请检查网络或稍后再试。",
-        },
-      ]);
+      const failText = "抱歉，这次没能处理你的请求。请检查网络或稍后再试。";
+      const failMsg = groupId
+        ? await saveChatMessage(groupId, "assistant", failText, { source: "chat" })
+        : { id: uid(), role: "assistant" as const, text: failText };
+      setMessages((prev) => [...prev, failMsg]);
     } finally {
       setBusy(false);
     }
@@ -412,14 +479,9 @@ export default function SceneAiAssistant() {
     setExecuting(true);
     try {
       const result = await executeAgentProposals(groupId, proposals, imageByIndex);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uid(),
-          role: "assistant",
-          text: `已写入：大场景 ${result.createdMacros} 个，小岗位 ${result.createdPositions} 个。可在「场景业务 → 场景岗位」查看。`,
-        },
-      ]);
+      const okText = `已写入：大场景 ${result.createdMacros} 个，小岗位 ${result.createdPositions} 个。可在「场景业务 → 场景岗位」查看。`;
+      const okMsg = await saveChatMessage(groupId, "assistant", okText, { source: "chat" });
+      setMessages((prev) => [...prev, okMsg]);
       setPendingImages((prev) => {
         for (const p of prev) URL.revokeObjectURL(p.previewUrl);
         return [];
@@ -487,7 +549,18 @@ export default function SceneAiAssistant() {
             </header>
 
             <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4">
-              {messages.map((m) => (
+              {historyLoading && (
+                <div className="flex gap-2 items-center text-sm text-gray-400 pl-9">
+                  <span className="inline-flex gap-1">
+                    <span className="animate-bounce">·</span>
+                    <span className="animate-bounce [animation-delay:0.1s]">·</span>
+                    <span className="animate-bounce [animation-delay:0.2s]">·</span>
+                  </span>
+                  正在加载聊天记录
+                </div>
+              )}
+              {!historyLoading &&
+                messages.map((m) => (
                 <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                   {m.role === "assistant" && <DouXiaoMiAvatar size="sm" className="mt-0.5" />}
                   <div
