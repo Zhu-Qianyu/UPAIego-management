@@ -11,10 +11,17 @@ export type AgentChatMessageRow = {
   created_at: string;
 };
 
+export type AgentMessageQuote = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+};
+
 export type AgentChatMetadata = {
   proposals?: AgentProposal[];
   inbox_id?: string;
   source?: "inbox" | "chat";
+  quote?: AgentMessageQuote;
 };
 
 const TABLE = "agent_chat_messages";

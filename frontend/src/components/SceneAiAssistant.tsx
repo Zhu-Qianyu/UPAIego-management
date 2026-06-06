@@ -6,6 +6,7 @@ import {
   listAgentChatMessages,
   searchAgentChatMessages,
   type AgentChatMessageRow,
+  type AgentMessageQuote,
 } from "../api/agentChat";
 import {
   countAgentInboxUnread,
@@ -34,6 +35,7 @@ type UiMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
+  quote?: AgentMessageQuote;
   imagePreviews?: string[];
   proposals?: AgentProposal[];
   inboxId?: string;
@@ -104,20 +106,70 @@ function chatRowToUiMessage(row: AgentChatMessageRow): UiMessage {
     id: row.id,
     role: row.role,
     text: row.content,
+    quote: row.metadata.quote,
     proposals: row.metadata.proposals?.length ? row.metadata.proposals : undefined,
     inboxId: row.metadata.inbox_id,
   };
+}
+
+function quoteFromMessage(m: UiMessage): AgentMessageQuote | null {
+  if (m.id === "welcome") return null;
+  const plain = m.text.trim();
+  if (!plain) return null;
+  return {
+    id: m.id,
+    role: m.role,
+    text: plain.length > 280 ? `${plain.slice(0, 280)}…` : plain,
+  };
+}
+
+function quoteAuthorLabel(role: "user" | "assistant"): string {
+  return role === "user" ? "我" : BOT_NAME;
+}
+
+function formatMessageForAi(m: UiMessage): string {
+  if (!m.quote) return m.text;
+  return `[引用 ${quoteAuthorLabel(m.quote.role)}: 「${m.quote.text}」]\n${m.text}`;
+}
+
+function MessageQuoteBlock({
+  quote,
+  variant,
+}: {
+  quote: AgentMessageQuote;
+  variant: "user" | "assistant";
+}) {
+  const isUserBubble = variant === "user";
+  return (
+    <div
+      className={`mb-2 rounded-lg border-l-[3px] pl-2.5 py-1 text-xs ${
+        isUserBubble
+          ? "border-white/40 bg-white/10 text-white/90"
+          : "border-rose-300 bg-rose-50/80 text-gray-600"
+      }`}
+    >
+      <p className={`font-medium ${isUserBubble ? "text-white/70" : "text-rose-600"}`}>
+        {quoteAuthorLabel(quote.role)}
+      </p>
+      <p className={`line-clamp-3 ${isUserBubble ? "text-white/90" : "text-gray-700"}`}>{quote.text}</p>
+    </div>
+  );
 }
 
 async function saveChatMessage(
   groupId: string,
   role: "user" | "assistant",
   content: string,
-  metadata?: { proposals?: AgentProposal[]; inbox_id?: string; source?: "inbox" | "chat" }
+  metadata?: {
+    proposals?: AgentProposal[];
+    inbox_id?: string;
+    source?: "inbox" | "chat";
+    quote?: AgentMessageQuote;
+  }
 ): Promise<UiMessage> {
   const row = await appendAgentChatMessage({ groupId, role, content, metadata });
   if (row) return chatRowToUiMessage(row);
-  return { id: uid(), role, text: content, proposals: metadata?.proposals };
+  return { id: uid(), role, text: content, quote: metadata?.quote, proposals: metadata?.proposals };
 }
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
@@ -220,6 +272,7 @@ export default function SceneAiAssistant() {
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchResults, setSearchResults] = useState<AgentChatMessageRow[]>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [quotedMessage, setQuotedMessage] = useState<AgentMessageQuote | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -472,6 +525,7 @@ export default function SceneAiAssistant() {
       setNextImageIndex(0);
       setErr("");
       setExtraOpen(false);
+      setQuotedMessage(null);
     })();
   };
 
@@ -479,6 +533,17 @@ export default function SceneAiAssistant() {
     setInput(prompt);
     setInputMode("text");
   };
+
+  const startQuote = useCallback((m: UiMessage) => {
+    const q = quoteFromMessage(m);
+    if (!q) return;
+    setQuotedMessage(q);
+    setInputMode("text");
+    setExtraOpen(false);
+    window.setTimeout(() => {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }, 50);
+  }, []);
 
   async function onSend(overrideText?: string) {
     const text = (overrideText ?? input).trim();
@@ -495,19 +560,22 @@ export default function SceneAiAssistant() {
     setBusy(true);
     setExtraOpen(false);
 
+    const quoteSnapshot = quotedMessage ?? undefined;
     const userMsg: UiMessage = {
       id: uid(),
       role: "user",
       text: text || "（见附件图片）",
+      quote: quoteSnapshot,
       imagePreviews: pendingImages.length ? pendingImages.map((p) => p.previewUrl) : undefined,
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
-    void saveChatMessage(groupId, "user", userMsg.text);
+    setQuotedMessage(null);
+    void saveChatMessage(groupId, "user", userMsg.text, { quote: quoteSnapshot, source: "chat" });
 
     const history = [...messages, userMsg]
       .filter((m) => m.id !== "welcome")
-      .map((m) => ({ role: m.role, content: m.text }));
+      .map((m) => ({ role: m.role, content: formatMessageForAi(m) }));
 
     try {
       const macros = await loadMacrosForAgent(groupId);
@@ -741,28 +809,40 @@ export default function SceneAiAssistant() {
                   }`}
                 >
                   {m.role === "assistant" && <DouXiaoMiAvatar size="sm" className="mt-0.5" />}
-                  <div
-                    className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap ${
-                      m.role === "user"
-                        ? "bg-[#1a1a1a] text-white rounded-br-md"
-                        : "bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-md"
-                    }`}
-                  >
-                    {m.text}
-                    {m.imagePreviews?.length ? (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {m.imagePreviews.map((src) => (
-                          <img key={src} src={src} alt="" className="h-16 w-16 object-cover rounded-lg" />
-                        ))}
-                      </div>
-                    ) : null}
-                    {m.proposals?.length ? (
-                      <ProposalCards
-                        proposals={m.proposals}
-                        disabled={executing}
-                        onConfirm={() => void onConfirmProposals(m.proposals!)}
-                      />
-                    ) : null}
+                  <div className={`flex flex-col max-w-[82%] ${m.role === "user" ? "items-end" : "items-start"}`}>
+                    <div
+                      className={`w-full rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap ${
+                        m.role === "user"
+                          ? "bg-[#1a1a1a] text-white rounded-br-md"
+                          : "bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-md"
+                      }`}
+                    >
+                      {m.quote ? <MessageQuoteBlock quote={m.quote} variant={m.role} /> : null}
+                      {m.text}
+                      {m.imagePreviews?.length ? (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {m.imagePreviews.map((src) => (
+                            <img key={src} src={src} alt="" className="h-16 w-16 object-cover rounded-lg" />
+                          ))}
+                        </div>
+                      ) : null}
+                      {m.proposals?.length ? (
+                        <ProposalCards
+                          proposals={m.proposals}
+                          disabled={executing}
+                          onConfirm={() => void onConfirmProposals(m.proposals!)}
+                        />
+                      ) : null}
+                    </div>
+                    {m.id !== "welcome" && (
+                      <button
+                        type="button"
+                        onClick={() => startQuote(m)}
+                        className="mt-1 px-1 text-[11px] text-gray-400 hover:text-rose-600"
+                      >
+                        引用
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -805,6 +885,25 @@ export default function SceneAiAssistant() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {quotedMessage && (
+              <div className="shrink-0 mx-4 mb-1 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50/90 px-3 py-2">
+                <div className="flex-1 min-w-0 border-l-[3px] border-rose-400 pl-2.5">
+                  <p className="text-[10px] font-medium text-rose-600">
+                    引用 {quoteAuthorLabel(quotedMessage.role)}
+                  </p>
+                  <p className="text-xs text-gray-700 line-clamp-2">{quotedMessage.text}</p>
+                </div>
+                <button
+                  type="button"
+                  className="shrink-0 text-gray-400 hover:text-gray-700 text-lg leading-none px-1"
+                  aria-label="取消引用"
+                  onClick={() => setQuotedMessage(null)}
+                >
+                  ×
+                </button>
               </div>
             )}
 
