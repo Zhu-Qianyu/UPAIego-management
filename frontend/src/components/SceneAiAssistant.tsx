@@ -31,8 +31,8 @@ import {
   allRequiredFormImagesSelected,
   getFormImageUploadLabel,
   pendingFormFillsNeedImages,
-  validateAgentImageFile,
 } from "../aitebot/agentFormImages";
+import { IMAGE_UPLOAD_ACCEPT, prepareImageFileForUpload } from "../utils/compressImageFile";
 import { useAitebot } from "../aitebot/AitebotContext";
 import { useAuth } from "../auth/AuthContext";
 import { ROLE_LABELS } from "../auth/roleLabels";
@@ -316,11 +316,6 @@ export default function SceneAiAssistant() {
   }, []);
 
   const setFormFillImage = useCallback((msgId: string, index: number, file: File) => {
-    const validationErr = validateAgentImageFile(file);
-    if (validationErr) {
-      setErr(validationErr);
-      return;
-    }
     setErr("");
     setFormFillImages((prev) => {
       const prevEntry = prev[msgId]?.[index];
@@ -334,6 +329,19 @@ export default function SceneAiAssistant() {
       };
     });
   }, []);
+
+  const pickFormFillImage = useCallback(
+    async (msgId: string, index: number, raw: File) => {
+      setErr("");
+      try {
+        const file = await prepareImageFileForUpload(raw);
+        setFormFillImage(msgId, index, file);
+      } catch (e: unknown) {
+        setErr(e instanceof Error ? e.message : "图片处理失败");
+      }
+    },
+    [setFormFillImage]
+  );
 
   useEffect(() => {
     for (const m of messages) {
@@ -995,7 +1003,7 @@ export default function SceneAiAssistant() {
                                     if (el) formImageInputRefs.current.set(inputKey, el);
                                     else formImageInputRefs.current.delete(inputKey);
                                   }}
-                                  onPick={(file) => setFormFillImage(m.id, index, file)}
+                                  onPick={(file) => void pickFormFillImage(m.id, index, file)}
                                 />
                               );
                             })}
@@ -1270,7 +1278,7 @@ function FormFillImageUpload({
           inputRef(el);
         }}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={IMAGE_UPLOAD_ACCEPT}
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];

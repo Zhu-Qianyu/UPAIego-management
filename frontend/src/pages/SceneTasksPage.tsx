@@ -47,6 +47,7 @@ import {
   openSceneListPrint,
   type SceneMacroPrintFields,
 } from "../utils/sceneListPrintExport";
+import { IMAGE_UPLOAD_ACCEPT, applyPickedImageFile } from "../utils/compressImageFile";
 
 type Tab = "tasks" | "demands" | "stations";
 
@@ -347,8 +348,12 @@ function PartyDemandsTab({
           <label className="block text-xs text-gray-500 mb-1">设备快照（必填）</label>
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(e) => setDeviceFile(e.target.files?.[0] ?? null)}
+            accept={IMAGE_UPLOAD_ACCEPT}
+            onChange={(e) => {
+              const raw = e.target.files?.[0];
+              e.target.value = "";
+              void applyPickedImageFile(raw, setDeviceFile, setErr);
+            }}
             className="text-sm w-full"
           />
         </div>
@@ -497,8 +502,12 @@ function PartyDemandsTab({
                   <label className="block text-xs text-gray-500 mb-1">更换设备快照（可选）</label>
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={(e) => setEditDeviceFile(e.target.files?.[0] ?? null)}
+                    accept={IMAGE_UPLOAD_ACCEPT}
+                    onChange={(e) => {
+                      const raw = e.target.files?.[0];
+                      e.target.value = "";
+                      void applyPickedImageFile(raw, setEditDeviceFile, setErr);
+                    }}
                     className="text-sm w-full"
                   />
                 </div>
@@ -1314,8 +1323,12 @@ function ScenarioWorkstationsTab({
           <label className="block text-xs text-gray-500 mb-1">现场快照（必填）</label>
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            accept={IMAGE_UPLOAD_ACCEPT}
+            onChange={(e) => {
+              const raw = e.target.files?.[0];
+              e.target.value = "";
+              void applyPickedImageFile(raw, setFile, setErr);
+            }}
             className="text-sm w-full"
           />
         </div>
@@ -1402,8 +1415,12 @@ function ScenarioWorkstationsTab({
           <label className="block text-xs text-gray-600 mb-1">更换现场快照（可选，不选则保留原图）</label>
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={(e) => setEFile(e.target.files?.[0] ?? null)}
+            accept={IMAGE_UPLOAD_ACCEPT}
+            onChange={(e) => {
+              const raw = e.target.files?.[0];
+              e.target.value = "";
+              void applyPickedImageFile(raw, setEFile, setErr);
+            }}
             className="text-sm w-full"
           />
         </div>
@@ -1505,8 +1522,12 @@ function ScenarioWorkstationsTab({
             <label className="block text-xs text-gray-500 mb-1">全景图（必填）</label>
             <input
               type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(e) => setMacroPanoramaFile(e.target.files?.[0] ?? null)}
+              accept={IMAGE_UPLOAD_ACCEPT}
+              onChange={(e) => {
+                const raw = e.target.files?.[0];
+                e.target.value = "";
+                void applyPickedImageFile(raw, setMacroPanoramaFile, setErr);
+              }}
               className="text-sm w-full"
             />
           </div>
@@ -1762,8 +1783,12 @@ function ScenarioWorkstationsTab({
                               <label className="block text-xs text-gray-600 mb-1">更换全景图（可选）</label>
                               <input
                                 type="file"
-                                accept="image/jpeg,image/png,image/webp"
-                                onChange={(e) => setEMacroPanoramaFile(e.target.files?.[0] ?? null)}
+                                accept={IMAGE_UPLOAD_ACCEPT}
+                                onChange={(e) => {
+                                  const raw = e.target.files?.[0];
+                                  e.target.value = "";
+                                  void applyPickedImageFile(raw, setEMacroPanoramaFile, setErr);
+                                }}
                                 className="text-sm w-full"
                               />
                             </div>

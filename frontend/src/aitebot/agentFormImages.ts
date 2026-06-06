@@ -1,4 +1,5 @@
 import type { AgentFormKind } from "./agentFormTypes";
+import { validateImageFileType } from "../utils/compressImageFile";
 
 const IMAGE_UPLOAD_FORMS: Partial<Record<AgentFormKind, string>> = {
   party_demand_create: "甲方设备快照",
@@ -14,14 +15,9 @@ export function getFormImageUploadLabel(form: AgentFormKind): string {
   return IMAGE_UPLOAD_FORMS[form] ?? "图片";
 }
 
+/** @deprecated 仅校验类型；大小超限请用 prepareImageFileForUpload 自动压缩 */
 export function validateAgentImageFile(file: File): string | null {
-  if (!file.type.startsWith("image/")) return "请选择图片文件（jpg/png/webp）";
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-  if (!["jpg", "jpeg", "png", "webp"].includes(ext) && !file.type.includes("jpeg") && !file.type.includes("png")) {
-    return "仅支持 jpg、png、webp";
-  }
-  if (file.size > 12 * 1024 * 1024) return "图片不能超过 12MB";
-  return null;
+  return validateImageFileType(file);
 }
 
 export function pendingFormFillsNeedImages(
