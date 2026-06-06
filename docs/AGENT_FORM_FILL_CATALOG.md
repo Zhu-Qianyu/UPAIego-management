@@ -32,7 +32,8 @@ sequenceDiagram
 | `scenario_position_create` | admin, scene_operator | 创建小岗位（占位工位图） |
 | `scenario_position_update` | admin, scene_operator | 更新小岗位 |
 | `group_topic_create` | 全员 active | 发布群话题 |
-| `manual_device_create` | admin, device_operator | 登记离线设备 |
+| `manual_device_create` | admin, device_operator | 单台离线设备 |
+| `manual_devices_batch_create` | admin, device_operator | **批量**登记离线设备（1条 form 最多50台） |
 | `collection_shift_create` | admin, scene_operator | 采集排班（可 `publish: true`） |
 | `profile_update` | 全员 | 更新当前用户资料 |
 | `bounty_publish` | admin | 发布悬赏令 |

@@ -9,7 +9,7 @@ import type {
   AgentPendingFormFill,
 } from "../aitebot/types";
 import { normalizePendingFormFills } from "./agentForms";
-import { buildFormFillConfirmMessage, inferFormFillsFromUserText } from "../aitebot/formFillInfer";
+import { buildFormFillConfirmMessage, inferFormFillsFromUserText, stripActionsWhenFormFills } from "../aitebot/formFillInfer";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 
@@ -128,14 +128,13 @@ export async function sendSceneAgentMessage(args: {
   let assistant_message = payload.assistant_message ?? "";
   if (pending_form_fills.length && usedInfer) {
     assistant_message = `${buildFormFillConfirmMessage(pending_form_fills)} 这样帮您填写可以吗？`;
+  } else if (pending_form_fills.length && /切换|打开.*页面|标签页/.test(assistant_message)) {
+    assistant_message = `${buildFormFillConfirmMessage(pending_form_fills)} 这样帮您填写可以吗？`;
   }
 
-  const navOnly = (a: AgentAction) =>
-    a.type === "scene_tab" ||
-    (a.type === "navigate" && (a.path.startsWith("/scene") || a.path.includes("tab=")));
   let actions = normalizeActions(payload.actions);
   if (pending_form_fills.length) {
-    actions = actions.filter((a) => !navOnly(a));
+    actions = stripActionsWhenFormFills(actions) as AgentAction[];
   }
 
   return {

@@ -756,13 +756,7 @@ export default function SceneAiAssistant() {
         source: "chat",
       });
       const formFills = res.pending_form_fills;
-      const navOnly = (a: AgentAction) =>
-        a.type === "scene_tab" ||
-        (a.type === "navigate" && (a.path.startsWith("/scene") || a.path.includes("tab=")));
-      const pendingActions =
-        formFills.length && res.actions.length
-          ? res.actions.filter((a) => !navOnly(a))
-          : res.actions;
+      const pendingActions = formFills.length ? [] : res.actions;
 
       setMessages((prev) => [
         ...prev,

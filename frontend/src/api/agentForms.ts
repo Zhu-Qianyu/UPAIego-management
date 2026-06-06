@@ -23,6 +23,7 @@ import {
 import { updateMyProfile } from "./profiles";
 import type { AgentFormKind, AgentPendingFormFill } from "../aitebot/agentFormTypes";
 import { formRequiresImage, getFormImageUploadLabel } from "../aitebot/agentFormImages";
+import { defaultLabelPrefix } from "../aitebot/formFillInferShared";
 import { SCENE_CATEGORY_KEYS, type SceneCategoryKey } from "../utils/sceneCategories";
 import type { UserRole } from "../types/roles";
 
@@ -42,6 +43,7 @@ const FORM_ROLES: Record<string, UserRole[]> = {
   scenario_position_update: ["admin", "scene_operator"],
   group_topic_create: ["admin", "scene_operator", "device_operator", "collection_executor"],
   manual_device_create: ["admin", "device_operator"],
+  manual_devices_batch_create: ["admin", "device_operator"],
   collection_shift_create: ["admin", "scene_operator"],
   profile_update: ["admin", "scene_operator", "device_operator", "collection_executor"],
   bounty_publish: ["admin"],
@@ -114,6 +116,37 @@ function resolveFormImageFile(spec: AgentPendingFormFill, imageFile?: File): Fil
   return imageFile;
 }
 
+async function resolvePartyDemandId(
+  groupId: string,
+  d: Record<string, unknown>
+): Promise<string> {
+  const explicit = optionalStr(d, "party_demand_id");
+  if (explicit) return explicit;
+
+  const company = str(d, "client_company", true);
+  const deviceType = optionalStr(d, "device_type");
+  const demands = await listPartyDemands(groupId);
+
+  const exact = demands.find(
+    (p) => p.client_company?.trim() === company || p.title?.trim() === company
+  );
+  if (exact) return exact.id;
+
+  const fuzzy = demands.filter((p) => {
+    const cc = (p.client_company || p.title || "").trim();
+    if (!cc) return false;
+    if (!(cc.includes(company) || company.includes(cc))) return false;
+    if (deviceType && p.device_type) {
+      const dt = p.device_type.trim();
+      if (!(dt.includes(deviceType) || deviceType.includes(dt))) return false;
+    }
+    return true;
+  });
+  if (fuzzy.length >= 1) return fuzzy[0].id;
+
+  throw new Error(`未找到甲方「${company}」。请先说「添加甲方业务，${company}」并完成选图确认后再登记设备。`);
+}
+
 export async function executeAgentFormFill(
   groupId: string,
   role: UserRole,
@@ -130,8 +163,8 @@ export async function executeAgentFormFill(
     switch (spec.form) {
       case "party_demand_create": {
         const client_company = str(d, "client_company", true);
-        const device_type = str(d, "device_type", true);
-        const max_hours_per_scene = Math.max(1, Math.floor(num(d, "max_hours_per_scene", true)));
+        const device_type = str(d, "device_type") || "通用设备";
+        const max_hours_per_scene = Math.max(1, Math.floor(num(d, "max_hours_per_scene") || 8));
         const scene_categories = normalizeCategories(d.scene_categories);
         const unlimited = d.total_hours_unlimited === true || d.total_hours_unlimited === "true";
         const total_hours_required = unlimited ? null : Math.max(0, Math.floor(num(d, "total_hours_required", !unlimited)));
@@ -241,12 +274,41 @@ export async function executeAgentFormFill(
         return { ok: true, summary: `已发布群话题「${created.title}」`, created_id: created.id };
       }
       case "manual_device_create": {
+        const partyId =
+          optionalStr(d, "party_demand_id") ?? (await resolvePartyDemandId(groupId, d));
         const created = await createManualTrackedDevice({
           group_id: groupId,
-          party_demand_id: str(d, "party_demand_id", true),
+          party_demand_id: partyId,
           device_short_label: str(d, "device_short_label", true),
         });
-        return { ok: true, summary: `已登记离线设备「${created.device_short_label}」`, created_id: created.id };
+        return {
+          ok: true,
+          summary: `已登记离线设备「${created.device_short_label}」编号 ${created.public_code}`,
+          created_id: created.id,
+        };
+      }
+      case "manual_devices_batch_create": {
+        const count = Math.min(50, Math.max(1, Math.floor(num(d, "count", true))));
+        const partyId = await resolvePartyDemandId(groupId, d);
+        const deviceType = optionalStr(d, "device_type");
+        const prefix =
+          optionalStr(d, "label_prefix") || (deviceType ? defaultLabelPrefix(deviceType) : "设备");
+        const codes: string[] = [];
+        for (let i = 1; i <= count; i++) {
+          const label = `${prefix}${String(i).padStart(2, "0")}`;
+          const created = await createManualTrackedDevice({
+            group_id: groupId,
+            party_demand_id: partyId,
+            device_short_label: label,
+          });
+          codes.push(created.public_code);
+        }
+        const range =
+          codes.length === 1 ? codes[0] : `${codes[0]}～${codes[codes.length - 1]}`;
+        return {
+          ok: true,
+          summary: `已登记 ${count} 台离线设备（编号 ${range}）`,
+        };
       }
       case "collection_shift_create": {
         const shiftId = await createCollectionShift({

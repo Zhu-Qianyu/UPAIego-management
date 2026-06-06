@@ -7,17 +7,62 @@ export type FormFillSpec = {
   data: Record<string, unknown>;
 };
 
-function parseChineseAddress(raw: string): {
-  address_province: string;
-  address_city: string;
-  address_district: string;
-  address_detail?: string;
-} {
+function extractQuotedOrPlain(s: string): string {
+  const q = s.match(/[「"']([^」"']+)[」"']/);
+  if (q) return q[1].trim();
+  return s.trim();
+}
+
+function fieldValue(body: string, labels: string[]): string | null {
+  for (const label of labels) {
+    const re = new RegExp(`${label}[为是]?[：:]?\\s*[「"']?([^」"',，\\n]+)[」"']?`, "i");
+    const m = body.match(re);
+    if (m?.[1]?.trim()) return m[1].trim();
+  }
+  return null;
+}
+
+function parseDeviceCount(text: string): number | null {
+  const m = text.match(/(\d+)\s*台/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  return null;
+}
+
+function extractClientCompany(text: string): string | null {
+  const fromLabel = fieldValue(text, ["甲方", "公司", "公司名", "客户"]);
+  if (fromLabel) return fromLabel;
+  const m = text.match(/甲方[是为：:\s]+([^，,\n]+)/);
+  if (m?.[1]?.trim()) return m[1].trim();
+  return null;
+}
+
+function extractDeviceType(text: string): string | null {
+  return fieldValue(text, ["类型", "设备类型", "设备"]);
+}
+
+function defaultLabelPrefix(deviceType: string): string {
+  const t = deviceType.trim().replace(/设备$/u, "").trim();
+  return t || "设备";
+}
+
+function partyDemandDefaults(client_company: string, device_type?: string | null) {
+  return {
+    client_company,
+    device_type: device_type?.trim() || "通用设备",
+    max_hours_per_scene: 8,
+    scene_categories: ["industrial"],
+    total_hours_unlimited: true,
+  };
+}
+
+function parseChineseAddress(raw: string) {
   let rest = raw.trim().replace(/^[「"']|[」"']$/g, "");
   let province = "待补充";
   let city = "待补充";
   let district = "待补充";
-
   const direct = rest.match(/^(北京市|上海市|天津市|重庆市)/);
   if (direct) {
     province = direct[1];
@@ -30,48 +75,74 @@ function parseChineseAddress(raw: string): {
       rest = rest.slice(province.length);
     }
   }
-
   const cm = rest.match(/^(.+?(?:市|州|盟|地区))/);
   if (cm) {
     city = cm[1];
     rest = rest.slice(city.length);
   }
-
   const dm = rest.match(/^(.+?[区县])/);
   if (dm) {
     district = dm[1];
     rest = rest.slice(district.length);
   }
-
-  const detail = rest.trim() || undefined;
-  return { address_province: province, address_city: city, address_district: district, address_detail: detail };
-}
-
-function extractQuotedOrPlain(s: string): string {
-  const q = s.match(/[「"']([^」"']+)[」"']/);
-  if (q) return q[1].trim();
-  return s.trim();
+  return { address_province: province, address_city: city, address_district: district, address_detail: rest.trim() || undefined };
 }
 
 function normalizePhone(p: string): string {
   return p.replace(/\s+/g, "").replace(/-/g, "");
 }
 
-function fieldValue(body: string, labels: string[]): string | null {
-  for (const label of labels) {
-    const re = new RegExp(`${label}[为是]?[：:]?\\s*[「"']?([^」"',，\\n]+)[」"']?`, "i");
-    const m = body.match(re);
-    if (m?.[1]?.trim()) return m[1].trim();
+function inferManualDevicesBatch(text: string, role: string): FormFillSpec | null {
+  if (!FORM_ROLES.manual_devices_batch_create?.includes(role)) return null;
+  if (!/(?:增加|添加|登记|创建).*(?:离线)?设备|(?:离线)?设备.*(?:增加|添加|登记)/i.test(text)) return null;
+  const count = parseDeviceCount(text);
+  const client_company = extractClientCompany(text);
+  if (!count || !client_company) return null;
+  const device_type = extractDeviceType(text);
+  const label_prefix = device_type ? defaultLabelPrefix(device_type) : "设备";
+  return {
+    form: "manual_devices_batch_create",
+    label: `为「${client_company}」登记 ${count} 台离线设备`,
+    data: {
+      client_company,
+      count,
+      ...(device_type ? { device_type, label_prefix } : { label_prefix }),
+    },
+  };
+}
+
+function inferPartyDemandCreate(text: string, role: string): FormFillSpec | null {
+  if (!FORM_ROLES.party_demand_create?.includes(role)) return null;
+  const patterns = [
+    /(?:添加|创建|填(?:写)?|录入)(?:一?[条个])?甲方业务\s*[，,：:\s]+([^，,\n]+)/i,
+    /(?:添加|创建)甲方业务[，,]\s*([^，,\n]+)/i,
+  ];
+  let client_company: string | null = null;
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m?.[1]?.trim()) {
+      client_company = extractQuotedOrPlain(m[1].split(/[，,]/)[0] ?? m[1]);
+      break;
+    }
   }
-  return null;
+  if (!client_company) return null;
+  const device_type = extractDeviceType(text);
+  const maxHoursRaw = text.match(/(?:单场景上限|上限)[^\d]*(\d+)/i)?.[1];
+  const max_hours_per_scene = maxHoursRaw ? Math.max(1, parseInt(maxHoursRaw, 10)) : 8;
+  let scene_categories: string[] = ["industrial"];
+  const catMatch = text.match(/场景(?:类型|分类)?\s*[：:]?\s*(\w+)/i);
+  if (catMatch && ["industrial", "home", "special"].includes(catMatch[1])) scene_categories = [catMatch[1]];
+  return {
+    form: "party_demand_create",
+    label: `添加甲方业务「${client_company}」`,
+    data: { ...partyDemandDefaults(client_company, device_type), max_hours_per_scene, scene_categories },
+  };
 }
 
 function inferSceneMacroCreate(text: string, role: string): FormFillSpec | null {
   if (!FORM_ROLES.scene_macro_create?.includes(role)) return null;
-
   const macroMatch = text.match(/(?:帮我)?(?:创建|填|录入|添加)(?:一?[条个])?大场景[：:]\s*([\s\S]+)/i);
   if (!macroMatch) return null;
-
   const body = macroMatch[1];
   const titleFromLabel = fieldValue(body, ["标题", "名称", "大场景名称"]);
   let title = titleFromLabel ?? "";
@@ -79,11 +150,9 @@ function inferSceneMacroCreate(text: string, role: string): FormFillSpec | null 
     const firstPart = body.split(/[，,]/)[0]?.trim() ?? "";
     title = extractQuotedOrPlain(firstPart.replace(/^(?:标题|名称)[为是]?[：:]?\s*/i, ""));
   }
-
   const contactMatch = body.match(/联系人\s*[：:]?\s*(\S+?)\s+(\d[\d\s-]{10,15})/);
   const addrMatch = body.match(/地址\s*[：:]?\s*([^，,\n]+)/);
   if (!title || !contactMatch || !addrMatch) return null;
-
   const addr = parseChineseAddress(addrMatch[1]);
   return {
     form: "scene_macro_create",
@@ -97,69 +166,41 @@ function inferSceneMacroCreate(text: string, role: string): FormFillSpec | null 
   };
 }
 
-function inferPartyDemandCreate(text: string, role: string): FormFillSpec | null {
-  if (!FORM_ROLES.party_demand_create?.includes(role)) return null;
-
-  const m = text.match(/(?:帮我)?(?:填|录入|创建|添加)(?:一?[条个])?甲方业务[：:]\s*([\s\S]+)/i);
-  if (!m) return null;
-
-  const body = m[1];
-  const client_company =
-    fieldValue(body, ["公司名", "公司", "客户", "甲方"]) ??
-    extractQuotedOrPlain(body.split(/[，,]/)[0]?.trim() ?? "");
-  const device_type = fieldValue(body, ["设备类型", "设备"]);
-  const maxHoursRaw = body.match(/(?:单场景上限|上限|max)[^\d]*(\d+)/i)?.[1];
-  const max_hours_per_scene = maxHoursRaw ? Math.max(1, parseInt(maxHoursRaw, 10)) : 0;
-
-  let scene_categories: string[] = ["industrial"];
-  const catMatch = body.match(/场景(?:类型|分类)?\s*[：:]?\s*(\w+)/i);
-  if (catMatch && ["industrial", "home", "special"].includes(catMatch[1])) {
-    scene_categories = [catMatch[1]];
-  }
-
-  if (!client_company || !device_type || !max_hours_per_scene) return null;
-
-  return {
-    form: "party_demand_create",
-    label: `创建甲方业务「${client_company}」`,
-    data: {
-      client_company,
-      device_type,
-      max_hours_per_scene,
-      scene_categories,
-      total_hours_unlimited: true,
-    },
-  };
-}
-
-/** LLM 未输出 form_fills 时，从用户原文推断（提高代填成功率） */
 export function inferFormFillsFromUserText(text: string, role: string): FormFillSpec[] {
   const t = text.trim();
   if (!t) return [];
-
   const out: FormFillSpec[] = [];
+  const batch = inferManualDevicesBatch(t, role);
+  if (batch) out.push(batch);
+  const party = inferPartyDemandCreate(t, role);
+  if (party && !batch) out.push(party);
   const macro = inferSceneMacroCreate(t, role);
   if (macro) out.push(macro);
-  const party = inferPartyDemandCreate(t, role);
-  if (party) out.push(party);
   return out.slice(0, 3);
 }
 
 export function buildFormFillConfirmMessage(fills: FormFillSpec[]): string {
   const summary = fills.map((f) => {
-    if (f.form === "scene_macro_create") {
+    if (f.form === "manual_devices_batch_create") {
       const d = f.data;
-      return `大场景「${d.title}」，联系人 ${d.contact_name} ${d.contact_phone}，${d.address_province}${d.address_city}${d.address_district}`;
+      return `为「${d.client_company}」登记 ${d.count} 台离线设备`;
     }
     if (f.form === "party_demand_create") {
-      return `甲方业务「${f.data.client_company}」，设备 ${f.data.device_type}`;
+      return `甲方业务「${f.data.client_company}」，设备类型 ${f.data.device_type}`;
+    }
+    if (f.form === "scene_macro_create") {
+      return `大场景「${f.data.title}」`;
     }
     return f.label;
   });
   return `好的，我帮您写入：${summary.join("；")}。`;
 }
 
-export function stripNavigationActionsForFormFill(actions: unknown): unknown[] {
+function isFakeFormFillToast(message: string): boolean {
+  return /添加设备信息|甲方\s*=|数量\s*=|设备信息：|已提示添加/.test(message);
+}
+
+export function stripActionsWhenFormFills(actions: unknown): unknown[] {
   if (!Array.isArray(actions)) return [];
   return actions.filter((item) => {
     if (!item || typeof item !== "object") return true;
@@ -167,8 +208,14 @@ export function stripNavigationActionsForFormFill(actions: unknown): unknown[] {
     if (o.type === "scene_tab") return false;
     if (o.type === "navigate" && typeof o.path === "string") {
       const p = o.path;
-      if (p.startsWith("/scene") || p.includes("tab=stations") || p.includes("tab=demands")) return false;
+      if (p.startsWith("/scene") || p.startsWith("/devices") || p.includes("tab=")) return false;
     }
+    if (o.type === "toast" && typeof o.message === "string" && isFakeFormFillToast(o.message)) return false;
     return true;
   });
+}
+
+/** @deprecated use stripActionsWhenFormFills */
+export function stripNavigationActionsForFormFill(actions: unknown): unknown[] {
+  return stripActionsWhenFormFills(actions);
 }

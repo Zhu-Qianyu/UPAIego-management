@@ -10,6 +10,7 @@ export type AgentFormKind =
   | "scenario_position_update"
   | "group_topic_create"
   | "manual_device_create"
+  | "manual_devices_batch_create"
   | "collection_shift_create"
   | "profile_update"
   | "bounty_publish"
@@ -58,6 +59,14 @@ export type ScenarioPositionFormData = {
 export type GroupTopicFormData = {
   title: string;
   body?: string | null;
+};
+
+export type ManualDevicesBatchFormData = {
+  client_company: string;
+  count: number;
+  device_type?: string | null;
+  label_prefix?: string | null;
+  party_demand_id?: string | null;
 };
 
 export type ManualDeviceFormData = {
