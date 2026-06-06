@@ -7,7 +7,12 @@ export const FORM_FILL_SKILL_PROMPT = `## 代填表单 form_fills（须先请示
 - 用户明确要求「帮我填/录入/创建/发布/登记」时，解析字段并输出 form_fills；assistant_message 复述将写入的内容并问「这样帮您填写可以吗？」
 - 一次最多 3 条 form_fills；禁止在 assistant_message 里假装已写入
 - 缺少必填项 → form_fills 为空，在 questions 里列出缺什么；**不要**用跳转代替代填
-- 图片类字段由系统自动用占位图，**不要**要求用户发图
+**占位图**：已废弃。需图的表单在聊天确认时由用户选图上传。
+
+**需图表单**
+- party_demand_create → 甲方设备快照
+- scene_macro_create → 大场景全景图
+- scenario_position_create → 小岗位工位快照
 - 仅输出当前用户角色允许的 form 类型；无权限则引导其找对应角色
 
 **示例（必须 form_fills，actions 为空）**

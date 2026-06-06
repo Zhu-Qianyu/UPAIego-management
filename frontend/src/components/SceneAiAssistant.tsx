@@ -27,11 +27,19 @@ import type {
   AgentPendingFormFill,
   AgentPendingGroupRules,
 } from "../aitebot/types";
+import {
+  allRequiredFormImagesSelected,
+  getFormImageUploadLabel,
+  pendingFormFillsNeedImages,
+  validateAgentImageFile,
+} from "../aitebot/agentFormImages";
 import { useAitebot } from "../aitebot/AitebotContext";
 import { useAuth } from "../auth/AuthContext";
 import { ROLE_LABELS } from "../auth/roleLabels";
 import type { UserRole } from "../types/roles";
 import DouXiaoMiAvatar from "./DouXiaoMiAvatar";
+
+type FormFillImageEntry = { file: File; previewUrl: string };
 
 const BOT_NAME = "豆小秘";
 
@@ -272,6 +280,7 @@ export default function SceneAiAssistant() {
   const [searchResults, setSearchResults] = useState<AgentChatMessageRow[]>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [quotedMessage, setQuotedMessage] = useState<AgentMessageQuote | null>(null);
+  const [formFillImages, setFormFillImages] = useState<Record<string, Record<number, FormFillImageEntry>>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -280,6 +289,8 @@ export default function SceneAiAssistant() {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const holdTranscriptRef = useRef("");
   const shownInboxIdsRef = useRef<Set<string>>(new Set());
+  const formImageInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const autoImagePromptedRef = useRef<Set<string>>(new Set());
 
   const quickTopics = QUICK_TOPICS_BY_ROLE[userRole];
 
@@ -292,6 +303,55 @@ export default function SceneAiAssistant() {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 112)}px`;
   }, [input, inputMode, open, compactCompose]);
+
+  const clearFormFillImagesForMessage = useCallback((msgId: string) => {
+    setFormFillImages((prev) => {
+      const entries = prev[msgId];
+      if (!entries) return prev;
+      for (const e of Object.values(entries)) URL.revokeObjectURL(e.previewUrl);
+      const next = { ...prev };
+      delete next[msgId];
+      return next;
+    });
+  }, []);
+
+  const setFormFillImage = useCallback((msgId: string, index: number, file: File) => {
+    const validationErr = validateAgentImageFile(file);
+    if (validationErr) {
+      setErr(validationErr);
+      return;
+    }
+    setErr("");
+    setFormFillImages((prev) => {
+      const prevEntry = prev[msgId]?.[index];
+      if (prevEntry?.previewUrl) URL.revokeObjectURL(prevEntry.previewUrl);
+      return {
+        ...prev,
+        [msgId]: {
+          ...prev[msgId],
+          [index]: { file, previewUrl: URL.createObjectURL(file) },
+        },
+      };
+    });
+  }, []);
+
+  useEffect(() => {
+    for (const m of messages) {
+      if (m.confirmDone || !m.pendingFormFills?.length) continue;
+      const needed = pendingFormFillsNeedImages(m.pendingFormFills);
+      if (!needed.length) continue;
+      const promptKey = `${m.id}:${needed.map((n) => n.index).join(",")}`;
+      if (autoImagePromptedRef.current.has(promptKey)) continue;
+      const missing = needed.find((n) => !formFillImages[m.id]?.[n.index]);
+      if (!missing) continue;
+      autoImagePromptedRef.current.add(promptKey);
+      const inputKey = `${m.id}-${missing.index}`;
+      requestAnimationFrame(() => {
+        formImageInputRefs.current.get(inputKey)?.click();
+      });
+      break;
+    }
+  }, [messages, formFillImages]);
 
   const refreshUnread = useCallback(async (gid: string | null) => {
     try {
@@ -571,7 +631,15 @@ export default function SceneAiAssistant() {
 
   async function onConfirmFormFills(msgId: string, specs: AgentPendingFormFill[]) {
     if (!groupId) return;
-    const result = await executeAgentFormFills(groupId, userRole, specs);
+    const imageMap: Record<number, File> = {};
+    for (const [idx, entry] of Object.entries(formFillImages[msgId] ?? {})) {
+      imageMap[Number(idx)] = entry.file;
+    }
+    if (!allRequiredFormImagesSelected(specs, imageMap)) {
+      setErr("请先上传所需图片后再点「可以」");
+      return;
+    }
+    const result = await executeAgentFormFills(groupId, userRole, specs, imageMap);
     const sceneForms = new Set([
       "party_demand_create",
       "party_demand_update",
@@ -592,6 +660,7 @@ export default function SceneAiAssistant() {
         return { ...m, confirmDone: true, pendingFormFills: undefined, text };
       })
     );
+    clearFormFillImagesForMessage(msgId);
 
     if (needsSceneRefresh && result.summaries.length) {
       executeActions([{ type: "refresh", target: "scene" }]);
@@ -621,6 +690,7 @@ export default function SceneAiAssistant() {
       pendingFormFills: undefined,
       pendingActions: undefined,
     });
+    if (kind === "forms") clearFormFillImagesForMessage(msgId);
     void appendAssistantLine(
       kind === "broadcast"
         ? "好的，那这次通知先不发了。您改主意了随时跟我说～"
@@ -900,14 +970,43 @@ export default function SceneAiAssistant() {
                     ) : null}
                     {!m.confirmDone && m.pendingFormFills?.length ? (
                       <PendingConfirmBar
-                        prompt="这样帮您填写可以吗？"
-                        detail={
-                          <ul className="text-xs text-gray-600 space-y-1 list-disc pl-4">
-                            {m.pendingFormFills.map((f, i) => (
-                              <li key={`${f.form}-${i}`}>{f.label}</li>
-                            ))}
-                          </ul>
+                        prompt={
+                          pendingFormFillsNeedImages(m.pendingFormFills).length
+                            ? "请上传图片，确认后我帮您写入："
+                            : "这样帮您填写可以吗？"
                         }
+                        detail={
+                          <div className="space-y-2">
+                            <ul className="text-xs text-gray-600 space-y-1 list-disc pl-4">
+                              {m.pendingFormFills.map((f, i) => (
+                                <li key={`${f.form}-${i}`}>{f.label}</li>
+                              ))}
+                            </ul>
+                            {pendingFormFillsNeedImages(m.pendingFormFills).map(({ index, form }) => {
+                              const entry = formFillImages[m.id]?.[index];
+                              const inputKey = `${m.id}-${index}`;
+                              return (
+                                <FormFillImageUpload
+                                  key={inputKey}
+                                  label={getFormImageUploadLabel(form)}
+                                  previewUrl={entry?.previewUrl}
+                                  fileName={entry?.file.name}
+                                  inputRef={(el) => {
+                                    if (el) formImageInputRefs.current.set(inputKey, el);
+                                    else formImageInputRefs.current.delete(inputKey);
+                                  }}
+                                  onPick={(file) => setFormFillImage(m.id, index, file)}
+                                />
+                              );
+                            })}
+                          </div>
+                        }
+                        okDisabled={!allRequiredFormImagesSelected(
+                          m.pendingFormFills,
+                          Object.fromEntries(
+                            Object.entries(formFillImages[m.id] ?? {}).map(([k, v]) => [Number(k), v.file])
+                          )
+                        )}
                         onOk={() => void onConfirmFormFills(m.id, m.pendingFormFills!)}
                         onDecline={() => onDeclinePending(m.id, "forms")}
                       />
@@ -1137,16 +1236,71 @@ export default function SceneAiAssistant() {
   );
 }
 
+function FormFillImageUpload({
+  label,
+  previewUrl,
+  fileName,
+  onPick,
+  inputRef,
+}: {
+  label: string;
+  previewUrl?: string;
+  fileName?: string;
+  onPick: (file: File) => void;
+  inputRef: (el: HTMLInputElement | null) => void;
+}) {
+  const localRef = useRef<HTMLInputElement | null>(null);
+
+  return (
+    <div className="rounded-xl border border-dashed border-rose-200 bg-rose-50/60 p-2.5 space-y-2">
+      <p className="text-xs text-gray-700">
+        📷 {label}
+        {fileName ? (
+          <span className="text-emerald-700"> · 已选</span>
+        ) : (
+          <span className="text-rose-600 font-medium"> · 请上传</span>
+        )}
+      </p>
+      {previewUrl ? (
+        <img src={previewUrl} alt={label} className="max-h-32 w-full rounded-lg object-cover border border-gray-100" />
+      ) : null}
+      <input
+        ref={(el) => {
+          localRef.current = el;
+          inputRef(el);
+        }}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onPick(file);
+          e.target.value = "";
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => localRef.current?.click()}
+        className="w-full rounded-full border border-rose-200 bg-white py-2 text-xs font-medium text-rose-700 hover:bg-rose-50"
+      >
+        {fileName ? "重新选择图片" : "选择图片"}
+      </button>
+    </div>
+  );
+}
+
 function PendingConfirmBar({
   prompt,
   detail,
   onOk,
   onDecline,
+  okDisabled = false,
 }: {
   prompt: string;
   detail?: ReactNode;
   onOk: () => void;
   onDecline: () => void;
+  okDisabled?: boolean;
 }) {
   return (
     <div className="mt-3 pt-2 border-t border-gray-100 space-y-2">
@@ -1156,7 +1310,8 @@ function PendingConfirmBar({
         <button
           type="button"
           onClick={onOk}
-          className="flex-1 rounded-full bg-[#1a1a1a] py-2 text-xs font-medium text-white"
+          disabled={okDisabled}
+          className="flex-1 rounded-full bg-[#1a1a1a] py-2 text-xs font-medium text-white disabled:opacity-40"
         >
           可以
         </button>

@@ -22,6 +22,7 @@ import {
 } from "./operations";
 import { updateMyProfile } from "./profiles";
 import type { AgentFormKind, AgentPendingFormFill } from "../aitebot/agentFormTypes";
+import { formRequiresImage, getFormImageUploadLabel } from "../aitebot/agentFormImages";
 import { SCENE_CATEGORY_KEYS, type SceneCategoryKey } from "../utils/sceneCategories";
 import type { UserRole } from "../types/roles";
 
@@ -47,15 +48,6 @@ const FORM_ROLES: Record<string, UserRole[]> = {
   device_register: ["admin", "device_operator"],
 };
 
-function placeholderImageFile(): File {
-  const bytes = Uint8Array.from(
-    atob(
-      "/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxISEhUQEhIVFhUVFRUVFRUVFRUWFxUVFRUYHSggGBolGxUVITEhJSkrLi4uFx8zODMsNygtLisBCgoKDg0OGxAQGy0lICUtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLf/AABEIAAEAAQMBIgACEQEDEQH/xAAXAAEBAQEAAAAAAAAAAAAAAAAAAQID/8QAFhABAQEAAAAAAAAAAAAAAAAAAAER/9oADAMBAAIQAxAAAAG6P//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Bf//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEABj8Cf//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAT8hf//Z"
-    ),
-    (c) => c.charCodeAt(0)
-  );
-  return new File([bytes], "agent-placeholder.jpg", { type: "image/jpeg" });
-}
 
 function normalizeCategories(raw: unknown): SceneCategoryKey[] {
   if (!Array.isArray(raw)) return ["industrial"];
@@ -111,10 +103,22 @@ export function normalizePendingFormFills(raw: unknown, role: UserRole): AgentPe
   return out;
 }
 
+function resolveFormImageFile(spec: AgentPendingFormFill, imageFile?: File): File {
+  if (!formRequiresImage(spec.form)) {
+    if (imageFile) return imageFile;
+    throw new Error("此表单不需要图片");
+  }
+  if (!imageFile) {
+    throw new Error(`请先上传${getFormImageUploadLabel(spec.form)}`);
+  }
+  return imageFile;
+}
+
 export async function executeAgentFormFill(
   groupId: string,
   role: UserRole,
-  spec: AgentPendingFormFill
+  spec: AgentPendingFormFill,
+  imageFile?: File
 ): Promise<AgentFormFillResult> {
   const allowed = FORM_ROLES[spec.form];
   if (!allowed?.includes(role)) {
@@ -131,7 +135,7 @@ export async function executeAgentFormFill(
         const scene_categories = normalizeCategories(d.scene_categories);
         const unlimited = d.total_hours_unlimited === true || d.total_hours_unlimited === "true";
         const total_hours_required = unlimited ? null : Math.max(0, Math.floor(num(d, "total_hours_required", !unlimited)));
-        const file = placeholderImageFile();
+        const file = resolveFormImageFile(spec, imageFile);
         const { path, bucket } = await uploadPartyDeviceSnapshot(groupId, file);
         const created = await createPartyDemand({
           group_id: groupId,
@@ -168,7 +172,7 @@ export async function executeAgentFormFill(
         return { ok: true, summary: "已更新甲方业务" };
       }
       case "scene_macro_create": {
-        const file = placeholderImageFile();
+        const file = resolveFormImageFile(spec, imageFile);
         const { path } = await uploadMacroPanoramaSnapshot(groupId, file);
         const created = await createSceneMacroSite({
           group_id: groupId,
@@ -201,7 +205,7 @@ export async function executeAgentFormFill(
       }
       case "scenario_position_create": {
         const macroId = str(d, "macro_scene_id", true);
-        const file = placeholderImageFile();
+        const file = resolveFormImageFile(spec, imageFile);
         const { path } = await uploadWorkstationSnapshot(groupId, file);
         const created = await createScenarioPosition({
           group_id: groupId,
@@ -303,12 +307,14 @@ export async function executeAgentFormFill(
 export async function executeAgentFormFills(
   groupId: string,
   role: UserRole,
-  specs: AgentPendingFormFill[]
+  specs: AgentPendingFormFill[],
+  images?: Record<number, File>
 ): Promise<{ summaries: string[]; errors: string[] }> {
   const summaries: string[] = [];
   const errors: string[] = [];
-  for (const spec of specs) {
-    const result = await executeAgentFormFill(groupId, role, spec);
+  for (let i = 0; i < specs.length; i++) {
+    const spec = specs[i];
+    const result = await executeAgentFormFill(groupId, role, spec, images?.[i]);
     if (result.ok && result.summary) summaries.push(result.summary);
     else errors.push(result.error ?? `${spec.label} 失败`);
   }
