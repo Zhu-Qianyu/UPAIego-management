@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import type { SceneCategoryKey } from "../utils/sceneCategories";
 import { deriveDeviceCodePrefix } from "../utils/deviceCodePrefix";
+import { isMissingColumnError } from "../utils/supabaseSchemaCompat";
 
 const PD = "party_demands";
 const SP = "scenario_positions";
@@ -100,25 +101,31 @@ export async function createPartyDemand(row: {
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) throw new Error("未登录");
   const company = row.client_company.trim();
-  const { data, error } = await supabase
+  const insertBase = {
+    group_id: row.group_id,
+    title: row.title.trim(),
+    client_company: company,
+    device_type: row.device_type.trim(),
+    device_snapshot_bucket: row.device_snapshot_bucket,
+    device_snapshot_path: row.device_snapshot_path,
+    total_hours_required: row.total_hours_required,
+    max_hours_per_scene: row.max_hours_per_scene,
+    scene_categories: row.scene_categories,
+    requirement_summary: row.requirement_summary?.trim() || null,
+    created_by: u.id,
+    client_hourly_rate: row.client_hourly_rate ?? null,
+  };
+
+  let { data, error } = await supabase
     .from(PD)
-    .insert({
-      group_id: row.group_id,
-      title: row.title.trim(),
-      client_company: company,
-      device_code_prefix: deriveDeviceCodePrefix(company),
-      device_type: row.device_type.trim(),
-      device_snapshot_bucket: row.device_snapshot_bucket,
-      device_snapshot_path: row.device_snapshot_path,
-      total_hours_required: row.total_hours_required,
-      max_hours_per_scene: row.max_hours_per_scene,
-      scene_categories: row.scene_categories,
-      requirement_summary: row.requirement_summary?.trim() || null,
-      created_by: u.id,
-      client_hourly_rate: row.client_hourly_rate ?? null,
-    })
+    .insert({ ...insertBase, device_code_prefix: deriveDeviceCodePrefix(company) })
     .select()
     .single();
+
+  if (error && isMissingColumnError(error, "device_code_prefix")) {
+    ({ data, error } = await supabase.from(PD).insert(insertBase).select().single());
+  }
+
   if (error) throw new Error(error.message);
   return data as PartyDemand;
 }
@@ -159,7 +166,12 @@ export async function updatePartyDemand(id: string, patch: PartyDemandUpdatePatc
   if (patch.device_snapshot_path !== undefined) payload.device_snapshot_path = patch.device_snapshot_path;
   if (patch.client_hourly_rate !== undefined) payload.client_hourly_rate = patch.client_hourly_rate;
   if (Object.keys(payload).length === 0) return;
-  const { error } = await supabase.from(PD).update(payload).eq("id", id);
+  let { error } = await supabase.from(PD).update(payload).eq("id", id);
+  if (error && isMissingColumnError(error, "device_code_prefix") && "device_code_prefix" in payload) {
+    const { device_code_prefix: _drop, ...rest } = payload;
+    if (Object.keys(rest).length === 0) return;
+    ({ error } = await supabase.from(PD).update(rest).eq("id", id));
+  }
   if (error) throw new Error(error.message);
 }
 
@@ -600,19 +612,38 @@ export async function createManualTrackedDevice(input: {
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) throw new Error("未登录");
 
-  const { data: party, error: partyErr } = await supabase
+  let partyQuery = await supabase
     .from(PD)
     .select("id, client_company, device_code_prefix")
     .eq("id", input.party_demand_id)
     .maybeSingle();
-  if (partyErr) throw new Error(partyErr.message);
+
+  let prefixColumnAvailable = true;
+  if (partyQuery.error && isMissingColumnError(partyQuery.error, "device_code_prefix")) {
+    prefixColumnAvailable = false;
+    partyQuery = await supabase
+      .from(PD)
+      .select("id, client_company")
+      .eq("id", input.party_demand_id)
+      .maybeSingle();
+  }
+  if (partyQuery.error) throw new Error(partyQuery.error.message);
+  const party = partyQuery.data;
   if (!party) throw new Error("甲方业务不存在");
-  if (!party.device_code_prefix?.trim() && party.client_company?.trim()) {
+
+  if (
+    prefixColumnAvailable &&
+    "device_code_prefix" in party &&
+    !(party as { device_code_prefix?: string | null }).device_code_prefix?.trim() &&
+    party.client_company?.trim()
+  ) {
     const { error: prefixErr } = await supabase
       .from(PD)
       .update({ device_code_prefix: deriveDeviceCodePrefix(party.client_company) })
       .eq("id", input.party_demand_id);
-    if (prefixErr) throw new Error(prefixErr.message);
+    if (prefixErr && !isMissingColumnError(prefixErr, "device_code_prefix")) {
+      throw new Error(prefixErr.message);
+    }
   }
 
   const { data, error } = await supabase
