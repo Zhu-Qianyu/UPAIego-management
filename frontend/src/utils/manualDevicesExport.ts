@@ -59,7 +59,10 @@ export async function buildManualDevicesExportHtml(
       const label = formatManualTrackedDeviceLabel(r);
       const adminUrl = manualDeviceAdminPageUrl(r.public_code);
       const img = dataUrl
-        ? `<img src="${dataUrl}" alt="" width="${qrPixelWidth}" height="${qrPixelWidth}" style="display:block;margin:0 auto;" />`
+        ? `<div style="text-align:center">
+            <div style="font-family:ui-monospace,monospace;font-weight:700;font-size:15px;line-height:1.2;margin-bottom:6px;letter-spacing:0.5px">${escapeHtml(r.public_code)}</div>
+            <img src="${dataUrl}" alt="" width="${qrPixelWidth}" height="${qrPixelWidth}" style="display:block;margin:0 auto;" />
+          </div>`
         : `<span style="color:#999;font-size:11px">二维码生成失败</span>`;
       return `<tr>
         <td style="text-align:center;vertical-align:middle">${i + 1}</td>

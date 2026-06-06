@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { SceneCategoryKey } from "../utils/sceneCategories";
+import { deriveDeviceCodePrefix } from "../utils/deviceCodePrefix";
 
 const PD = "party_demands";
 const SP = "scenario_positions";
@@ -22,6 +23,8 @@ export interface PartyDemand {
   scene_categories: string[];
   /** 甲方结算单价（元/小时），用于管理员收入估算 */
   client_hourly_rate?: number | null;
+  /** 离线设备登记编号前缀，如 ZYMF */
+  device_code_prefix?: string | null;
   created_by: string;
   created_at: string;
 }
@@ -96,12 +99,14 @@ export async function createPartyDemand(row: {
 }): Promise<PartyDemand> {
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) throw new Error("未登录");
+  const company = row.client_company.trim();
   const { data, error } = await supabase
     .from(PD)
     .insert({
       group_id: row.group_id,
       title: row.title.trim(),
-      client_company: row.client_company.trim(),
+      client_company: company,
+      device_code_prefix: deriveDeviceCodePrefix(company),
       device_type: row.device_type.trim(),
       device_snapshot_bucket: row.device_snapshot_bucket,
       device_snapshot_path: row.device_snapshot_path,
@@ -129,6 +134,7 @@ export type PartyDemandUpdatePatch = Partial<{
   device_snapshot_bucket: string;
   device_snapshot_path: string;
   client_hourly_rate: number | null;
+  device_code_prefix: string | null;
 }>;
 
 export async function updatePartyDemand(id: string, patch: PartyDemandUpdatePatch): Promise<void> {
@@ -136,6 +142,9 @@ export async function updatePartyDemand(id: string, patch: PartyDemandUpdatePatc
   if (patch.title !== undefined) payload.title = patch.title.trim();
   if (patch.client_company !== undefined) {
     payload.client_company = patch.client_company === null ? null : patch.client_company.trim() || null;
+    if (payload.client_company) {
+      payload.device_code_prefix = deriveDeviceCodePrefix(String(payload.client_company));
+    }
   }
   if (patch.device_type !== undefined) {
     payload.device_type = patch.device_type === null ? null : patch.device_type.trim() || null;
@@ -590,6 +599,22 @@ export async function createManualTrackedDevice(input: {
 }): Promise<ManualTrackedDevice> {
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) throw new Error("未登录");
+
+  const { data: party, error: partyErr } = await supabase
+    .from(PD)
+    .select("id, client_company, device_code_prefix")
+    .eq("id", input.party_demand_id)
+    .maybeSingle();
+  if (partyErr) throw new Error(partyErr.message);
+  if (!party) throw new Error("甲方业务不存在");
+  if (!party.device_code_prefix?.trim() && party.client_company?.trim()) {
+    const { error: prefixErr } = await supabase
+      .from(PD)
+      .update({ device_code_prefix: deriveDeviceCodePrefix(party.client_company) })
+      .eq("id", input.party_demand_id);
+    if (prefixErr) throw new Error(prefixErr.message);
+  }
+
   const { data, error } = await supabase
     .from(MTD)
     .insert({

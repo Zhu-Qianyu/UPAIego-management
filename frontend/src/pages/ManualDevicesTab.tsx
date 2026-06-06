@@ -70,6 +70,7 @@ const ManualTrackedDeviceRow = memo(function ManualTrackedDeviceRow({
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row gap-4 h-full w-full min-w-0 max-w-full overflow-hidden box-border">
       <div className="shrink-0 flex flex-col items-center gap-1">
+        <p className="font-mono text-lg font-bold tracking-wide text-indigo-900">{row.public_code}</p>
         {qr ? (
           <img src={qr} alt="" className="w-40 h-40 object-contain rounded-lg border border-gray-100 bg-white" />
         ) : (
