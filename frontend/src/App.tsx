@@ -510,7 +510,10 @@ export default function App() {
         </Suspense>
         </PendingApprovalGate>
         </main>
-        {(profile.role === "admin" || profile.role === "scene_operator") && <SceneAiAssistant />}
+        {(profile.role === "admin" ||
+          profile.role === "scene_operator" ||
+          profile.role === "device_operator" ||
+          profile.role === "collection_executor") && <SceneAiAssistant />}
       </div>
     </div>
     </AitebotProvider>

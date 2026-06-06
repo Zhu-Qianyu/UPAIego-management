@@ -36,6 +36,8 @@ function navForRole(role: AitebotPageContext["role"]): { path: string; label: st
       { path: "/map", label: "数采地图" },
       { path: "/bounties", label: "悬赏令" },
       { path: "/scene", label: "采集排班" },
+      { path: "/group", label: "群组" },
+      { path: "/wallet", label: "我的钱包" },
     ],
   };
   return map[role] ?? [];

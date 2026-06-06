@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchActiveGroupId } from "../api/groups";
 import {
+  countAgentInboxUnread,
+  listAgentInboxMessages,
+  markAgentInboxRead,
+  type AgentInboxMessage,
+} from "../api/agentInbox";
+import {
   executeAgentProposals,
   loadMacrosForAgent,
   sceneAiFeatureEnabled,
@@ -10,6 +16,9 @@ import {
 } from "../api/sceneAgent";
 import { labelSceneCategories } from "../utils/sceneCategories";
 import { useAitebot } from "../aitebot/AitebotContext";
+import { useAuth } from "../auth/AuthContext";
+import { ROLE_LABELS } from "../auth/roleLabels";
+import type { UserRole } from "../types/roles";
 import DouXiaoMiAvatar from "./DouXiaoMiAvatar";
 
 const BOT_NAME = "豆小秘";
@@ -20,30 +29,65 @@ type UiMessage = {
   text: string;
   imagePreviews?: string[];
   proposals?: AgentProposal[];
+  inboxId?: string;
 };
 
 type InputMode = "text" | "voice";
 type VoiceLang = "zh-CN" | "en-US";
 
-const QUICK_TOPICS = [
-  { icon: "⚡", label: "快速", prompt: "帮我快速梳理当前数据采集任务要注意什么？" },
-  { icon: "✨", label: "新场景", prompt: "我们在评估一个新场景，是否适合采集？需要提前确认哪些条件？" },
-  { icon: "📋", label: "采集流程", prompt: "请说明从场景录入、排班到现场采集的完整流程。" },
-  { icon: "🏢", label: "甲方业务", prompt: "甲方业务和场景业务怎么配合？各自负责什么？" },
-  { icon: "📷", label: "现场图", prompt: "我上传了现场图，请帮我判断适合作为大场景全景还是小岗位快照。" },
-] as const;
+const QUICK_TOPICS_BY_ROLE: Record<UserRole, { icon: string; label: string; prompt: string }[]> = {
+  admin: [
+    { icon: "📢", label: "群发通知", prompt: "帮我起草一条通知：明天全体放假，并发送给群组所有人。" },
+    { icon: "📋", label: "采集流程", prompt: "请说明从场景录入、排班到悬赏结算的完整数采制度。" },
+    { icon: "👥", label: "群组管理", prompt: "带我去看群组管理和待审批成员。" },
+    { icon: "🏢", label: "甲方业务", prompt: "甲方业务和场景岗位怎么配合？" },
+  ],
+  scene_operator: [
+    { icon: "📅", label: "采集排班", prompt: "帮我打开采集排班，并说明发布排班前要准备什么。" },
+    { icon: "✨", label: "新场景", prompt: "我们在评估一个新场景，是否适合采集？" },
+    { icon: "📋", label: "采集流程", prompt: "请说明从甲方业务、岗位到排班发布的流程。" },
+    { icon: "📢", label: "通知执行员", prompt: "帮我起草一条通知发给所有数采执行员。" },
+  ],
+  device_operator: [
+    { icon: "🔧", label: "运维工作台", prompt: "带我打开运维工作台，说明悬赏借还设备流程。" },
+    { icon: "📱", label: "登记设备", prompt: "如何登记离线设备？需要关联什么？" },
+    { icon: "📋", label: "设备状态", prompt: "设备故障或离线时我应该怎么处理？" },
+  ],
+  collection_executor: [
+    { icon: "📅", label: "我的排班", prompt: "带我去看今天的采集排班，如何打卡？" },
+    { icon: "💰", label: "悬赏令", prompt: "打开悬赏令，说明接单和截止注意事项。" },
+    { icon: "🗺️", label: "数采地图", prompt: "带我去数采地图看设备位置。" },
+    { icon: "👛", label: "钱包", prompt: "我的钱包结算规则是什么？" },
+  ],
+};
+
+function welcomeMessage(enabled: boolean, role: UserRole): UiMessage {
+  const roleLabel = ROLE_LABELS[role];
+  const roleHints: Record<UserRole, string> = {
+    admin: "你可以让我通知全员或指定角色（消息会发到每人账户收件箱），也可以带路管理台、场景业务与悬赏。",
+    scene_operator: "我可以帮你梳理甲方业务与排班，并向数采执行员群发通知；有录入方案时会请你确认后再写入。",
+    device_operator: "我可以带你处理设备登记、运维工作台与悬赏借还流程。",
+    collection_executor: "我可以帮你看排班打卡、悬赏接单与钱包；有群通知时会在收件箱提醒你。",
+  };
+  return {
+    id: "welcome",
+    role: "assistant",
+    text: enabled
+      ? `你好，我是 ${BOT_NAME}，本工作群的智能体。你当前是「${roleLabel}」。${roleHints[role]}`
+      : `${BOT_NAME} 尚未启用，请联系管理员配置 scene-ai-agent。`,
+  };
+}
 
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function welcomeMessage(enabled: boolean): UiMessage {
+function inboxToUiMessage(msg: AgentInboxMessage): UiMessage {
   return {
-    id: "welcome",
+    id: `inbox-${msg.id}`,
     role: "assistant",
-    text: enabled
-      ? `你好，我是 ${BOT_NAME}，你的数据采集数字员工。我可以讨论新场景能否采集，也可以帮你在系统里跳转页面、切换场景标签；有录入方案时会请你确认后再写入。`
-      : `${BOT_NAME} 尚未启用，请联系管理员配置 scene-ai-agent。`,
+    text: `📬 ${msg.title}\n\n${msg.body}`,
+    inboxId: msg.id,
   };
 }
 
@@ -82,15 +126,18 @@ function IconPlus({ className }: { className?: string }) {
 
 export default function SceneAiAssistant() {
   const enabled = sceneAiFeatureEnabled();
+  const { role } = useAuth();
+  const userRole: UserRole = role ?? "scene_operator";
   const { pageContext, executeActions, toast, clearToast } = useAitebot();
   const [open, setOpen] = useState(false);
   const [groupId, setGroupId] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [inputMode, setInputMode] = useState<InputMode>("text");
   const [voiceLang, setVoiceLang] = useState<VoiceLang>("zh-CN");
   const [listening, setListening] = useState(false);
   const [holding, setHolding] = useState(false);
   const [extraOpen, setExtraOpen] = useState(false);
-  const [messages, setMessages] = useState<UiMessage[]>(() => [welcomeMessage(enabled)]);
+  const [messages, setMessages] = useState<UiMessage[]>(() => [welcomeMessage(enabled, userRole)]);
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [imageHint, setImageHint] = useState<"unknown" | "macro" | "position">("unknown");
@@ -102,15 +149,62 @@ export default function SceneAiAssistant() {
   const fileRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const holdTranscriptRef = useRef("");
+  const shownInboxIdsRef = useRef<Set<string>>(new Set());
+
+  const quickTopics = QUICK_TOPICS_BY_ROLE[userRole];
 
   const speechSupported = useMemo(() => getSpeechRecognitionCtor() !== null, []);
 
+  const refreshUnread = useCallback(async (gid: string | null) => {
+    try {
+      const n = await countAgentInboxUnread(gid);
+      setUnreadCount(n);
+    } catch {
+      setUnreadCount(0);
+    }
+  }, []);
+
+  const pullInboxIntoChat = useCallback(async (gid: string) => {
+    try {
+      const rows = await listAgentInboxMessages({ groupId: gid, unreadOnly: true, limit: 10 });
+      const fresh = rows.filter((r) => !shownInboxIdsRef.current.has(r.id));
+      if (!fresh.length) return;
+      for (const r of fresh) shownInboxIdsRef.current.add(r.id);
+      setMessages((prev) => [...prev, ...fresh.reverse().map(inboxToUiMessage)]);
+      await markAgentInboxRead(fresh.map((r) => r.id));
+      await refreshUnread(gid);
+    } catch {
+      /* table may not exist yet */
+    }
+  }, [refreshUnread]);
+
   useEffect(() => {
-    if (!open) return;
     void fetchActiveGroupId()
-      .then(setGroupId)
+      .then((gid) => {
+        setGroupId(gid);
+        void refreshUnread(gid);
+      })
       .catch(() => setGroupId(null));
-  }, [open]);
+  }, [refreshUnread]);
+
+  useEffect(() => {
+    if (!groupId) return;
+    const t = window.setInterval(() => {
+      void refreshUnread(groupId);
+      if (open) void pullInboxIntoChat(groupId);
+    }, 30000);
+    return () => window.clearInterval(t);
+  }, [groupId, open, refreshUnread, pullInboxIntoChat]);
+
+  useEffect(() => {
+    if (!open || !groupId) return;
+    void pullInboxIntoChat(groupId);
+  }, [open, groupId, pullInboxIntoChat]);
+
+  useEffect(() => {
+    setMessages([welcomeMessage(enabled, userRole)]);
+    shownInboxIdsRef.current.clear();
+  }, [enabled, userRole]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -218,7 +312,7 @@ export default function SceneAiAssistant() {
   };
 
   const onNewTopic = () => {
-    setMessages([welcomeMessage(enabled)]);
+    setMessages([welcomeMessage(enabled, userRole)]);
     setInput("");
     setPendingImages((prev) => {
       for (const p of prev) URL.revokeObjectURL(p.previewUrl);
@@ -278,12 +372,21 @@ export default function SceneAiAssistant() {
         if (summaries.length > 0) actionNote = `\n\n⚡ 已执行：${summaries.join("；")}`;
       }
 
+      let broadcastNote = "";
+      if (res.broadcast_result) {
+        if (res.broadcast_result.ok) {
+          broadcastNote = `\n\n📢 已发送到 ${res.broadcast_result.sent_count ?? 0} 人账户收件箱。`;
+        } else if (res.broadcast_result.error) {
+          broadcastNote = `\n\n⚠️ 群发失败：${res.broadcast_result.error}`;
+        }
+      }
+
       setMessages((prev) => [
         ...prev,
         {
           id: uid(),
           role: "assistant",
-          text: res.assistant_message + (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : "") + actionNote,
+          text: res.assistant_message + (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : "") + actionNote + broadcastNote,
           proposals: res.proposals.length ? res.proposals : undefined,
         },
       ]);
@@ -335,11 +438,16 @@ export default function SceneAiAssistant() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg ring-2 ring-rose-100 hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-rose-300 overflow-hidden"
-          aria-label={`打开${BOT_NAME}`}
+          className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg ring-2 ring-rose-100 hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-rose-300 overflow-visible"
+          aria-label={`打开${BOT_NAME}${unreadCount ? `，${unreadCount}条未读` : ""}`}
           title={BOT_NAME}
         >
           <DouXiaoMiAvatar size="lg" className="h-14 w-14 ring-0 shadow-none" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
         </button>
       )}
 
@@ -362,7 +470,7 @@ export default function SceneAiAssistant() {
                 <div>
                   <p className="font-semibold text-gray-900">{BOT_NAME}</p>
                   <p className="text-xs text-gray-500">
-                    数字员工 · 当前：{pageContext.pageTitle}
+                    群组智能体 · {ROLE_LABELS[userRole]} · {pageContext.pageTitle}
                     {pageContext.sceneTab
                       ? ` · ${pageContext.sceneTab === "tasks" ? "采集排班" : pageContext.sceneTab === "demands" ? "甲方业务" : "场景岗位"}`
                       : ""}
@@ -453,7 +561,7 @@ export default function SceneAiAssistant() {
               <p className="text-center text-sm text-gray-400 mb-2">聊聊新话题</p>
 
               <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {QUICK_TOPICS.map((item) => (
+                {quickTopics.map((item) => (
                   <button
                     key={item.label}
                     type="button"

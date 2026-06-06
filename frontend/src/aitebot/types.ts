@@ -16,9 +16,18 @@ export type AitebotPageContext = {
   navItems: { path: string; label: string }[];
 };
 
+export type AgentBroadcastResult = {
+  ok: boolean;
+  sent_count?: number;
+  broadcast_id?: string;
+  target_roles?: string[];
+  error?: string;
+};
+
 export type AgentResponsePayload = {
   assistant_message: string;
   proposals: unknown[];
   questions: string[];
   actions?: AgentAction[];
+  broadcast_result?: AgentBroadcastResult | null;
 };
