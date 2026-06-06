@@ -23,8 +23,26 @@ type UiMessage = {
 type InputMode = "text" | "voice";
 type VoiceLang = "zh-CN" | "en-US";
 
+const QUICK_TOPICS = [
+  { icon: "⚡", label: "快速", prompt: "帮我快速梳理当前数据采集任务要注意什么？" },
+  { icon: "✨", label: "新场景", prompt: "我们在评估一个新场景，是否适合采集？需要提前确认哪些条件？" },
+  { icon: "📋", label: "采集流程", prompt: "请说明从场景录入、排班到现场采集的完整流程。" },
+  { icon: "🏢", label: "甲方业务", prompt: "甲方业务和场景业务怎么配合？各自负责什么？" },
+  { icon: "📷", label: "现场图", prompt: "我上传了现场图，请帮我判断适合作为大场景全景还是小岗位快照。" },
+] as const;
+
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function welcomeMessage(enabled: boolean): UiMessage {
+  return {
+    id: "welcome",
+    role: "assistant",
+    text: enabled
+      ? `你好，我是 ${BOT_NAME}。数据采集相关的话题都可以聊：新场景能不能采、流程怎么走、现场要注意什么；也可以发图让我整理录入方案。`
+      : `${BOT_NAME} 尚未启用，请联系管理员配置 scene-ai-agent。`,
+  };
 }
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
@@ -35,6 +53,31 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+function IconCamera({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M4 8h3l2-2h6l2 2h3v11H4V8z" strokeLinejoin="round" />
+      <circle cx="12" cy="13" r="3.5" />
+    </svg>
+  );
+}
+
+function IconWave({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M8 10v4M12 8v8M16 10v4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconPlus({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M12 6v12M6 12h12" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function SceneAiAssistant() {
   const enabled = sceneAiFeatureEnabled();
   const [open, setOpen] = useState(false);
@@ -42,15 +85,9 @@ export default function SceneAiAssistant() {
   const [inputMode, setInputMode] = useState<InputMode>("text");
   const [voiceLang, setVoiceLang] = useState<VoiceLang>("zh-CN");
   const [listening, setListening] = useState(false);
-  const [messages, setMessages] = useState<UiMessage[]>(() => [
-    {
-      id: "welcome",
-      role: "assistant",
-      text: enabled
-        ? `你好，我是 ${BOT_NAME}，负责数据采集相关业务咨询。你可以和我探讨：新场景能不能采、要注意什么、系统怎么用；也可以发现场图让我整理录入方案。纯聊天不需要确认写入；有方案时你再点「确认写入系统」。`
-        : `${BOT_NAME} 尚未启用。请联系管理员配置 scene-ai-agent（ARK_API_KEY + ARK_MODEL）。`,
-    },
-  ]);
+  const [holding, setHolding] = useState(false);
+  const [extraOpen, setExtraOpen] = useState(false);
+  const [messages, setMessages] = useState<UiMessage[]>(() => [welcomeMessage(enabled)]);
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [imageHint, setImageHint] = useState<"unknown" | "macro" | "position">("unknown");
@@ -61,6 +98,7 @@ export default function SceneAiAssistant() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const holdTranscriptRef = useRef("");
 
   const speechSupported = useMemo(() => getSpeechRecognitionCtor() !== null, []);
 
@@ -81,13 +119,6 @@ export default function SceneAiAssistant() {
       recognitionRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    if (inputMode === "text") {
-      recognitionRef.current?.stop();
-      setListening(false);
-    }
-  }, [inputMode]);
 
   const imageByIndex = useMemo(() => {
     const m = new Map<number, File>();
@@ -113,6 +144,7 @@ export default function SceneAiAssistant() {
       if (added.length) {
         setPendingImages((prev) => [...prev, ...added]);
         setNextImageIndex(idx);
+        setExtraOpen(false);
       }
     },
     [imageHint, nextImageIndex]
@@ -126,50 +158,81 @@ export default function SceneAiAssistant() {
     });
   };
 
-  const toggleVoiceInput = () => {
+  const stopRecognition = () => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setListening(false);
+    setHolding(false);
+  };
+
+  const startHoldRecognition = () => {
     if (!speechSupported) {
-      setErr("当前浏览器不支持语音输入，请改用文字输入");
-      setInputMode("text");
+      setErr("当前浏览器不支持语音输入");
       return;
     }
     const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) return;
+    if (!Ctor || listening) return;
 
-    if (listening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      return;
-    }
-
+    holdTranscriptRef.current = "";
     const rec = new Ctor();
     recognitionRef.current = rec;
     rec.lang = voiceLang;
     rec.interimResults = true;
-    rec.continuous = false;
+    rec.continuous = true;
 
     rec.onstart = () => {
       setListening(true);
+      setHolding(true);
       setErr("");
     };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => {
+    rec.onend = () => {
       setListening(false);
-      setErr("语音识别失败，请检查麦克风权限或改用文字输入");
+      setHolding(false);
+      const t = holdTranscriptRef.current.trim();
+      if (t) setInput((prev) => (prev ? `${prev}${t}` : t));
+      holdTranscriptRef.current = "";
+    };
+    rec.onerror = () => {
+      stopRecognition();
+      setErr("语音识别失败，请检查麦克风权限");
     };
     rec.onresult = (event: SpeechRecognitionEvent) => {
-      let transcript = "";
+      let chunk = "";
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        transcript += event.results[i][0].transcript;
+        chunk += event.results[i][0].transcript;
       }
-      if (transcript.trim()) {
-        setInput((prev) => (prev ? `${prev}${transcript}` : transcript));
+      holdTranscriptRef.current += chunk;
+      if (event.results[event.results.length - 1]?.isFinal) {
+        setInput((prev) => (prev ? `${prev}${chunk}` : chunk));
       }
     };
 
-    rec.start();
+    try {
+      rec.start();
+    } catch {
+      setErr("无法启动语音识别");
+    }
   };
 
-  async function onSend() {
-    const text = input.trim();
+  const onNewTopic = () => {
+    setMessages([welcomeMessage(enabled)]);
+    setInput("");
+    setPendingImages((prev) => {
+      for (const p of prev) URL.revokeObjectURL(p.previewUrl);
+      return [];
+    });
+    setNextImageIndex(0);
+    setErr("");
+    setExtraOpen(false);
+  };
+
+  const applyQuickTopic = (prompt: string) => {
+    setInput(prompt);
+    setInputMode("text");
+  };
+
+  async function onSend(overrideText?: string) {
+    const text = (overrideText ?? input).trim();
     if (!text && pendingImages.length === 0) return;
     if (!enabled) {
       setErr(`${BOT_NAME} 未启用`);
@@ -181,6 +244,7 @@ export default function SceneAiAssistant() {
     }
     setErr("");
     setBusy(true);
+    setExtraOpen(false);
 
     const userMsg: UiMessage = {
       id: uid(),
@@ -209,7 +273,7 @@ export default function SceneAiAssistant() {
         {
           id: uid(),
           role: "assistant",
-          text: res.assistant_message + (res.questions.length ? `\n\n待补充：${res.questions.join("；")}` : ""),
+          text: res.assistant_message + (res.questions.length ? `\n\n💡 待补充：${res.questions.join("；")}` : ""),
           proposals: res.proposals.length ? res.proposals : undefined,
         },
       ]);
@@ -220,7 +284,7 @@ export default function SceneAiAssistant() {
         {
           id: uid(),
           role: "assistant",
-          text: "抱歉，这次没能处理你的请求。请检查网络、登录状态，或稍后再试。",
+          text: "抱歉，这次没能处理你的请求。请检查网络或稍后再试。",
         },
       ]);
     } finally {
@@ -261,7 +325,7 @@ export default function SceneAiAssistant() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-2xl text-white shadow-lg ring-4 ring-indigo-100 hover:bg-indigo-700 hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#1a1a1a] text-2xl text-white shadow-lg hover:bg-black hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-gray-400"
           aria-label={`打开 ${BOT_NAME}`}
           title={BOT_NAME}
         >
@@ -274,51 +338,50 @@ export default function SceneAiAssistant() {
           <button
             type="button"
             aria-label="关闭 aitebot"
-            className="fixed inset-0 z-40 bg-black/25"
+            className="fixed inset-0 z-40 bg-black/20"
             onClick={() => setOpen(false)}
           />
           <div
-            className="fixed bottom-0 left-0 right-0 z-50 flex h-[33.333vh] min-h-[300px] max-h-[520px] flex-col overflow-hidden border-t border-indigo-200 bg-white shadow-[0_-12px_40px_rgba(15,23,42,0.18)] animate-[slideUp_0.25s_ease-out]"
+            className="fixed bottom-0 left-0 right-0 z-50 flex h-[33.333vh] min-h-[320px] max-h-[560px] flex-col overflow-hidden bg-[#f5f5f5] shadow-[0_-8px_32px_rgba(0,0,0,0.12)] animate-[slideUp_0.25s_ease-out]"
             role="dialog"
             aria-label={BOT_NAME}
           >
-            <header className="flex shrink-0 items-center justify-between border-b border-indigo-100 bg-gradient-to-r from-indigo-50 to-white px-4 py-3">
-              <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-lg text-white">
+            <header className="flex shrink-0 items-center justify-between border-b border-gray-200/80 bg-white px-4 py-2.5">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1a1a1a] text-base text-white">
                   🤖
                 </span>
-                <div>
-                  <p className="font-semibold text-indigo-950 tracking-wide">{BOT_NAME}</p>
-                  <p className="text-xs text-indigo-700/80">数据采集业务咨询 · 只增不改</p>
-                </div>
+                <p className="font-semibold text-gray-900">{BOT_NAME}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-white border border-transparent hover:border-gray-200"
+                className="text-sm text-gray-500 hover:text-gray-800 px-2 py-1"
               >
                 收起
               </button>
             </header>
 
-            <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3 bg-slate-50/60">
+            <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4">
               {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                >
+                <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                  {m.role === "assistant" && (
+                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1a1a1a] text-xs text-white">
+                      🤖
+                    </span>
+                  )}
                   <div
-                    className={`max-w-[85%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap ${
+                    className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap ${
                       m.role === "user"
-                        ? "bg-indigo-600 text-white"
-                        : "bg-white border border-gray-200 text-gray-800"
+                        ? "bg-[#1a1a1a] text-white rounded-br-md"
+                        : "bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-md"
                     }`}
                   >
                     {m.text}
                     {m.imagePreviews?.length ? (
-                      <div className="flex flex-wrap gap-1 mt-2">
+                      <div className="flex flex-wrap gap-1.5 mt-2">
                         {m.imagePreviews.map((src) => (
-                          <img key={src} src={src} alt="" className="h-14 w-14 object-cover rounded border border-white/30" />
+                          <img key={src} src={src} alt="" className="h-16 w-16 object-cover rounded-lg" />
                         ))}
                       </div>
                     ) : null}
@@ -332,25 +395,30 @@ export default function SceneAiAssistant() {
                   </div>
                 </div>
               ))}
-              {busy && <p className="text-xs text-gray-500 px-1">{BOT_NAME} 正在思考…</p>}
+              {busy && (
+                <div className="flex gap-2 items-center text-sm text-gray-400 pl-9">
+                  <span className="inline-flex gap-1">
+                    <span className="animate-bounce">·</span>
+                    <span className="animate-bounce [animation-delay:0.1s]">·</span>
+                    <span className="animate-bounce [animation-delay:0.2s]">·</span>
+                  </span>
+                  {BOT_NAME} 正在思考
+                </div>
+              )}
             </div>
 
-            {err && <p className="shrink-0 px-4 py-1 text-xs text-red-600 bg-red-50">{err}</p>}
+            {err && <p className="shrink-0 px-4 py-1 text-xs text-red-600">{err}</p>}
 
             {pendingImages.length > 0 && (
-              <div className="shrink-0 border-t border-gray-100 px-4 py-2 bg-white">
-                <p className="text-xs text-gray-500 mb-1">待发送图片 ({pendingImages.length})</p>
+              <div className="shrink-0 px-4 pb-1">
                 <div className="flex flex-wrap gap-2">
                   {pendingImages.map((img) => (
                     <div key={img.index} className="relative">
-                      <img src={img.previewUrl} alt="" className="h-12 w-12 object-cover rounded border" />
-                      <span className="absolute -top-1 -left-1 text-[10px] bg-gray-800 text-white px-1 rounded">
-                        {img.hint === "macro" ? "景" : img.hint === "position" ? "岗" : img.index}
-                      </span>
+                      <img src={img.previewUrl} alt="" className="h-11 w-11 object-cover rounded-lg border border-gray-200" />
                       <button
                         type="button"
                         onClick={() => removeImage(img.index)}
-                        className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] rounded-full w-4 h-4"
+                        className="absolute -top-1 -right-1 bg-gray-800 text-white text-[10px] rounded-full w-4 h-4"
                       >
                         ×
                       </button>
@@ -360,65 +428,31 @@ export default function SceneAiAssistant() {
               </div>
             )}
 
-            <footer className="shrink-0 border-t border-gray-200 px-4 py-3 space-y-2 bg-white">
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-gray-500">输入</span>
-                <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+            <footer className="shrink-0 px-3 pb-3 pt-1 bg-[#f5f5f5] relative">
+              <p className="text-center text-sm text-gray-400 mb-2">聊聊新话题</p>
+
+              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {QUICK_TOPICS.map((item) => (
                   <button
+                    key={item.label}
                     type="button"
-                    onClick={() => setInputMode("text")}
-                    className={`px-3 py-1 ${inputMode === "text" ? "bg-indigo-600 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+                    onClick={() => applyQuickTopic(item.prompt)}
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-sm text-gray-800 hover:bg-gray-50"
                   >
-                    文字
+                    <span>{item.icon}</span>
+                    {item.label}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setInputMode("voice")}
-                    className={`px-3 py-1 ${inputMode === "voice" ? "bg-indigo-600 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
-                  >
-                    语音
-                  </button>
-                </div>
-                {inputMode === "voice" && (
-                  <>
-                    <select
-                      value={voiceLang}
-                      onChange={(e) => setVoiceLang(e.target.value as VoiceLang)}
-                      className="rounded border border-gray-300 px-2 py-1"
-                    >
-                      <option value="zh-CN">中文</option>
-                      <option value="en-US">English</option>
-                    </select>
-                    <button
-                      type="button"
-                      disabled={!speechSupported || busy}
-                      onClick={toggleVoiceInput}
-                      className={`rounded-lg px-3 py-1 font-medium ${
-                        listening
-                          ? "bg-red-600 text-white animate-pulse"
-                          : "border border-indigo-300 text-indigo-700 hover:bg-indigo-50"
-                      } disabled:opacity-50`}
-                    >
-                      {listening ? "聆听中…" : "开始说话"}
-                    </button>
-                  </>
-                )}
-                <span className="text-gray-300">|</span>
-                <select
-                  value={imageHint}
-                  onChange={(e) => setImageHint(e.target.value as typeof imageHint)}
-                  className="rounded border border-gray-300 px-2 py-1"
-                >
-                  <option value="unknown">图片·自动</option>
-                  <option value="macro">大场景全景</option>
-                  <option value="position">小岗位现场</option>
-                </select>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 rounded-[1.75rem] border border-gray-200 bg-white px-3 py-2 shadow-sm">
                 <button
                   type="button"
                   onClick={() => fileRef.current?.click()}
-                  className="rounded border border-gray-300 px-2 py-1 hover:bg-gray-50"
+                  className="shrink-0 p-1 text-gray-700 hover:text-gray-900"
+                  aria-label="上传图片"
                 >
-                  上传图片
+                  <IconCamera className="h-6 w-6" />
                 </button>
                 <input
                   ref={fileRef}
@@ -431,35 +465,132 @@ export default function SceneAiAssistant() {
                     e.target.value = "";
                   }}
                 />
-              </div>
 
-              <div className="flex gap-2">
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder={
-                    inputMode === "voice"
-                      ? "点击「开始说话」录入，或在此编辑识别结果…"
-                      : `向 ${BOT_NAME} 提问：新场景能否采集、流程说明、现场描述…`
-                  }
-                  rows={2}
-                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm resize-none"
-                  onKeyDown={(e) => {
-                    if (inputMode === "text" && e.key === "Enter" && !e.shiftKey) {
+                {inputMode === "text" ? (
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="发消息或按住说话…"
+                    className="flex-1 min-w-0 bg-transparent text-[15px] text-gray-900 placeholder:text-gray-400 outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void onSend();
+                      }
+                    }}
+                    onPointerDown={(e) => {
+                      if (e.pointerType === "mouse" && e.button !== 0) return;
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className={`flex-1 rounded-full py-2 text-[15px] font-medium select-none touch-none ${
+                      holding ? "bg-gray-900 text-white" : "text-gray-500"
+                    }`}
+                    onPointerDown={(e) => {
                       e.preventDefault();
-                      void onSend();
-                    }
-                  }}
-                />
+                      startHoldRecognition();
+                    }}
+                    onPointerUp={stopRecognition}
+                    onPointerLeave={holding ? stopRecognition : undefined}
+                    onPointerCancel={stopRecognition}
+                  >
+                    {holding ? "松开 结束" : "按住 说话"}
+                  </button>
+                )}
+
                 <button
                   type="button"
-                  disabled={busy || !enabled}
-                  onClick={() => void onSend()}
-                  className="self-end px-5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium disabled:opacity-50"
+                  onClick={() => {
+                    setInputMode((m) => (m === "text" ? "voice" : "text"));
+                    stopRecognition();
+                  }}
+                  className={`shrink-0 flex h-9 w-9 items-center justify-center rounded-full border ${
+                    inputMode === "voice"
+                      ? "border-gray-900 bg-gray-900 text-white"
+                      : "border-gray-200 text-gray-700 hover:bg-gray-50"
+                  }`}
+                  aria-label="切换语音输入"
                 >
-                  发送
+                  <IconWave className="h-5 w-5" />
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setExtraOpen((v) => !v)}
+                  className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50"
+                  aria-label="更多"
+                >
+                  <IconPlus className="h-5 w-5" />
+                </button>
+
+                {(input.trim() || pendingImages.length > 0) && inputMode === "text" && (
+                  <button
+                    type="button"
+                    disabled={busy || !enabled}
+                    onClick={() => void onSend()}
+                    className="shrink-0 rounded-full bg-[#1a1a1a] px-3 py-1.5 text-sm text-white disabled:opacity-40"
+                  >
+                    发送
+                  </button>
+                )}
               </div>
+
+              {extraOpen && (
+                <div className="absolute bottom-full right-3 mb-2 w-48 rounded-2xl border border-gray-200 bg-white py-2 shadow-lg text-sm">
+                  <button
+                    type="button"
+                    className="w-full px-4 py-2 text-left hover:bg-gray-50"
+                    onClick={onNewTopic}
+                  >
+                    新话题
+                  </button>
+                  <div className="px-4 py-2 text-gray-500 text-xs">语音识别语言</div>
+                  <button
+                    type="button"
+                    className={`w-full px-4 py-2 text-left hover:bg-gray-50 ${voiceLang === "zh-CN" ? "text-gray-900 font-medium" : ""}`}
+                    onClick={() => {
+                      setVoiceLang("zh-CN");
+                      setExtraOpen(false);
+                    }}
+                  >
+                    中文
+                  </button>
+                  <button
+                    type="button"
+                    className={`w-full px-4 py-2 text-left hover:bg-gray-50 ${voiceLang === "en-US" ? "text-gray-900 font-medium" : ""}`}
+                    onClick={() => {
+                      setVoiceLang("en-US");
+                      setExtraOpen(false);
+                    }}
+                  >
+                    English
+                  </button>
+                  <div className="border-t border-gray-100 my-1" />
+                  <div className="px-4 py-1 text-gray-500 text-xs">图片类型</div>
+                  {(
+                    [
+                      ["unknown", "自动识别"],
+                      ["macro", "大场景全景"],
+                      ["position", "小岗位现场"],
+                    ] as const
+                  ).map(([val, lab]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      className={`w-full px-4 py-2 text-left hover:bg-gray-50 ${imageHint === val ? "text-gray-900 font-medium" : ""}`}
+                      onClick={() => {
+                        setImageHint(val);
+                        setExtraOpen(false);
+                      }}
+                    >
+                      {lab}
+                    </button>
+                  ))}
+                </div>
+              )}
             </footer>
           </div>
         </>
@@ -485,25 +616,22 @@ function ProposalCards({
   disabled: boolean;
 }) {
   return (
-    <div className="mt-3 pt-2 border-t border-gray-200 space-y-2">
-      <p className="text-xs font-semibold text-gray-700">待确认录入方案</p>
+    <div className="mt-3 pt-2 border-t border-gray-100 space-y-2">
+      <p className="text-xs font-medium text-gray-600">待确认录入方案</p>
       <ul className="space-y-2 text-xs text-gray-700">
         {proposals.map((p) => (
-          <li key={p.id} className="rounded-lg bg-slate-50 border border-slate-200 p-2">
+          <li key={p.id} className="rounded-xl bg-gray-50 p-2.5">
             {p.kind === "macro" ? (
               <>
-                <p className="font-medium text-violet-800">大场景 · {p.title}</p>
+                <p className="font-medium text-gray-900">大场景 · {p.title}</p>
                 <p className="text-gray-600 mt-0.5">{p.description || "—"}</p>
                 <p className="text-gray-500 mt-0.5">
-                  联系人 {p.contact_name} · {p.contact_phone}
-                </p>
-                <p className="text-gray-500">
-                  {[p.address_province, p.address_city, p.address_district].join(" ")}
+                  {p.contact_name} · {p.contact_phone}
                 </p>
               </>
             ) : (
               <>
-                <p className="font-medium text-indigo-800">小岗位 · {p.title}</p>
+                <p className="font-medium text-gray-900">小岗位 · {p.title}</p>
                 <p className="text-gray-600 mt-0.5">{p.process_description || "—"}</p>
                 <p className="text-gray-500">{labelSceneCategories(p.scene_categories)}</p>
               </>
@@ -515,7 +643,7 @@ function ProposalCards({
         type="button"
         disabled={disabled}
         onClick={onConfirm}
-        className="w-full py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold disabled:opacity-50"
+        className="w-full py-2 rounded-full bg-[#1a1a1a] text-white text-xs font-medium disabled:opacity-50"
       >
         {disabled ? "写入中…" : "确认写入系统"}
       </button>
