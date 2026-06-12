@@ -83,6 +83,7 @@ export default function GroupChatRoom({
   groupName,
   memberCount,
   onOpenMembers,
+  onShowSessionList,
 }: {
   groupId: string;
   userRole: UserRole;
@@ -94,6 +95,7 @@ export default function GroupChatRoom({
   groupName?: string;
   memberCount?: number;
   onOpenMembers?: () => void;
+  onShowSessionList?: () => void;
 }) {
   const enabled = sceneAiFeatureEnabled();
   const { pageContext, executeActions, toast, clearToast } = useAitebot();
@@ -416,10 +418,20 @@ export default function GroupChatRoom({
   return (
     <section className={shellClass}>
       {embedded ? (
-        <div className="shrink-0 border-b border-gray-200 bg-[#ededed] px-4 py-3 flex items-center justify-between">
-          <div>
-            <p className="font-semibold text-gray-900">{groupName ?? "本工作群"}</p>
-            <p className="text-xs text-gray-500">
+        <div className="shrink-0 border-b border-gray-200 bg-[#ededed] px-2 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2">
+          {onShowSessionList ? (
+            <button
+              type="button"
+              onClick={onShowSessionList}
+              className="md:hidden shrink-0 rounded-md px-2 py-1 text-sm text-gray-700 hover:bg-gray-200/70"
+              aria-label="返回会话列表"
+            >
+              ←
+            </button>
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-gray-900 truncate text-sm sm:text-base">{groupName ?? "本工作群"}</p>
+            <p className="text-[11px] sm:text-xs text-gray-500 truncate">
               {memberCount != null ? `${memberCount} 人 · ` : ""}输入 {BOT_MENTION} 可问豆小秘
             </p>
           </div>
@@ -427,7 +439,7 @@ export default function GroupChatRoom({
             <button
               type="button"
               onClick={onOpenMembers}
-              className="text-xs text-gray-600 hover:text-gray-900 px-2 py-1 rounded-md hover:bg-gray-200/60"
+              className="shrink-0 text-xs text-gray-600 hover:text-gray-900 px-2 py-1 rounded-md hover:bg-gray-200/60"
             >
               成员
             </button>
@@ -449,7 +461,7 @@ export default function GroupChatRoom({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-3 bg-[#f7f7f8] min-h-0">
+      <div className="flex-1 overflow-y-auto px-2 sm:px-3 py-3 sm:py-4 space-y-3 bg-[#f7f7f8] min-h-0">
         <div className="flex gap-2 items-start">
           <DouXiaoMiAvatar size="sm" className="mt-0.5 shrink-0" />
           <div className="rounded-2xl rounded-tl-md bg-white border border-gray-200 px-3 py-2 text-sm text-gray-700 max-w-[85%] shadow-sm">
@@ -481,7 +493,7 @@ export default function GroupChatRoom({
           return (
             <div key={m.id} className={`flex gap-2 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
               {isBot ? <DouXiaoMiAvatar size="sm" className="mt-0.5 shrink-0" /> : null}
-              <div className={`max-w-[85%] min-w-0 ${isUser ? "items-end" : "items-start"} flex flex-col`}>
+              <div className={`max-w-[min(92%,28rem)] sm:max-w-[85%] min-w-0 ${isUser ? "items-end" : "items-start"} flex flex-col`}>
                 <p className={`text-[10px] text-gray-400 mb-0.5 px-1 ${isUser ? "text-right" : ""}`}>
                   {senderLabel(m)}
                 </p>
@@ -628,7 +640,7 @@ export default function GroupChatRoom({
         </div>
       )}
 
-      <div className={`shrink-0 border-t border-gray-100 bg-white px-3 py-2 space-y-2 ${embedded ? "bg-[#f5f5f5]" : ""}`}>
+      <div className={`shrink-0 border-t border-gray-100 bg-white px-2 sm:px-3 py-2 space-y-2 ${embedded ? "bg-[#f5f5f5]" : ""}`}>
         {sendErr && (
           <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2 py-1">{sendErr}</p>
         )}
@@ -637,7 +649,7 @@ export default function GroupChatRoom({
             入群审批通过后可发言
           </p>
         )}
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="hidden sm:flex gap-2 overflow-x-auto pb-1">
           {quickTopics.map((item) => (
             <button
               key={item.label}
@@ -650,13 +662,13 @@ export default function GroupChatRoom({
             </button>
           ))}
         </div>
-        <div className="flex gap-2 items-end">
+        <div className="flex gap-1.5 sm:gap-2 items-end">
           <textarea
             value={input}
             rows={1}
             onChange={(e) => setInput(e.target.value)}
             placeholder={`发消息… 问${BOT_NAME}请以 ${BOT_MENTION} 开头`}
-            className="flex-1 min-w-0 max-h-24 rounded-xl border border-gray-200 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+            className="flex-1 min-w-0 w-full max-h-24 rounded-xl border border-gray-200 px-2.5 sm:px-3 py-2 text-base sm:text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -668,7 +680,7 @@ export default function GroupChatRoom({
             type="button"
             disabled={busy || !input.trim() || tableMissing || !canSend}
             onClick={() => void onSend()}
-            className={`shrink-0 rounded-xl text-white px-4 py-2 text-sm font-medium disabled:opacity-40 ${
+            className={`shrink-0 rounded-xl text-white px-3 sm:px-4 py-2 text-sm font-medium disabled:opacity-40 ${
               embedded ? "bg-[#07c160] rounded-lg" : "bg-indigo-600"
             }`}
           >

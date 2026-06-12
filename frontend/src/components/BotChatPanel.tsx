@@ -312,9 +312,11 @@ function snippetAroundKeyword(text: string, keyword: string, maxLen = 72): strin
 export default function BotChatPanel({
   groupId,
   userRole,
+  onShowSessionList,
 }: {
   groupId: string;
   userRole: UserRole;
+  onShowSessionList?: () => void;
 }) {
   const enabled = sceneAiFeatureEnabled();
   const { pageContext, executeActions, toast, clearToast } = useAitebot();
@@ -859,14 +861,24 @@ export default function BotChatPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f5f5f5]">
-      <header className="flex shrink-0 items-center justify-between border-b border-gray-200/80 bg-[#ededed] px-4 py-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <DouXiaoMiAvatar size="md" />
+      <header className="flex shrink-0 items-center justify-between border-b border-gray-200/80 bg-[#ededed] px-2 sm:px-4 py-2.5 sm:py-3">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {onShowSessionList ? (
+            <button
+              type="button"
+              onClick={onShowSessionList}
+              className="md:hidden shrink-0 rounded-md px-2 py-1 text-sm text-gray-700 hover:bg-gray-200/70"
+              aria-label="返回会话列表"
+            >
+              ←
+            </button>
+          ) : null}
+          <DouXiaoMiAvatar size="md" className="shrink-0 hidden sm:block" />
           <div className="min-w-0">
-            <p className="font-semibold text-gray-900">{BOT_NAME}</p>
-            <p className="text-xs text-gray-500 truncate">
+            <p className="font-semibold text-gray-900 text-sm sm:text-base">{BOT_NAME}</p>
+            <p className="text-[11px] sm:text-xs text-gray-500 truncate">
               群组智能体 · {ROLE_LABELS[userRole]}
-              {unreadCount > 0 ? ` · ${unreadCount} 条未读通知` : ""}
+              {unreadCount > 0 ? ` · ${unreadCount} 条未读` : ""}
             </p>
           </div>
         </div>
@@ -1125,7 +1137,7 @@ export default function BotChatPanel({
               </div>
             )}
 
-            <footer className="shrink-0 px-3 pb-3 pt-1 bg-[#f5f5f5] relative">
+            <footer className="shrink-0 px-2 sm:px-3 pb-2 sm:pb-3 pt-1 bg-[#f5f5f5] relative">
               {inputMode === "text" && !compactCompose && (
                 <>
                   <p className="text-center text-sm text-gray-400 mb-2">聊聊新话题</p>

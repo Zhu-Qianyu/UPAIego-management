@@ -58,6 +58,7 @@ export default function ImShell({
   onOpenMembers: () => void;
 }) {
   const [session, setSession] = useState<ImSession>({ kind: "group" });
+  const [mobilePanel, setMobilePanel] = useState<"list" | "chat">("chat");
   const [search, setSearch] = useState("");
   const [previews, setPreviews] = useState<Record<string, SessionPreview>>({});
   const [directConvs, setDirectConvs] = useState<DirectConversation[]>([]);
@@ -131,6 +132,15 @@ export default function ImShell({
 
   const currentKey = sessionKey(session);
 
+  const openSession = useCallback((s: ImSession) => {
+    setSession(s);
+    setMobilePanel("chat");
+  }, []);
+
+  const showSessionList = useCallback(() => {
+    setMobilePanel("list");
+  }, []);
+
   function renderPanel() {
     if (session.kind === "group") {
       return (
@@ -145,11 +155,18 @@ export default function ImShell({
           groupName={groupName}
           memberCount={members.filter((m) => m.membership_status === "active").length}
           onOpenMembers={onOpenMembers}
+          onShowSessionList={showSessionList}
         />
       );
     }
     if (session.kind === "bot") {
-      return <BotChatPanel groupId={groupId} userRole={userRole} />;
+      return (
+        <BotChatPanel
+          groupId={groupId}
+          userRole={userRole}
+          onShowSessionList={showSessionList}
+        />
+      );
     }
     const member = members.find((m) => m.user_id === session.userId);
     const conv = userId
@@ -165,6 +182,7 @@ export default function ImShell({
         otherDisplayName={member?.displayName ?? displayNameByUserId.get(session.userId) ?? "成员"}
         userId={userId}
         canSend={canSend}
+        onShowSessionList={showSessionList}
       />
     );
   }
@@ -186,15 +204,15 @@ export default function ImShell({
     return (
       <button
         type="button"
-        onClick={() => setSession(s)}
-        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+        onClick={() => openSession(s)}
+        className={`w-full flex items-center gap-2.5 sm:gap-3 px-2.5 sm:px-3 py-2.5 text-left transition-colors ${
           active ? "bg-[#c9c9c9]" : "hover:bg-[#d9d9d9]"
         }`}
       >
         {avatar === "bot" ? (
           <DouXiaoMiAvatar size="sm" className="shrink-0" />
         ) : (
-          <div className="h-9 w-9 shrink-0 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-semibold">
+          <div className="h-8 w-8 sm:h-9 sm:w-9 shrink-0 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs sm:text-sm font-semibold">
             {avatar === "group" ? "群" : title.slice(0, 1)}
           </div>
         )}
@@ -214,9 +232,13 @@ export default function ImShell({
   }
 
   return (
-    <div className="flex h-[calc(100vh-10rem)] min-h-[32rem] rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
-      <aside className="w-[280px] shrink-0 flex flex-col border-r border-gray-200 bg-[#e7e7e7]">
-        <div className="shrink-0 p-3 border-b border-gray-300/60">
+    <div className="flex h-[calc(100dvh-6.5rem)] min-h-[20rem] sm:h-[calc(100vh-10rem)] sm:min-h-[32rem] rounded-lg sm:rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
+      <aside
+        className={`shrink-0 flex flex-col border-r border-gray-200 bg-[#e7e7e7] w-full md:w-[220px] lg:w-[260px] ${
+          mobilePanel === "chat" ? "hidden md:flex" : "flex"
+        }`}
+      >
+        <div className="shrink-0 p-2 sm:p-3 border-b border-gray-300/60">
           <input
             type="search"
             value={search}
@@ -270,7 +292,13 @@ export default function ImShell({
           </div>
         )}
       </aside>
-      <main className="flex-1 min-w-0 flex flex-col">{renderPanel()}</main>
+      <main
+        className={`flex-1 min-w-0 flex flex-col min-h-0 ${
+          mobilePanel === "list" ? "hidden md:flex" : "flex w-full"
+        }`}
+      >
+        {renderPanel()}
+      </main>
     </div>
   );
 }

@@ -15,6 +15,7 @@ export default function DirectChatPanel({
   otherDisplayName,
   userId,
   canSend,
+  onShowSessionList,
 }: {
   groupId: string;
   conversationId?: string | null;
@@ -22,6 +23,7 @@ export default function DirectChatPanel({
   otherDisplayName: string;
   userId: string | undefined;
   canSend: boolean;
+  onShowSessionList?: () => void;
 }) {
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId ?? null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
@@ -116,9 +118,21 @@ export default function DirectChatPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#f5f5f5]">
-      <header className="shrink-0 border-b border-gray-200 bg-[#ededed] px-4 py-3">
-        <p className="font-semibold text-gray-900">{otherDisplayName}</p>
-        <p className="text-xs text-gray-500">私聊 · 仅本群成员可见</p>
+      <header className="shrink-0 border-b border-gray-200 bg-[#ededed] px-2 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2">
+        {onShowSessionList ? (
+          <button
+            type="button"
+            onClick={onShowSessionList}
+            className="md:hidden shrink-0 rounded-md px-2 py-1 text-sm text-gray-700 hover:bg-gray-200/70"
+            aria-label="返回会话列表"
+          >
+            ←
+          </button>
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-gray-900 truncate text-sm sm:text-base">{otherDisplayName}</p>
+          <p className="text-[11px] sm:text-xs text-gray-500">私聊 · 仅本群成员可见</p>
+        </div>
       </header>
 
       {tableMissing && (
@@ -127,7 +141,7 @@ export default function DirectChatPanel({
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto px-2 sm:px-4 py-3 space-y-3">
         {loading ? (
           <p className="text-sm text-gray-400 text-center py-8">加载中…</p>
         ) : (
@@ -136,7 +150,7 @@ export default function DirectChatPanel({
             return (
               <div key={m.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[75%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
+                  className={`max-w-[min(92%,28rem)] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ${
                     isMe ? "bg-[#95ec69] text-gray-900" : "bg-white text-gray-800 border border-gray-100"
                   }`}
                 >
@@ -151,20 +165,20 @@ export default function DirectChatPanel({
 
       {sendErr && <p className="shrink-0 px-4 text-xs text-red-600">{sendErr}</p>}
 
-      <footer className="shrink-0 border-t border-gray-200 bg-[#f5f5f5] px-4 py-3">
+      <footer className="shrink-0 border-t border-gray-200 bg-[#f5f5f5] px-2 sm:px-4 py-2 sm:py-3">
         {!canSend ? (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             入群审批通过后可发送私聊
           </p>
         ) : (
-          <div className="flex gap-2 items-end">
+          <div className="flex gap-1.5 sm:gap-2 items-end">
             <textarea
               value={input}
               rows={2}
               onChange={(e) => setInput(e.target.value)}
               placeholder="发消息…"
               disabled={tableMissing}
-              className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-50"
+              className="flex-1 min-w-0 w-full rounded-lg border border-gray-200 bg-white px-2.5 sm:px-3 py-2 text-base sm:text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/30 disabled:opacity-50"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();

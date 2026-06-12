@@ -291,13 +291,13 @@ export default function GroupPage() {
   }
 
   return (
-    <div className="w-full min-w-0 space-y-4">
+    <div className="w-full min-w-0 space-y-3 sm:space-y-4">
       <RefreshStrip active={refreshing} />
       <GroupTabs />
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">群组</p>
-        <h1 className="text-2xl font-bold text-gray-900">{workGroup?.display_name ?? "本群"}</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{workGroup?.display_name ?? "本群"}</h1>
+        <p className="hidden sm:block text-sm text-gray-500 mt-1">
           微信式聊天：左侧切换群聊、豆小秘与成员私聊；群主或管理员可在「群成员管理」审批与移出成员。
         </p>
         {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
