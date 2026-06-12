@@ -1,7 +1,6 @@
 import type { PartyDemand, ScenarioPosition, SceneMacroSite, SceneTaskAssignment } from "../api/operations";
 import { getSnapshotPublicUrl } from "../api/operations";
 import type { SceneTask } from "../api/scenes";
-import { labelSceneCategories } from "./sceneCategories";
 
 const SNAPSHOT_SIGN_SEC = 7200;
 
@@ -78,7 +77,7 @@ export async function buildPartyDemandsPrintHtml(docTitle: string, subtitle: str
   const imgStyle = "max-width:140px;max-height:100px;object-fit:contain;display:block;margin:0 auto;border:1px solid #ccc";
   const tbody =
     rows.length === 0
-      ? `<tr><td colspan="10" style="text-align:center">暂无数据</td></tr>`
+      ? `<tr><td colspan="9" style="text-align:center">暂无数据</td></tr>`
       : (
           await Promise.all(
             rows.map(async (r, i) => {
@@ -94,7 +93,6 @@ export async function buildPartyDemandsPrintHtml(docTitle: string, subtitle: str
         <td>${escapeHtml(company)}</td>
         <td>${escapeHtml(r.device_type?.trim() || "—")}</td>
         <td style="text-align:right">${escapeHtml(price)}</td>
-        <td>${escapeHtml(labelSceneCategories(r.scene_categories))}</td>
         <td style="text-align:right">${r.max_hours_per_scene}</td>
         <td style="text-align:right">${r.total_hours_required != null ? r.total_hours_required : "无限"}</td>
         <td>${escapeHtml(r.requirement_summary?.trim() || "—")}</td>
@@ -117,7 +115,6 @@ export async function buildPartyDemandsPrintHtml(docTitle: string, subtitle: str
         <th>甲方公司</th>
         <th>设备类型</th>
         <th style="width:72px">甲方价格(元/h)</th>
-        <th>场景大类</th>
         <th style="width:52px">每场景上限(h)</th>
         <th style="width:52px">需求总计(h)</th>
         <th>其它说明</th>
@@ -139,7 +136,7 @@ export async function buildScenarioPositionsPrintHtml(
   const imgStyle = "max-width:140px;max-height:100px;object-fit:contain;display:block;margin:0 auto;border:1px solid #ccc";
   const tbody =
     rows.length === 0
-      ? `<tr><td colspan="11" style="text-align:center">暂无数据</td></tr>`
+      ? `<tr><td colspan="10" style="text-align:center">暂无数据</td></tr>`
       : (
           await Promise.all(
             rows.map(async (r, i) => {
@@ -154,7 +151,6 @@ export async function buildScenarioPositionsPrintHtml(
         <td>${escapeHtml(macroTitle)}</td>
         <td>${escapeHtml(r.title.trim() || "—")}</td>
         <td>${escapeHtml(r.process_description?.trim() || "—")}</td>
-        <td>${escapeHtml(labelSceneCategories(r.scene_categories))}</td>
         <td>${escapeHtml(r.address_province || "—")}</td>
         <td>${escapeHtml(r.address_city || "—")}</td>
         <td>${escapeHtml(r.address_district || "—")}</td>
@@ -178,7 +174,6 @@ export async function buildScenarioPositionsPrintHtml(
         <th>大场景</th>
         <th>工序 / 小岗位</th>
         <th>具体描述</th>
-        <th>场景大类</th>
         <th>省</th>
         <th>市</th>
         <th>区/县</th>
@@ -256,7 +251,6 @@ export async function buildMacroScenesPrintHtml(
         headers.push("<th style=\"width:120px\">现场快照</th>");
         headers.push("<th>小岗位</th>");
         headers.push("<th>具体描述</th>");
-        headers.push("<th>场景大类</th>");
         if (fields.locationInfo) {
           headers.push("<th>小岗位地址</th>");
         }
@@ -273,7 +267,6 @@ export async function buildMacroScenesPrintHtml(
                   `<td style="text-align:center;vertical-align:middle">${snap}</td>`,
                   `<td>${escapeHtml(r.title.trim() || "—")}</td>`,
                   `<td>${escapeHtml(r.process_description?.trim() || "—")}</td>`,
-                  `<td>${escapeHtml(labelSceneCategories(r.scene_categories))}</td>`,
                 ];
                 if (fields.locationInfo) {
                   cells.push(
@@ -345,11 +338,9 @@ function buildSceneTaskCompletionSections(
             const d = demands.get(a.party_demand_id);
             const company = (d?.client_company || d?.title || "—").trim();
             const dev = d?.device_type?.trim() || "—";
-            const cats = labelSceneCategories(d?.scene_categories);
             return `<tr>
           <td>${escapeHtml(company)}</td>
           <td>${escapeHtml(dev)}</td>
-          <td>${escapeHtml(cats)}</td>
           <td style="text-align:right">${escapeHtml(String(a.executed_hours))}</td>
           <td style="text-align:right">${escapeHtml(String(a.max_hours_cap))}</td>
           <td>${escapeHtml(assignmentProgressLine(a))}</td>
@@ -362,7 +353,6 @@ function buildSceneTaskCompletionSections(
             <tr>
               <th>甲方</th>
               <th>设备类型</th>
-              <th>匹配大类</th>
               <th style="width:52px">已执行(h)</th>
               <th style="width:52px">上限(h)</th>
               <th style="width:100px">完成度</th>
@@ -407,7 +397,7 @@ export async function buildSceneTasksPrintHtml(
                 ? await snapshotImgCell(pos.snapshot_path, imgStyle)
                 : `<span style="color:#888">—</span>`;
               const catAddr = pos
-                ? `${labelSceneCategories(pos.scene_categories)} · ${[pos.address_province, pos.address_city, pos.address_district].filter(Boolean).join("")}${pos.address_detail?.trim() ? ` ${pos.address_detail.trim()}` : ""}`
+                ? `${[pos.address_province, pos.address_city, pos.address_district].filter(Boolean).join("")}${pos.address_detail?.trim() ? ` ${pos.address_detail.trim()}` : ""}`
                 : "—";
               const nSub = assignmentCountByTaskId.get(t.id) ?? 0;
               return `<tr>
@@ -444,7 +434,7 @@ export async function buildSceneTasksPrintHtml(
         <th>任务标题</th>
         <th>绑定岗位</th>
         <th style="width:130px">岗位现场图</th>
-        <th>大类 / 地址</th>
+        <th>地址</th>
         <th style="width:44px">子任务数</th>
         <th>任务说明</th>
         <th style="width:96px">截止时间</th>

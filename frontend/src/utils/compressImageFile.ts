@@ -4,13 +4,26 @@ const SKIP_COMPRESS_BELOW_BYTES = 900_000;
 const TARGET_MAX_BYTES = 2 * 1024 * 1024;
 const MAX_DIMENSION = 2048;
 
+const IMAGE_FILE_EXTENSIONS = ["jpg", "jpeg", "png", "webp"] as const;
+const IMAGE_FILE_MIMES = ["image/jpeg", "image/png", "image/webp"] as const;
+
+function imageFileExtension(file: File): string {
+  return file.name.split(".").pop()?.toLowerCase() ?? "";
+}
+
 export function validateImageFileType(file: File): string | null {
-  if (!file.type.startsWith("image/")) return "请选择图片文件（jpg/png/webp）";
-  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-  const okExt = ["jpg", "jpeg", "png", "webp"].includes(ext);
-  const okMime = ["image/jpeg", "image/png", "image/webp"].includes(file.type);
-  if (!okExt && !okMime) return "仅支持 jpg、png、webp";
-  return null;
+  const ext = imageFileExtension(file);
+  const okExt = IMAGE_FILE_EXTENSIONS.includes(ext as (typeof IMAGE_FILE_EXTENSIONS)[number]);
+  const okMime = IMAGE_FILE_MIMES.includes(file.type as (typeof IMAGE_FILE_MIMES)[number]);
+  // 手机/微信选图时常出现 type 为空，仅根据扩展名放行。
+  if (okExt || okMime) return null;
+  if (file.type.startsWith("image/")) return null;
+  return "仅支持 jpg、png、webp";
+}
+
+function isJpegFile(file: File): boolean {
+  const ext = imageFileExtension(file);
+  return file.type === "image/jpeg" || ext === "jpg" || ext === "jpeg";
 }
 
 function loadHtmlImage(src: string): Promise<HTMLImageElement> {
@@ -43,7 +56,7 @@ export async function compressImageFile(
   const typeErr = validateImageFileType(file);
   if (typeErr) throw new Error(typeErr);
 
-  if (file.size <= SKIP_COMPRESS_BELOW_BYTES && file.type === "image/jpeg") {
+  if (file.size <= SKIP_COMPRESS_BELOW_BYTES && isJpegFile(file)) {
     return file;
   }
 
@@ -94,6 +107,7 @@ export async function applyPickedImageFile(
     setFile(null);
     return;
   }
+  setErr("");
   try {
     setFile(await prepareImageFileForUpload(raw));
   } catch (e: unknown) {

@@ -15,7 +15,6 @@ import { listGroupProfilesByRole } from "../api/groups";
 import { formatScenarioPositionLabel, listScenarioPositions, listSceneMacroSites, type ScenarioPosition, type SceneMacroSite } from "../api/operations";
 import { profileDisplayName, fetchProfilesByIds } from "../api/profiles";
 import { useAuth } from "../auth/AuthContext";
-import { labelSceneCategories } from "../utils/sceneCategories";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { BatchSelectCheckbox, BatchSelectToolbar } from "../components/ui/BatchSelectToolbar";
@@ -359,7 +358,6 @@ export default function CollectionShiftsTab({
                       <p className="text-xs text-gray-500 mt-1">
                         {collectionShiftStatusLabel(shift.status)}
                         {!isExecutorView && execName ? ` · 执行员 ${execName}` : ""}
-                        {pos ? ` · ${labelSceneCategories(pos.scene_categories)}` : ""}
                       </p>
                       {pos && (
                         <p className="text-xs text-gray-500 mt-0.5">

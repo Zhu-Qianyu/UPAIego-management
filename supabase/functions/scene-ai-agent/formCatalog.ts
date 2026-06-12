@@ -11,11 +11,9 @@ export const FORM_FILL_SKILL_PROMPT = `## 代填表单 form_fills（须先请示
 
 **需图表单**：party_demand_create、scene_macro_create、scenario_position_create
 
-**scene_categories 枚举**: industrial | home | special（至少 1 个）
-
 ### 示例 A — 仅公司名的甲方业务（用默认值，不要跳转）
 用户：「添加甲方业务，智元觅蜂」
-→ form_fills: [{ "form":"party_demand_create", "label":"添加甲方业务智元觅蜂", "data":{ "client_company":"智元觅蜂", "device_type":"通用设备", "max_hours_per_scene":8, "scene_categories":["industrial"], "total_hours_unlimited":true }}]
+→ form_fills: [{ "form":"party_demand_create", "label":"添加甲方业务智元觅蜂", "data":{ "client_company":"智元觅蜂", "device_type":"通用设备", "max_hours_per_scene":8, "total_hours_unlimited":true }}]
 → actions: []
 
 ### 示例 B — 批量离线设备（一条 form 登记多台，不要 toast）
@@ -30,7 +28,7 @@ export const FORM_FILL_SKILL_PROMPT = `## 代填表单 form_fills（须先请示
 → actions: []
 
 ### party_demand_create（admin, scene_operator）
-data: client_company, device_type, max_hours_per_scene(默认8), scene_categories(默认["industrial"]), total_hours_unlimited(true), requirement_summary?, client_hourly_rate?
+data: client_company, device_type, max_hours_per_scene(默认8), total_hours_unlimited(true), requirement_summary?, client_hourly_rate?
 仅给公司名时 device_type 可用「通用设备」，max_hours_per_scene 用 8
 
 ### party_demand_update（admin, scene_operator）

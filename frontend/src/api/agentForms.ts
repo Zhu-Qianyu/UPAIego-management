@@ -24,7 +24,7 @@ import { updateMyProfile } from "./profiles";
 import type { AgentFormKind, AgentPendingFormFill } from "../aitebot/agentFormTypes";
 import { formRequiresImage, getFormImageUploadLabel } from "../aitebot/agentFormImages";
 import { defaultLabelPrefix } from "../aitebot/formFillInferShared";
-import { SCENE_CATEGORY_KEYS, type SceneCategoryKey } from "../utils/sceneCategories";
+import { DEFAULT_SCENE_CATEGORIES, type SceneCategoryKey } from "../utils/sceneCategories";
 import type { UserRole } from "../types/roles";
 
 export type AgentFormFillResult = {
@@ -51,12 +51,8 @@ const FORM_ROLES: Record<string, UserRole[]> = {
 };
 
 
-function normalizeCategories(raw: unknown): SceneCategoryKey[] {
-  if (!Array.isArray(raw)) return ["industrial"];
-  const out = raw
-    .map((c) => String(c).trim())
-    .filter((c): c is SceneCategoryKey => (SCENE_CATEGORY_KEYS as readonly string[]).includes(c));
-  return out.length ? out : ["industrial"];
+function normalizeCategories(_raw: unknown): SceneCategoryKey[] {
+  return [...DEFAULT_SCENE_CATEGORIES];
 }
 
 function str(data: Record<string, unknown>, key: string, required = false): string {

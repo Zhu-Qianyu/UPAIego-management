@@ -30,17 +30,13 @@ import {
 import CollectionShiftsTab from "./CollectionShiftsTab";
 import Spinner from "../components/Spinner";
 import { BatchSelectCheckbox, BatchSelectToolbar } from "../components/ui/BatchSelectToolbar";
+import { ImageFileInput } from "../components/ui/ImageFileInput";
 import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
 import RefreshStrip from "../components/RefreshStrip";
 import { useBatchSelection } from "../hooks/useBatchSelection";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 import { useAuth } from "../auth/AuthContext";
-import {
-  SCENE_CATEGORY_KEYS,
-  SCENE_CATEGORY_LABELS,
-  labelSceneCategories,
-  type SceneCategoryKey,
-} from "../utils/sceneCategories";
+import { DEFAULT_SCENE_CATEGORIES } from "../utils/sceneCategories";
 import {
   buildMacroScenesPrintHtml,
   buildPartyDemandsPrintHtml,
@@ -50,13 +46,6 @@ import {
 import { IMAGE_UPLOAD_ACCEPT, applyPickedImageFile } from "../utils/compressImageFile";
 
 type Tab = "tasks" | "demands" | "stations";
-
-function normalizeDemandCatTags(arr: string[] | null | undefined): SceneCategoryKey[] {
-  const picked = (arr ?? []).filter((x): x is SceneCategoryKey =>
-    (SCENE_CATEGORY_KEYS as readonly string[]).includes(x)
-  );
-  return picked.length >= 1 ? picked : ["industrial"];
-}
 
 function PartyDemandsTab({
   groupId,
@@ -76,7 +65,6 @@ function PartyDemandsTab({
   const [totalHours, setTotalHours] = useState("");
   const [maxPerScene, setMaxPerScene] = useState("8");
   const [clientRate, setClientRate] = useState("");
-  const [catTags, setCatTags] = useState<SceneCategoryKey[]>(["industrial"]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCompany, setEditCompany] = useState("");
   const [editDeviceType, setEditDeviceType] = useState("");
@@ -86,7 +74,6 @@ function PartyDemandsTab({
   const [editTotalHours, setEditTotalHours] = useState("");
   const [editMaxPerScene, setEditMaxPerScene] = useState("8");
   const [editClientRate, setEditClientRate] = useState("");
-  const [editCatTags, setEditCatTags] = useState<SceneCategoryKey[]>(["industrial"]);
   const loadedOnceRef = useRef(false);
   const batch = useBatchSelection();
   const [batchDeleting, setBatchDeleting] = useState(false);
@@ -111,22 +98,6 @@ function PartyDemandsTab({
     void load();
   }, [load]);
 
-  function addCatTag(k: SceneCategoryKey) {
-    setCatTags((prev) => [...prev, k]);
-  }
-
-  function removeCatTag(i: number) {
-    setCatTags((prev) => prev.filter((_, idx) => idx !== i));
-  }
-
-  function addEditCatTag(k: SceneCategoryKey) {
-    setEditCatTags((prev) => [...prev, k]);
-  }
-
-  function removeEditCatTag(i: number) {
-    setEditCatTags((prev) => prev.filter((_, idx) => idx !== i));
-  }
-
   function openEdit(r: PartyDemand) {
     setEditingId(r.id);
     setEditCompany((r.client_company || r.title || "").trim());
@@ -138,7 +109,6 @@ function PartyDemandsTab({
     setEditClientRate(
       r.client_hourly_rate != null && r.client_hourly_rate > 0 ? String(r.client_hourly_rate) : ""
     );
-    setEditCatTags(normalizeDemandCatTags(r.scene_categories));
     setEditDeviceFile(null);
     setErr("");
   }
@@ -174,10 +144,6 @@ function PartyDemandsTab({
       }
       total = t;
     }
-    if (editCatTags.length < 1) {
-      setErr("请至少选择一个场景大类（可重复）");
-      return;
-    }
     let clientHourlyRate: number | null = null;
     if (editClientRate.trim() !== "") {
       const rate = Number(editClientRate);
@@ -196,7 +162,7 @@ function PartyDemandsTab({
         requirement_summary: editSummary.trim() || null,
         total_hours_required: total,
         max_hours_per_scene: maxH,
-        scene_categories: [...editCatTags],
+        scene_categories: [...DEFAULT_SCENE_CATEGORIES],
         client_hourly_rate: clientHourlyRate,
       };
       if (editDeviceFile) {
@@ -241,10 +207,6 @@ function PartyDemandsTab({
       }
       total = t;
     }
-    if (catTags.length < 1) {
-      setErr("请至少选择一个场景大类（可重复）");
-      return;
-    }
     let clientHourlyRate: number | null = null;
     if (clientRate.trim() !== "") {
       const rate = Number(clientRate);
@@ -265,7 +227,7 @@ function PartyDemandsTab({
         device_snapshot_path: path,
         total_hours_required: total,
         max_hours_per_scene: maxH,
-        scene_categories: [...catTags],
+        scene_categories: [...DEFAULT_SCENE_CATEGORIES],
         requirement_summary: summary.trim() || undefined,
         client_hourly_rate: clientHourlyRate,
       });
@@ -277,7 +239,6 @@ function PartyDemandsTab({
       setTotalHours("");
       setMaxPerScene("8");
       setClientRate("");
-      setCatTags(["industrial"]);
       await load();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "添加失败");
@@ -327,7 +288,7 @@ function PartyDemandsTab({
         </button>
       </div>
       <p className="text-sm text-gray-500">
-        <strong>甲方业务</strong>：填写甲方公司、设备类型、<strong>甲方价格</strong>、设备快照、小时量与场景大类；下方列表可预览设备快照。
+        <strong>甲方业务</strong>：填写甲方公司、设备类型、<strong>甲方价格</strong>、设备快照与小时量；下方列表可预览设备快照。
       </p>
       <form onSubmit={onAdd} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-3">
         <input
@@ -397,31 +358,6 @@ function PartyDemandsTab({
             className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
-        <div>
-          <p className="text-xs text-gray-500 mb-1">场景大类（工业 / 家庭 / 特种，可重复添加）</p>
-          <div className="flex flex-wrap gap-2 mb-2">
-            {SCENE_CATEGORY_KEYS.map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => addCatTag(k)}
-                className="px-2 py-1 rounded-lg border border-gray-300 text-xs bg-white hover:bg-gray-50"
-              >
-                +{SCENE_CATEGORY_LABELS[k]}
-              </button>
-            ))}
-          </div>
-          <ul className="flex flex-wrap gap-2 text-xs">
-            {catTags.map((k, i) => (
-              <li key={`${k}-${i}`} className="flex items-center gap-1 bg-indigo-50 text-indigo-900 px-2 py-1 rounded">
-                {SCENE_CATEGORY_LABELS[k]}
-                <button type="button" className="text-red-600" onClick={() => removeCatTag(i)}>
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
         <textarea
           placeholder="其它说明（可选）"
           value={summary}
@@ -459,7 +395,7 @@ function PartyDemandsTab({
                     <span className="truncate">{r.client_company || r.title}</span>
                   </span>
                 }
-                secondary={`设备类型：${r.device_type?.trim() || "—"} · ${labelSceneCategories(r.scene_categories)}`}
+                secondary={`设备类型：${r.device_type?.trim() || "—"}`}
                 meta={
                   r.total_hours_required != null
                     ? `上限 ${r.max_hours_per_scene}h/场景 · 总计 ${r.total_hours_required}h`
@@ -555,34 +491,6 @@ function PartyDemandsTab({
                     className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   />
                 </div>
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">场景大类（可重复）</p>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {SCENE_CATEGORY_KEYS.map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => addEditCatTag(k)}
-                        className="px-2 py-1 rounded-lg border border-gray-300 text-xs bg-white hover:bg-gray-50"
-                      >
-                        +{SCENE_CATEGORY_LABELS[k]}
-                      </button>
-                    ))}
-                  </div>
-                  <ul className="flex flex-wrap gap-2 text-xs">
-                    {editCatTags.map((k, i) => (
-                      <li
-                        key={`${k}-${i}`}
-                        className="flex items-center gap-1 bg-indigo-50 text-indigo-900 px-2 py-1 rounded"
-                      >
-                        {SCENE_CATEGORY_LABELS[k]}
-                        <button type="button" className="text-red-600" onClick={() => removeEditCatTag(i)}>
-                          ×
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
                 <textarea
                   placeholder="其它说明（可选）"
                   value={editSummary}
@@ -607,7 +515,7 @@ function PartyDemandsTab({
                     <p className="font-medium text-gray-900">{r.client_company || r.title}</p>
                     <p className="text-sm text-gray-600 mt-1">设备类型：{r.device_type?.trim() || "—"}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      大类：{labelSceneCategories(r.scene_categories)} · 每场景上限 {r.max_hours_per_scene}h
+                      每场景上限 {r.max_hours_per_scene}h
                       {r.total_hours_required != null ? ` · 需求总计 ${r.total_hours_required}h` : " · 需求总计：无限"}
                     </p>
                     {r.requirement_summary && (
@@ -739,7 +647,6 @@ function ScenarioRow({ row, macroTitle }: { row: ScenarioPosition; macroTitle?: 
       <div className="flex-1 min-w-0 pr-24">
         <p className="font-medium text-gray-900">{displayTitle}</p>
         <p className="text-xs text-gray-500 mt-1">
-          大类：{labelSceneCategories(row.scene_categories)} ·{" "}
           {[row.address_province, row.address_city, row.address_district].filter(Boolean).join(" ")}
           {row.address_detail ? ` ${row.address_detail}` : ""}
         </p>
@@ -749,15 +656,6 @@ function ScenarioRow({ row, macroTitle }: { row: ScenarioPosition; macroTitle?: 
       </div>
     </div>
   );
-}
-
-function scenarioCategoriesToRecord(cats: string[]): Record<SceneCategoryKey, boolean> {
-  const rec: Record<SceneCategoryKey, boolean> = { industrial: false, home: false, special: false };
-  for (const c of cats) {
-    if (c in rec) rec[c as SceneCategoryKey] = true;
-  }
-  if (!SCENE_CATEGORY_KEYS.some((k) => rec[k])) rec.industrial = true;
-  return rec;
 }
 
 function MacroPanoramaSnapshot({ snapshotPath }: { snapshotPath: string | null | undefined }) {
@@ -909,12 +807,8 @@ function ScenarioWorkstationsTab({
   const [city, setCity] = useState("");
   const [district, setDistrict] = useState("");
   const [detail, setDetail] = useState("");
-  const [selCats, setSelCats] = useState<Record<SceneCategoryKey, boolean>>({
-    industrial: true,
-    home: false,
-    special: false,
-  });
   const [file, setFile] = useState<File | null>(null);
+  const [posImageProcessing, setPosImageProcessing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -925,11 +819,6 @@ function ScenarioWorkstationsTab({
   const [eCity, setECity] = useState("");
   const [eDistrict, setEDistrict] = useState("");
   const [eDetail, setEDetail] = useState("");
-  const [eSelCats, setESelCats] = useState<Record<SceneCategoryKey, boolean>>({
-    industrial: true,
-    home: false,
-    special: false,
-  });
   const [eFile, setEFile] = useState<File | null>(null);
   const [eBusy, setEBusy] = useState(false);
   const posBatch = useBatchSelection();
@@ -962,8 +851,8 @@ function ScenarioWorkstationsTab({
     setCity("");
     setDistrict("");
     setDetail("");
-    setSelCats({ industrial: true, home: false, special: false });
     setFile(null);
+    setPosImageProcessing(false);
   }
 
   function toggleAddPos(m: SceneMacroSite) {
@@ -979,14 +868,6 @@ function ScenarioWorkstationsTab({
     setCity(m.address_city);
     setDistrict(m.address_district);
     setDetail(m.address_detail ?? "");
-  }
-
-  function toggleCat(k: SceneCategoryKey) {
-    setSelCats((prev) => ({ ...prev, [k]: !prev[k] }));
-  }
-
-  function toggleECat(k: SceneCategoryKey) {
-    setESelCats((prev) => ({ ...prev, [k]: !prev[k] }));
   }
 
   function openMacroEdit(m: SceneMacroSite) {
@@ -1172,8 +1053,8 @@ function ScenarioWorkstationsTab({
     setECity(r.address_city);
     setEDistrict(r.address_district);
     setEDetail(r.address_detail ?? "");
-    setESelCats(scenarioCategoriesToRecord(r.scene_categories ?? []));
     setEFile(null);
+    setPosImageProcessing(false);
   }
 
   async function onSaveEdit(e: React.FormEvent, rowId: string) {
@@ -1181,11 +1062,6 @@ function ScenarioWorkstationsTab({
     setErr("");
     if (!eMacroSceneId) {
       setErr("请选择所属大场景");
-      return;
-    }
-    const cats = SCENE_CATEGORY_KEYS.filter((k) => eSelCats[k]);
-    if (cats.length < 1) {
-      setErr("请至少勾选一个场景大类");
       return;
     }
     if (!eProvince.trim() || !eCity.trim() || !eDistrict.trim()) {
@@ -1203,7 +1079,7 @@ function ScenarioWorkstationsTab({
         title: eTitle.trim(),
         macro_scene_id: eMacroSceneId,
         process_description: eProc.trim() || null,
-        scene_categories: cats,
+        scene_categories: [...DEFAULT_SCENE_CATEGORIES],
         address_province: eProvince.trim(),
         address_city: eCity.trim(),
         address_district: eDistrict.trim(),
@@ -1226,11 +1102,6 @@ function ScenarioWorkstationsTab({
       setErr("请选择现场快照图片");
       return;
     }
-    const cats = SCENE_CATEGORY_KEYS.filter((k) => selCats[k]);
-    if (cats.length < 1) {
-      setErr("请至少勾选一个场景大类");
-      return;
-    }
     if (!province.trim() || !city.trim() || !district.trim()) {
       setErr("请填写省、市、区（县）");
       return;
@@ -1245,7 +1116,7 @@ function ScenarioWorkstationsTab({
         title: title.trim(),
         process_description: proc.trim() || undefined,
         snapshot_path: path,
-        scene_categories: cats,
+        scene_categories: [...DEFAULT_SCENE_CATEGORIES],
         address_province: province.trim(),
         address_city: city.trim(),
         address_district: district.trim(),
@@ -1267,15 +1138,6 @@ function ScenarioWorkstationsTab({
     return (
       <form onSubmit={(e) => void onAdd(e, macroId)} className="mb-4 rounded-lg border border-indigo-100 bg-indigo-50/40 p-4 space-y-2">
         <p className="text-xs font-medium text-indigo-900">添加小岗位</p>
-        <p className="text-xs text-gray-500">场景大类（可多选）</p>
-        <div className="flex flex-wrap gap-3">
-          {SCENE_CATEGORY_KEYS.map((k) => (
-            <label key={k} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={selCats[k]} onChange={() => toggleCat(k)} />
-              {SCENE_CATEGORY_LABELS[k]}
-            </label>
-          ))}
-        </div>
         <input
           required
           placeholder="工序 / 小岗位（必填）"
@@ -1319,26 +1181,21 @@ function ScenarioWorkstationsTab({
           onChange={(e) => setDetail(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
         />
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">现场快照（必填）</label>
-          <input
-            type="file"
-            accept={IMAGE_UPLOAD_ACCEPT}
-            onChange={(e) => {
-              const raw = e.target.files?.[0];
-              e.target.value = "";
-              void applyPickedImageFile(raw, setFile, setErr);
-            }}
-            className="text-sm w-full"
-          />
-        </div>
+        <ImageFileInput
+          label="现场快照"
+          required
+          file={file}
+          onFileChange={setFile}
+          onError={setErr}
+          onProcessingChange={setPosImageProcessing}
+        />
         <div className="flex flex-wrap gap-2 pt-1">
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || posImageProcessing || !file}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50"
           >
-            {busy ? "上传中…" : "确认添加"}
+            {busy ? "上传中…" : posImageProcessing ? "图片处理中…" : "确认添加"}
           </button>
           <button
             type="button"
@@ -1360,14 +1217,6 @@ function ScenarioWorkstationsTab({
     return (
       <form onSubmit={(ev) => void onSaveEdit(ev, r.id)} className="border border-indigo-100 bg-indigo-50/40 rounded-lg p-4 space-y-2 mt-2">
         <p className="text-xs font-medium text-indigo-900">编辑小岗位</p>
-        <div className="flex flex-wrap gap-3">
-          {SCENE_CATEGORY_KEYS.map((k) => (
-            <label key={k} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={eSelCats[k]} onChange={() => toggleECat(k)} />
-              {SCENE_CATEGORY_LABELS[k]}
-            </label>
-          ))}
-        </div>
         <input
           required
           placeholder="工序 / 小岗位"
@@ -1411,26 +1260,21 @@ function ScenarioWorkstationsTab({
           onChange={(e) => setEDetail(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
         />
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">更换现场快照（可选，不选则保留原图）</label>
-          <input
-            type="file"
-            accept={IMAGE_UPLOAD_ACCEPT}
-            onChange={(e) => {
-              const raw = e.target.files?.[0];
-              e.target.value = "";
-              void applyPickedImageFile(raw, setEFile, setErr);
-            }}
-            className="text-sm w-full"
-          />
-        </div>
+        <ImageFileInput
+          label="更换现场快照"
+          optionalHint="可选，不选则保留原图"
+          file={eFile}
+          onFileChange={setEFile}
+          onError={setErr}
+          onProcessingChange={setPosImageProcessing}
+        />
         <div className="flex flex-wrap gap-2 pt-1">
           <button
             type="submit"
-            disabled={eBusy}
+            disabled={eBusy || posImageProcessing}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50"
           >
-            {eBusy ? "保存中…" : "保存"}
+            {eBusy ? "保存中…" : posImageProcessing ? "图片处理中…" : "保存"}
           </button>
           <button
             type="button"
@@ -1578,7 +1422,7 @@ function ScenarioWorkstationsTab({
                           </span>
                         }
                         secondary={r.process_description ?? undefined}
-                        meta={`${labelSceneCategories(r.scene_categories)} · ${[r.address_province, r.address_city, r.address_district].filter(Boolean).join(" ")}`}
+                        meta={[r.address_province, r.address_city, r.address_district].filter(Boolean).join(" ")}
                         actions={
                           <>
                             <button

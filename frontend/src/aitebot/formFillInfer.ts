@@ -105,19 +105,12 @@ function inferPartyDemandCreate(text: string, role: UserRole): AgentPendingFormF
   const maxHoursRaw = text.match(/(?:单场景上限|上限)[^\d]*(\d+)/i)?.[1];
   const max_hours_per_scene = maxHoursRaw ? Math.max(1, parseInt(maxHoursRaw, 10)) : 8;
 
-  let scene_categories: string[] = ["industrial"];
-  const catMatch = text.match(/场景(?:类型|分类)?\s*[：:]?\s*(\w+)/i);
-  if (catMatch && ["industrial", "home", "special"].includes(catMatch[1])) {
-    scene_categories = [catMatch[1]];
-  }
-
   return {
     form: "party_demand_create",
     label: `添加甲方业务「${client_company}」`,
     data: {
       ...partyDemandDefaults(client_company, device_type),
       max_hours_per_scene,
-      scene_categories,
     },
   };
 }

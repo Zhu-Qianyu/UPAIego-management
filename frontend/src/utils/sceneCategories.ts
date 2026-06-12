@@ -1,6 +1,9 @@
 export const SCENE_CATEGORY_KEYS = ["industrial", "home", "special"] as const;
 export type SceneCategoryKey = (typeof SCENE_CATEGORY_KEYS)[number];
 
+/** 前端不再分类；写入数据库时统一使用默认值以满足 NOT NULL 约束。 */
+export const DEFAULT_SCENE_CATEGORIES: SceneCategoryKey[] = ["industrial"];
+
 export const SCENE_CATEGORY_LABELS: Record<SceneCategoryKey, string> = {
   industrial: "工业",
   home: "家庭",

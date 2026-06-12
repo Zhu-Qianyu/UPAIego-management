@@ -1,3 +1,5 @@
+import { DEFAULT_SCENE_CATEGORIES } from "../utils/sceneCategories";
+
 /** 与 edge formFillInfer.ts 同步的推断辅助函数 */
 
 export function extractQuotedOrPlain(s: string): string {
@@ -51,7 +53,7 @@ export function partyDemandDefaults(client_company: string, device_type?: string
     client_company,
     device_type: device_type?.trim() || "通用设备",
     max_hours_per_scene: 8,
-    scene_categories: ["industrial"],
+    scene_categories: [...DEFAULT_SCENE_CATEGORIES],
     total_hours_unlimited: true,
   };
 }
