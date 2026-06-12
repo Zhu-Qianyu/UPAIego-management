@@ -38,7 +38,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileSyncHint, setProfileSyncHint] = useState<string | null>(null);
 
-  const loadProfileForSession = useCallback(async (next: Session | null) => {
+  const loadProfileForSession = useCallback(async (next: Session | null, options?: { blockUi?: boolean }) => {
+    const blockUi = options?.blockUi ?? true;
     setSession(next);
     if (!next?.user) {
       setProfile(null);
@@ -47,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    setLoading(true);
+    if (blockUi) setLoading(true);
     setProfileSyncHint(null);
     let p = await fetchProfile(next.user.id);
     if (!p) {
@@ -71,18 +72,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    async function applySession(next: Session | null) {
+    async function applySession(next: Session | null, blockUi = true) {
       if (!mounted) return;
-      await loadProfileForSession(next);
+      await loadProfileForSession(next, { blockUi });
     }
 
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
-      void applySession(data.session);
+      void applySession(data.session, true);
     });
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      void applySession(nextSession);
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      // 最小化/切回标签时 token 刷新不应整页 loading，否则会卸载表单导致已填内容丢失
+      const blockUi = event !== "TOKEN_REFRESHED" && event !== "USER_UPDATED";
+      void applySession(nextSession, blockUi);
     });
 
     return () => {
@@ -93,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = useCallback(async () => {
     const { data } = await supabase.auth.getSession();
-    await loadProfileForSession(data.session);
+    await loadProfileForSession(data.session, { blockUi: true });
   }, [loadProfileForSession]);
 
   const value = useMemo(
