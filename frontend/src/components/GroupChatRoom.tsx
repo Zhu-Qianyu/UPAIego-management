@@ -48,7 +48,8 @@ const QUICK_TOPICS_BY_ROLE: Record<UserRole, { icon: string; label: string; prom
   ],
   device_operator: [
     { icon: "🔧", label: "运维工作台", prompt: `${BOT_MENTION} 带我打开运维工作台，说明悬赏借还设备流程。` },
-    { icon: "📱", label: "登记设备", prompt: `${BOT_MENTION} 如何登记设备？需要关联什么甲方业务？` },
+    { icon: "📱", label: "批量登记", prompt: `${BOT_MENTION} 帮智元觅蜂批量登记 10 台头戴单目离线设备。` },
+    { icon: "👤", label: "分配设备", prompt: `${BOT_MENTION} 把智元觅蜂空闲的头戴单目设备分配给执行员张三。` },
   ],
   collection_executor: [
     { icon: "📅", label: "我的排班", prompt: `${BOT_MENTION} 带我去看今天的采集排班，如何打卡？` },

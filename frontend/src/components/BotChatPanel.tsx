@@ -75,8 +75,9 @@ const QUICK_TOPICS_BY_ROLE: Record<UserRole, { icon: string; label: string; prom
   ],
   device_operator: [
     { icon: "🔧", label: "运维工作台", prompt: "带我打开运维工作台，说明悬赏借还设备流程。" },
-    { icon: "📱", label: "登记设备", prompt: "如何登记设备？需要关联什么甲方业务？" },
-    { icon: "📋", label: "设备状态", prompt: "设备故障或离线时我应该怎么处理？" },
+    { icon: "📱", label: "批量登记", prompt: "帮智元觅蜂批量登记 10 台头戴单目离线设备。" },
+    { icon: "👤", label: "分配设备", prompt: "设备管理里空闲的设备怎么分配给采集执行员？能代我分配吗？" },
+    { icon: "📋", label: "设备状态", prompt: "设备列表里如何看每台设备分给谁了？异常设备怎么处理？" },
   ],
   collection_executor: [
     { icon: "📅", label: "我的排班", prompt: "带我去看今天的采集排班，如何打卡？" },

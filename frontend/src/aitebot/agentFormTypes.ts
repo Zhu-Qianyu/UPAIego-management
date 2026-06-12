@@ -11,6 +11,8 @@ export type AgentFormKind =
   | "group_topic_create"
   | "manual_device_create"
   | "manual_devices_batch_create"
+  | "manual_devices_batch_delete"
+  | "manual_devices_batch_assign"
   | "collection_shift_create"
   | "profile_update"
   | "bounty_publish"
@@ -74,6 +76,26 @@ export type ManualDevicesBatchFormData = {
 export type ManualDeviceFormData = {
   party_demand_id: string;
   device_short_label: string;
+};
+
+/** 批量删除离线设备：public_codes 或 client_company + 可选筛选 */
+export type ManualDevicesBatchDeleteFormData = {
+  public_codes?: string[];
+  client_company?: string | null;
+  label_prefix?: string | null;
+  device_short_label?: string | null;
+};
+
+/** 批量分配离线设备给执行员；executor_user_id 为空或 idle 表示设为空闲 */
+export type ManualDevicesBatchAssignFormData = {
+  executor_user_id?: string | null;
+  executor_name?: string | null;
+  executor_phone?: string | null;
+  public_codes?: string[];
+  client_company?: string | null;
+  label_prefix?: string | null;
+  device_short_label?: string | null;
+  only_idle?: boolean;
 };
 
 export type CollectionShiftFormData = {

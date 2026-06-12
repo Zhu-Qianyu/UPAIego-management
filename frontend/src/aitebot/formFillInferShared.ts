@@ -61,3 +61,24 @@ export function partyDemandDefaults(client_company: string, device_type?: string
 export function isFakeFormFillToast(message: string): boolean {
   return /添加设备信息|甲方\s*=|数量\s*=|设备信息：|已提示添加/.test(message);
 }
+
+export function extractExecutorName(text: string): string | null {
+  return fieldValue(text, ["执行员", "执行人", "分给", "分配给"]);
+}
+
+export function extractExecutorPhone(text: string): string | null {
+  const m = text.match(/1[3-9]\d{9}/);
+  return m ? m[0] : null;
+}
+
+/** 从文本提取登记编号（SKAX0001 或 10 位十六进制） */
+export function extractPublicCodes(text: string): string[] {
+  const found = new Set<string>();
+  for (const m of text.matchAll(/\b([A-Z]{2,8}\d{4})\b/gi)) {
+    found.add(m[1].toUpperCase());
+  }
+  for (const m of text.matchAll(/\b([0-9A-F]{10})\b/gi)) {
+    found.add(m[1].toUpperCase());
+  }
+  return [...found];
+}

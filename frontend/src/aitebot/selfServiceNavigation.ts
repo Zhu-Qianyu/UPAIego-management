@@ -58,6 +58,8 @@ function formFillToNavigateAction(form: AgentPendingFormFill["form"]): AgentActi
       return { type: "scene_tab", tab: "tasks", label: "采集排班" };
     case "manual_device_create":
     case "manual_devices_batch_create":
+    case "manual_devices_batch_delete":
+    case "manual_devices_batch_assign":
     case "device_register":
       return { type: "navigate", path: "/devices/manage", label: "设备管理" };
     case "group_topic_create":

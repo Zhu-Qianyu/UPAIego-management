@@ -4,15 +4,25 @@ import {
   createCollectionShift,
   publishCollectionShift,
 } from "./collectionShifts";
-import { createGroupTopic } from "./groups";
+import {
+  assignManualTrackedDevicesToExecutor,
+  buildOfflineAssignmentMap,
+  isManualDeviceAssignable,
+  releaseManualTrackedDevices,
+} from "./deviceAssignments";
+import { createGroupTopic, listGroupProfilesByRole } from "./groups";
 import {
   createManualTrackedDevice,
+  createManualTrackedDevicesBatch,
+  deleteManualTrackedDevices,
   createPartyDemand,
   createScenarioPosition,
   createSceneMacroSite,
+  listManualTrackedDevices,
   listPartyDemands,
   listSceneMacroSites,
   listScenarioPositions,
+  normalizeExternalDeviceStatus,
   updatePartyDemand,
   updateScenarioPosition,
   updateSceneMacroSite,
@@ -44,6 +54,8 @@ const FORM_ROLES: Record<string, UserRole[]> = {
   group_topic_create: ["admin", "scene_operator", "device_operator", "collection_executor"],
   manual_device_create: ["admin", "device_operator"],
   manual_devices_batch_create: ["admin", "device_operator"],
+  manual_devices_batch_delete: ["admin", "device_operator"],
+  manual_devices_batch_assign: ["admin", "device_operator"],
   collection_shift_create: ["admin", "scene_operator"],
   profile_update: ["admin", "scene_operator", "device_operator", "collection_executor"],
   bounty_publish: ["admin"],
@@ -141,6 +153,110 @@ async function resolvePartyDemandId(
   if (fuzzy.length >= 1) return fuzzy[0].id;
 
   throw new Error(`未找到甲方「${company}」。请先说「添加甲方业务，${company}」并完成选图确认后再登记设备。`);
+}
+
+function publicCodesFromData(d: Record<string, unknown>): string[] {
+  if (!Array.isArray(d.public_codes)) return [];
+  return d.public_codes.map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+}
+
+async function resolveManualDevicePublicCodes(
+  groupId: string,
+  d: Record<string, unknown>
+): Promise<string[]> {
+  const explicit = publicCodesFromData(d);
+  if (explicit.length > 0) return [...new Set(explicit)];
+
+  const clientCompany = optionalStr(d, "client_company");
+  const labelPrefix = optionalStr(d, "label_prefix") || optionalStr(d, "device_short_label");
+  if (!clientCompany && !labelPrefix) {
+    throw new Error("请提供 public_codes 或 client_company / label_prefix 以定位设备");
+  }
+
+  const devices = await listManualTrackedDevices(groupId);
+  let filtered = devices;
+
+  if (clientCompany) {
+    const demands = await listPartyDemands(groupId);
+    const demandIds = demands
+      .filter((p) => {
+        const cc = (p.client_company || p.title || "").trim();
+        if (!cc) return false;
+        return cc.includes(clientCompany) || clientCompany.includes(cc);
+      })
+      .map((p) => p.id);
+    if (demandIds.length === 0) throw new Error(`未找到甲方「${clientCompany}」下的设备`);
+    filtered = filtered.filter((row) => demandIds.includes(row.party_demand_id));
+  }
+
+  if (labelPrefix) {
+    filtered = filtered.filter((row) => row.device_short_label.includes(labelPrefix));
+  }
+
+  if (filtered.length === 0) throw new Error("没有匹配的离线设备");
+  return filtered.map((row) => row.public_code.toUpperCase());
+}
+
+async function resolveCollectionExecutorId(
+  groupId: string,
+  d: Record<string, unknown>
+): Promise<string | null> {
+  const raw = optionalStr(d, "executor_user_id");
+  if (raw === "idle" || raw === "__idle__") return null;
+  if (raw) return raw;
+
+  const name = optionalStr(d, "executor_name") || optionalStr(d, "executor_real_name");
+  const phone = optionalStr(d, "executor_phone");
+  if (!name && !phone) throw new Error("缺少执行员：请提供 executor_user_id、executor_name 或 executor_phone");
+
+  const executors = await listGroupProfilesByRole(groupId, "collection_executor");
+  const normalizedPhone = phone?.replace(/\s+/g, "") ?? "";
+  const match = executors.find((e) => {
+    if (normalizedPhone && e.phone?.replace(/\s+/g, "") === normalizedPhone) return true;
+    if (!name) return false;
+    const rn = e.real_name?.trim() ?? "";
+    const dn = e.display_name?.trim() ?? "";
+    return rn.includes(name) || dn.includes(name) || name.includes(rn) || name.includes(dn);
+  });
+  if (!match) throw new Error(`未找到采集执行员「${name || phone}」`);
+  return match.id;
+}
+
+async function resolveAssignableManualDeviceCodes(
+  groupId: string,
+  d: Record<string, unknown>,
+  opts: { forAssign: boolean }
+): Promise<string[]> {
+  const codes = await resolveManualDevicePublicCodes(groupId, d);
+  const devices = await listManualTrackedDevices(groupId);
+  const deviceByCode = new Map(devices.map((row) => [row.public_code.toUpperCase(), row]));
+  const assignmentMap = await buildOfflineAssignmentMap(codes);
+
+  const onlyIdle = d.only_idle === true || d.only_idle === "true";
+  const picked: string[] = [];
+  for (const code of codes) {
+    const row = deviceByCode.get(code);
+    if (!row) continue;
+    if (opts.forAssign) {
+      if (!isManualDeviceAssignable(row, assignmentMap.get(code))) {
+        if (onlyIdle) continue;
+        if (assignmentMap.get(code)?.bountyClaimId) {
+          throw new Error(`设备 ${code} 正用于悬赏任务，请先在悬赏流程归还`);
+        }
+        if (normalizeExternalDeviceStatus(row.external_status) !== "normal") {
+          throw new Error(`设备 ${code} 非正常状态，无法分配`);
+        }
+        continue;
+      }
+      if (onlyIdle && assignmentMap.has(code)) continue;
+    }
+    picked.push(code);
+  }
+
+  if (picked.length === 0) {
+    throw new Error(opts.forAssign ? "没有可分配的正常空闲设备" : "没有匹配的设备");
+  }
+  return picked;
 }
 
 export async function executeAgentFormFill(
@@ -291,21 +407,49 @@ export async function executeAgentFormFill(
           optionalStr(d, "device_short_label") ||
           optionalStr(d, "label_prefix") ||
           (deviceType ? defaultLabelPrefix(deviceType) : "设备");
-        const codes: string[] = [];
-        for (let i = 1; i <= count; i++) {
-          const created = await createManualTrackedDevice({
-            group_id: groupId,
-            party_demand_id: partyId,
-            device_short_label: shortLabel,
-          });
-          codes.push(created.public_code);
-        }
+        const created = await createManualTrackedDevicesBatch({
+          group_id: groupId,
+          party_demand_id: partyId,
+          device_short_label: shortLabel,
+          count,
+        });
+        const codes = created.map((row) => row.public_code);
         const range =
           codes.length === 1 ? codes[0] : `${codes[0]}～${codes[codes.length - 1]}`;
         return {
           ok: true,
           summary: `已登记 ${count} 台离线设备（编号 ${range}）`,
         };
+      }
+      case "manual_devices_batch_delete": {
+        const codes = await resolveManualDevicePublicCodes(groupId, d);
+        const devices = await listManualTrackedDevices(groupId);
+        const ids = devices.filter((row) => codes.includes(row.public_code.toUpperCase())).map((row) => row.id);
+        if (ids.length === 0) throw new Error("未找到要删除的设备");
+        await deleteManualTrackedDevices(ids);
+        return { ok: true, summary: `已删除 ${ids.length} 台离线设备登记` };
+      }
+      case "manual_devices_batch_assign": {
+        const executorId = await resolveCollectionExecutorId(groupId, d);
+        const codes = await resolveAssignableManualDeviceCodes(groupId, d, { forAssign: true });
+        if (!executorId) {
+          const { released, failures } = await releaseManualTrackedDevices(codes);
+          if (failures.length > 0) {
+            return {
+              ok: true,
+              summary: `已取消 ${released} 台设备分配；${failures.length} 台失败：${failures[0]}`,
+            };
+          }
+          return { ok: true, summary: `已将 ${released} 台设备设为空闲` };
+        }
+        const { assigned, failures } = await assignManualTrackedDevicesToExecutor(codes, executorId);
+        if (failures.length > 0) {
+          return {
+            ok: true,
+            summary: `已分配 ${assigned} 台设备；${failures.length} 台失败：${failures[0]}`,
+          };
+        }
+        return { ok: true, summary: `已将 ${assigned} 台设备分配给执行员` };
       }
       case "collection_shift_create": {
         const shiftId = await createCollectionShift({
@@ -382,11 +526,14 @@ export async function executeAgentFormFills(
 
 /** 供 edge function 注入的参考数据摘要（前端调试可用） */
 export async function loadAgentFormContext(groupId: string): Promise<string> {
-  const [demands, macros, positions] = await Promise.all([
+  const [demands, macros, positions, manuals, executors] = await Promise.all([
     listPartyDemands(groupId),
     listSceneMacroSites(groupId),
     listScenarioPositions(groupId),
+    listManualTrackedDevices(groupId),
+    listGroupProfilesByRole(groupId, "collection_executor"),
   ]);
+  const assignmentMap = await buildOfflineAssignmentMap(manuals.map((m) => m.public_code));
   const demandLines = demands
     .slice(0, 25)
     .map((p) => `${p.client_company ?? p.title}(${p.id}) 设备:${p.device_type ?? "—"}`)
@@ -396,9 +543,32 @@ export async function loadAgentFormContext(groupId: string): Promise<string> {
     .slice(0, 40)
     .map((p) => `${p.title}(${p.id})→宏观:${p.macro_scene_id ?? "?"}`)
     .join("；");
+  const deviceLines = manuals
+    .slice(0, 40)
+    .map((m) => {
+      const a = assignmentMap.get(m.public_code.toUpperCase());
+      const assign = normalizeExternalDeviceStatus(m.external_status) !== "normal"
+        ? "不可分配"
+        : a
+          ? a.bountyClaimId
+            ? `悬赏→${a.executorName}`
+            : `→${a.executorName}`
+          : "空闲";
+      return `${m.public_code}:${m.device_short_label}(${assign})`;
+    })
+    .join("；");
+  const executorLines = executors
+    .slice(0, 20)
+    .map((e) => {
+      const name = e.real_name?.trim() || e.display_name?.trim() || e.id.slice(0, 8);
+      return `${name}(${e.id})${e.phone ? ` ${e.phone}` : ""}`;
+    })
+    .join("；");
   return [
     demandLines ? `【甲方业务】${demandLines}` : "【甲方业务】暂无",
     macroLines ? `【大场景】${macroLines}` : "【大场景】暂无",
     posLines ? `【小岗位】${posLines}` : "【小岗位】暂无",
+    deviceLines ? `【离线设备 编号:简称(分配)】${deviceLines}` : "【离线设备】暂无",
+    executorLines ? `【采集执行员】${executorLines}` : "【采集执行员】暂无",
   ].join("\n");
 }

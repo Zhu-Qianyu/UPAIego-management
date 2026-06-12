@@ -92,6 +92,76 @@ function normalizePhone(p: string): string {
   return p.replace(/\s+/g, "").replace(/-/g, "");
 }
 
+function extractExecutorName(text: string): string | null {
+  return fieldValue(text, ["执行员", "执行人", "分给", "分配给"]);
+}
+
+function extractExecutorPhone(text: string): string | null {
+  const m = text.match(/1[3-9]\d{9}/);
+  return m ? m[0] : null;
+}
+
+function extractPublicCodes(text: string): string[] {
+  const found = new Set<string>();
+  for (const m of text.matchAll(/\b([A-Z]{2,8}\d{4})\b/gi)) {
+    found.add(m[1].toUpperCase());
+  }
+  for (const m of text.matchAll(/\b([0-9A-F]{10})\b/gi)) {
+    found.add(m[1].toUpperCase());
+  }
+  return [...found];
+}
+
+function inferManualDevicesBatchDelete(text: string, role: string): FormFillSpec | null {
+  if (!FORM_ROLES.manual_devices_batch_delete?.includes(role)) return null;
+  if (!/(?:删除|移除|作废).*(?:离线)?设备|(?:离线)?设备.*(?:删除|移除|作废)/i.test(text)) return null;
+  const public_codes = extractPublicCodes(text);
+  const client_company = extractClientCompany(text);
+  const device_type = extractDeviceType(text);
+  const label_prefix = device_type ? defaultLabelPrefix(device_type) : null;
+  if (public_codes.length === 0 && !client_company) return null;
+  return {
+    form: "manual_devices_batch_delete",
+    label: public_codes.length ? `删除 ${public_codes.length} 台设备登记` : `删除「${client_company}」下离线设备`,
+    data: {
+      ...(public_codes.length ? { public_codes } : {}),
+      ...(client_company ? { client_company } : {}),
+      ...(label_prefix ? { label_prefix } : {}),
+    },
+  };
+}
+
+function inferManualDevicesBatchAssign(text: string, role: string): FormFillSpec | null {
+  if (!FORM_ROLES.manual_devices_batch_assign?.includes(role)) return null;
+  const release = /(?:设为空闲|取消分配|释放设备|收回设备)/i.test(text);
+  const assign = /(?:分配|分给|指派).*(?:设备|执行员)|把.*设备.*(?:给|到)/i.test(text);
+  if (!release && !assign) return null;
+  const public_codes = extractPublicCodes(text);
+  const client_company = extractClientCompany(text);
+  const device_type = extractDeviceType(text);
+  const label_prefix = device_type ? defaultLabelPrefix(device_type) : null;
+  const executor_name = extractExecutorName(text);
+  const executor_phone = extractExecutorPhone(text);
+  const only_idle = /空闲.*(?:设备|台)/i.test(text);
+  if (!release && !executor_name && !executor_phone) return null;
+  if (public_codes.length === 0 && !client_company && !label_prefix) return null;
+  return {
+    form: "manual_devices_batch_assign",
+    label: release
+      ? public_codes.length
+        ? `将 ${public_codes.length} 台设备设为空闲`
+        : `将「${client_company ?? "匹配"}」设备设为空闲`
+      : `分配设备给${executor_name ?? executor_phone ?? "执行员"}`,
+    data: {
+      ...(release ? { executor_user_id: "idle" } : { executor_name, executor_phone }),
+      ...(public_codes.length ? { public_codes } : {}),
+      ...(client_company ? { client_company } : {}),
+      ...(label_prefix ? { label_prefix } : {}),
+      ...(only_idle ? { only_idle: true } : {}),
+    },
+  };
+}
+
 function inferManualDevicesBatch(text: string, role: string): FormFillSpec | null {
   if (!FORM_ROLES.manual_devices_batch_create?.includes(role)) return null;
   if (!/(?:增加|添加|登记|创建).*(?:离线)?设备|(?:离线)?设备.*(?:增加|添加|登记)/i.test(text)) return null;
@@ -167,10 +237,14 @@ export function inferFormFillsFromUserText(text: string, role: string): FormFill
   const t = text.trim();
   if (!t) return [];
   const out: FormFillSpec[] = [];
+  const batchDelete = inferManualDevicesBatchDelete(t, role);
+  if (batchDelete) out.push(batchDelete);
+  const batchAssign = inferManualDevicesBatchAssign(t, role);
+  if (batchAssign) out.push(batchAssign);
   const batch = inferManualDevicesBatch(t, role);
-  if (batch) out.push(batch);
+  if (batch && !batchDelete && !batchAssign) out.push(batch);
   const party = inferPartyDemandCreate(t, role);
-  if (party && !batch) out.push(party);
+  if (party && !batch && !batchDelete && !batchAssign) out.push(party);
   const macro = inferSceneMacroCreate(t, role);
   if (macro) out.push(macro);
   return out.slice(0, 3);
@@ -191,6 +265,19 @@ export function buildFormFillConfirmMessage(fills: FormFillSpec[]): string {
     }
     if (f.form === "scene_macro_create") {
       return `大场景「${f.data.title}」`;
+    }
+    if (f.form === "manual_devices_batch_delete") {
+      const codes = f.data.public_codes;
+      if (Array.isArray(codes) && codes.length) return `删除 ${codes.length} 台设备`;
+      return `删除「${f.data.client_company}」下离线设备`;
+    }
+    if (f.form === "manual_devices_batch_assign") {
+      if (f.data.executor_user_id === "idle") return "将选中设备设为空闲";
+      const who =
+        (typeof f.data.executor_name === "string" && f.data.executor_name) ||
+        (typeof f.data.executor_phone === "string" && f.data.executor_phone) ||
+        "执行员";
+      return `分配设备给 ${who}`;
     }
     return f.label;
   });

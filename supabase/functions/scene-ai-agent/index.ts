@@ -63,7 +63,7 @@ const WORKFLOW_RULES = `## 平台数采执行制度（豆小秘须熟悉并按�
 | 角色 | 职责 |
 | admin | 管理台、KPI、全员公告、建群审批、发布悬赏令、可维护全部场景数据 |
 | scene_operator | 甲方业务、场景岗位、采集排班（创建/发布/关闭）；不可群发通知 |
-| device_operator | 设备管理、登记离线设备、运维工作台（悬赏借还设备、登记小时） |
+| device_operator | 设备管理（批量登记/删除/分配执行员、查看空闲与占用）、运维工作台（悬赏借还设备、登记小时） |
 | collection_executor | 采集排班打卡、悬赏接单、数采地图、钱包结算 |
 
 ### 主数据链
@@ -323,26 +323,63 @@ async function fetchFormContext(
   supabase: ReturnType<typeof createClient>,
   groupId: string
 ): Promise<string> {
-  const [{ data: demands }, { data: macros }, { data: positions }] = await Promise.all([
-    supabase
-      .from("party_demands")
-      .select("id, title, client_company, device_type")
-      .eq("group_id", groupId)
-      .order("created_at", { ascending: false })
-      .limit(25),
-    supabase
-      .from("scene_macro_sites")
-      .select("id, title")
-      .eq("group_id", groupId)
-      .order("created_at", { ascending: false })
-      .limit(25),
-    supabase
-      .from("scenario_positions")
-      .select("id, title, macro_scene_id")
-      .eq("group_id", groupId)
-      .order("created_at", { ascending: false })
-      .limit(40),
-  ]);
+  const [{ data: demands }, { data: macros }, { data: positions }, { data: manuals }, { data: assignments }, { data: members }] =
+    await Promise.all([
+      supabase
+        .from("party_demands")
+        .select("id, title, client_company, device_type")
+        .eq("group_id", groupId)
+        .order("created_at", { ascending: false })
+        .limit(25),
+      supabase
+        .from("scene_macro_sites")
+        .select("id, title")
+        .eq("group_id", groupId)
+        .order("created_at", { ascending: false })
+        .limit(25),
+      supabase
+        .from("scenario_positions")
+        .select("id, title, macro_scene_id")
+        .eq("group_id", groupId)
+        .order("created_at", { ascending: false })
+        .limit(40),
+      supabase
+        .from("manual_tracked_devices")
+        .select("public_code, device_short_label, external_status")
+        .eq("group_id", groupId)
+        .order("created_at", { ascending: false })
+        .limit(40),
+      supabase
+        .from("device_executor_assignments")
+        .select("device_id, executor_id, bounty_claim_id")
+        .eq("group_id", groupId)
+        .eq("status", "active")
+        .like("device_id", "offline:%"),
+      supabase
+        .from("group_members")
+        .select("user_id")
+        .eq("group_id", groupId)
+        .eq("membership_status", "active"),
+    ]);
+
+  const executorIds = [...new Set((assignments ?? []).map((a) => a.executor_id))];
+  const memberIds = [...new Set((members ?? []).map((m) => m.user_id))];
+  const profileIds = [...new Set([...executorIds, ...memberIds])];
+  const { data: profiles } = profileIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, real_name, display_name, phone, role")
+        .in("id", profileIds)
+    : { data: [] as { id: string; real_name: string | null; display_name: string | null; phone: string | null; role: string }[] };
+
+  const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
+  const assignByCode = new Map<string, { name: string; bounty: boolean }>();
+  for (const a of assignments ?? []) {
+    const code = String(a.device_id).replace(/^offline:/i, "").toUpperCase();
+    const prof = profileById.get(a.executor_id);
+    const name = prof?.real_name?.trim() || prof?.display_name?.trim() || a.executor_id.slice(0, 8);
+    assignByCode.set(code, { name, bounty: !!a.bounty_claim_id });
+  }
 
   const demandLines = (demands ?? [])
     .map((p) => `${p.client_company ?? p.title}(${p.id}) 设备:${p.device_type ?? "—"}`)
@@ -351,11 +388,35 @@ async function fetchFormContext(
   const posLines = (positions ?? [])
     .map((p) => `${p.title}(${p.id})→宏观:${p.macro_scene_id ?? "?"}`)
     .join("；");
+  const deviceLines = (manuals ?? [])
+    .map((m) => {
+      const a = assignByCode.get(String(m.public_code).toUpperCase());
+      const assign =
+        m.external_status !== "normal"
+          ? "不可分配"
+          : a
+            ? a.bounty
+              ? `悬赏→${a.name}`
+              : `→${a.name}`
+            : "空闲";
+      return `${m.public_code}:${m.device_short_label}(${assign})`;
+    })
+    .join("；");
+  const executorLines = (profiles ?? [])
+    .filter((p) => p.role === "collection_executor" && memberIds.includes(p.id))
+    .slice(0, 20)
+    .map((p) => {
+      const name = p.real_name?.trim() || p.display_name?.trim() || p.id.slice(0, 8);
+      return `${name}(${p.id})${p.phone ? ` ${p.phone}` : ""}`;
+    })
+    .join("；");
 
   return [
     demandLines ? `【甲方业务 ID 列表】${demandLines}` : "【甲方业务】暂无",
     macroLines ? `【大场景 ID 列表】${macroLines}` : "【大场景】暂无",
     posLines ? `【小岗位 ID 列表】${posLines}` : "【小岗位】暂无",
+    deviceLines ? `【离线设备 编号:简称(分配)】${deviceLines}` : "【离线设备】暂无",
+    executorLines ? `【采集执行员】${executorLines}` : "【采集执行员】暂无",
   ].join("\n");
 }
 
@@ -391,7 +452,7 @@ function needsFormContext(turns: ChatTurn[]): boolean {
     .slice(-3)
     .map((m) => m.content)
     .join("\n");
-  return /添加|创建|登记|填写|录入|更新|修改|甲方|大场景|小岗位|离线设备|排班|悬赏|发布|设备类型|公司名/i.test(
+  return /添加|创建|登记|填写|录入|更新|修改|删除|分配|分给|空闲|甲方|大场景|小岗位|离线设备|排班|悬赏|发布|设备类型|公司名|执行员/i.test(
     recentUser
   );
 }
