@@ -712,15 +712,43 @@ export async function updateManualTrackedDevice(
   if (error) throw new Error(error.message);
 }
 
+function formatManualTrackedDeleteError(message: string): string {
+  if (/foreign key|violates.*restrict|collection_shift_devices/i.test(message)) {
+    return "该设备已被采集排班引用，请先关闭或删除相关排班后再删";
+  }
+  return message;
+}
+
 export async function deleteManualTrackedDevice(id: string): Promise<void> {
-  const { error } = await supabase.from(MTD).delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  const { data, error } = await supabase.from(MTD).delete().eq("id", id).select("id").maybeSingle();
+  if (error) throw new Error(formatManualTrackedDeleteError(error.message));
+  if (!data?.id) throw new Error("删除失败：无权限或设备不存在");
 }
 
 export async function deleteManualTrackedDevices(ids: string[]): Promise<void> {
-  if (ids.length === 0) return;
-  const { error } = await supabase.from(MTD).delete().in("id", ids);
-  if (error) throw new Error(error.message);
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return;
+
+  let deleted = 0;
+  const blocked: string[] = [];
+
+  for (const id of unique) {
+    const { data, error } = await supabase.from(MTD).delete().eq("id", id).select("id").maybeSingle();
+    if (error) {
+      blocked.push(formatManualTrackedDeleteError(error.message));
+      continue;
+    }
+    if (data?.id) deleted += 1;
+    else blocked.push("无删除权限或设备不存在");
+  }
+
+  if (deleted === 0) {
+    const hint = blocked[0] ?? "未知原因";
+    throw new Error(unique.length === 1 ? `删除失败：${hint}` : `批量删除失败：${hint}`);
+  }
+  if (deleted < unique.length) {
+    throw new Error(`已删除 ${deleted} 台，另有 ${unique.length - deleted} 台未能删除（可能已被采集排班引用）`);
+  }
 }
 
 /** 同一甲方业务批量登记离线设备（最多 50 台，共用设备简称，编号自动递增）。 */

@@ -273,16 +273,18 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
   }
 
   async function onBatchDelete() {
-    if (deviceBatch.count === 0) return;
-    if (!confirm(`确定删除选中的 ${deviceBatch.count} 台设备？登记编号将作废。`)) return;
+    const ids = deviceBatch.selectedIds;
+    if (ids.length === 0) return;
+    if (!confirm(`确定删除选中的 ${ids.length} 台设备？登记编号将作废。`)) return;
     setErr("");
     setBatchDeleting(true);
     try {
-      await deleteManualTrackedDevices(deviceBatch.selectedIds);
+      await deleteManualTrackedDevices(ids);
       deviceBatch.clear();
       await load();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "批量删除失败");
+      await load();
     } finally {
       setBatchDeleting(false);
     }
