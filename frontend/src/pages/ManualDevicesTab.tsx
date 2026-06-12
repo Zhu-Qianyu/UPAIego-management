@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, memo } from "react";
 import {
   createManualTrackedDevice,
+  createManualTrackedDevicesBatch,
   deleteManualTrackedDevice,
+  deleteManualTrackedDevices,
   formatManualTrackedDeviceLabel,
   groupManualTrackedDevicesByParty,
   labelExternalDeviceStatus,
@@ -16,8 +18,10 @@ import {
 } from "../api/operations";
 import { fetchActiveGroupId } from "../api/groups";
 import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
+import { BatchSelectCheckbox, BatchSelectToolbar } from "../components/ui/BatchSelectToolbar";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
+import { useBatchSelection } from "../hooks/useBatchSelection";
 import { openManualDevicesPrint } from "../utils/manualDevicesExport";
 import { buildManualTrackedDeviceQrText } from "../utils/manualDeviceQrPayload";
 import { qrDataUrlCached } from "../utils/qrDataUrlCache";
@@ -25,9 +29,13 @@ import { qrDataUrlCached } from "../utils/qrDataUrlCache";
 const ManualTrackedDeviceRow = memo(function ManualTrackedDeviceRow({
   row,
   onChanged,
+  selected,
+  onToggleSelect,
 }: {
   row: ManualTrackedDevice;
   onChanged: () => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const [localStatus, setLocalStatus] = useState<ExternalDeviceStatus>(normalizeExternalDeviceStatus(row.external_status));
   const [qr, setQr] = useState<string | null>(null);
@@ -71,6 +79,11 @@ const ManualTrackedDeviceRow = memo(function ManualTrackedDeviceRow({
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col sm:flex-row gap-4 h-full w-full min-w-0 max-w-full overflow-hidden box-border">
+      {onToggleSelect ? (
+        <div className="shrink-0 pt-1">
+          <BatchSelectCheckbox checked={!!selected} onChange={onToggleSelect} label={`选择 ${row.public_code}`} />
+        </div>
+      ) : null}
       <div className="shrink-0 flex flex-col items-center gap-1">
         <p className="font-mono text-lg font-bold tracking-wide text-indigo-900">{row.public_code}</p>
         {qr ? (
@@ -145,6 +158,11 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
   const [shortLabel, setShortLabel] = useState("");
   const [partyFilter, setPartyFilter] = useState<string>("all");
   const [adding, setAdding] = useState(false);
+  const [addMode, setAddMode] = useState<"single" | "batch">("single");
+  const [batchCount, setBatchCount] = useState("5");
+  const [batchAdding, setBatchAdding] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const deviceBatch = useBatchSelection();
 
   const partyGroups = useMemo(() => groupManualTrackedDevicesByParty(rows, demands), [rows, demands]);
 
@@ -157,6 +175,8 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
     () => visibleGroups.flatMap((g) => g.devices),
     [visibleGroups]
   );
+
+  const visibleRowIds = useMemo(() => visibleRows.map((r) => r.id), [visibleRows]);
 
   const load = useCallback(async () => {
     const gid = await fetchActiveGroupId();
@@ -203,6 +223,83 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
       setErr(e instanceof Error ? e.message : "刷新失败");
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function onBatchAdd(e: React.FormEvent) {
+    e.preventDefault();
+    setErr("");
+    if (!groupId) {
+      setErr("请先加入工作群并设为在册成员。");
+      return;
+    }
+    if (!partyId) {
+      setErr("请选择甲方业务。");
+      return;
+    }
+    if (!shortLabel.trim()) {
+      setErr("请填写设备简称（多台共用，不要加序号）。");
+      return;
+    }
+    const count = Math.floor(Number(batchCount));
+    if (!Number.isFinite(count) || count < 1 || count > 50) {
+      setErr("批量数量须为 1～50 的整数。");
+      return;
+    }
+    setBatchAdding(true);
+    try {
+      const created = await createManualTrackedDevicesBatch({
+        group_id: groupId,
+        party_demand_id: partyId,
+        device_short_label: shortLabel.trim(),
+        count,
+      });
+      const range =
+        created.length === 1
+          ? created[0].public_code
+          : `${created[0].public_code}～${created[created.length - 1].public_code}`;
+      setShortLabel("");
+      setPartyId("");
+      setBatchCount("5");
+      deviceBatch.clear();
+      await load();
+      setErr("");
+      window.alert(`已批量登记 ${created.length} 台设备，编号 ${range}`);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "批量添加失败");
+    } finally {
+      setBatchAdding(false);
+    }
+  }
+
+  async function onBatchDelete() {
+    if (deviceBatch.count === 0) return;
+    if (!confirm(`确定删除选中的 ${deviceBatch.count} 台设备？登记编号将作废。`)) return;
+    setErr("");
+    setBatchDeleting(true);
+    try {
+      await deleteManualTrackedDevices(deviceBatch.selectedIds);
+      deviceBatch.clear();
+      await load();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "批量删除失败");
+    } finally {
+      setBatchDeleting(false);
+    }
+  }
+
+  async function onBatchPrint() {
+    const selected = visibleRows.filter((r) => deviceBatch.isSelected(r.id));
+    if (selected.length === 0) return;
+    setErr("");
+    try {
+      await openManualDevicesPrint(
+        "设备贴签列表（选中）",
+        fleetMode ? "全量设备" : `工作群 ${groupId}`,
+        selected
+      );
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "无法打开打印窗口");
     }
   }
 
@@ -264,39 +361,112 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
       {err && <p className="text-sm text-red-600">{err}</p>}
 
       {!fleetMode && (
-      <form onSubmit={onAdd} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-3">
-        <p className="text-xs font-medium text-gray-800">新增设备</p>
-        <label className="block text-xs text-gray-500">关联甲方业务（取公司名）</label>
-        <select
-          value={partyId}
-          onChange={(e) => setPartyId(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
-          <option value="">请选择甲方业务…</option>
-          {demands.map((d) => (
-            <option key={d.id} value={d.id}>
-              {(d.client_company || d.title || "未命名").trim()}
-              {d.device_type?.trim() ? `（${d.device_type.trim()}）` : ""}
-            </option>
-          ))}
-        </select>
-        {demands.length === 0 && (
-          <p className="text-xs text-amber-700">当前群尚无甲方业务，请场景业务员先在「场景业务」里添加。</p>
-        )}
-        <input
-          placeholder="设备简称（必填），如：产线 A 控制柜"
-          value={shortLabel}
-          onChange={(e) => setShortLabel(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        />
-        <button
-          type="submit"
-          disabled={adding || demands.length === 0}
-          className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium disabled:opacity-50"
-        >
-          {adding ? "提交中…" : "生成登记编号与二维码"}
-        </button>
-      </form>
+        <div className="bg-white rounded-xl border border-indigo-100 p-4 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setAddMode("single")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                addMode === "single"
+                  ? "bg-indigo-100 text-indigo-800"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              单台登记
+            </button>
+            <button
+              type="button"
+              onClick={() => setAddMode("batch")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                addMode === "batch"
+                  ? "bg-indigo-100 text-indigo-800"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              批量登记
+            </button>
+          </div>
+
+          {addMode === "single" ? (
+            <form onSubmit={onAdd} className="space-y-3">
+              <p className="text-xs font-medium text-gray-800">新增单台设备</p>
+              <label className="block text-xs text-gray-500">关联甲方业务（取公司名）</label>
+              <select
+                value={partyId}
+                onChange={(e) => setPartyId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="">请选择甲方业务…</option>
+                {demands.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {(d.client_company || d.title || "未命名").trim()}
+                    {d.device_type?.trim() ? `（${d.device_type.trim()}）` : ""}
+                  </option>
+                ))}
+              </select>
+              <input
+                placeholder="设备简称（必填），如：产线 A 控制柜"
+                value={shortLabel}
+                onChange={(e) => setShortLabel(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+              <button
+                type="submit"
+                disabled={adding || demands.length === 0}
+                className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+              >
+                {adding ? "提交中…" : "生成登记编号与二维码"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={onBatchAdd} className="space-y-3">
+              <p className="text-xs font-medium text-gray-800">批量新增设备（最多 50 台）</p>
+              <p className="text-xs text-gray-500">
+                同一甲方、同一设备简称；登记编号按前缀自动递增（如 SKAX0001、SKAX0002…）。简称里不要写 01、02 等序号。
+              </p>
+              <label className="block text-xs text-gray-500">关联甲方业务</label>
+              <select
+                value={partyId}
+                onChange={(e) => setPartyId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="">请选择甲方业务…</option>
+                {demands.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {(d.client_company || d.title || "未命名").trim()}
+                    {d.device_type?.trim() ? `（${d.device_type.trim()}）` : ""}
+                  </option>
+                ))}
+              </select>
+              <input
+                placeholder="设备简称（必填），如：头戴单目"
+                value={shortLabel}
+                onChange={(e) => setShortLabel(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+              <label className="block text-xs text-gray-500">登记数量（1～50）</label>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={batchCount}
+                onChange={(e) => setBatchCount(e.target.value)}
+                className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+              <button
+                type="submit"
+                disabled={batchAdding || demands.length === 0}
+                className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+              >
+                {batchAdding ? "批量生成中…" : "批量生成登记编号与二维码"}
+              </button>
+            </form>
+          )}
+
+          {demands.length === 0 && (
+            <p className="text-xs text-amber-700">当前群尚无甲方业务，请场景业务员先在「场景业务」里添加。</p>
+          )}
+        </div>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -342,6 +512,29 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
           </button>
         </div>
       </div>
+      {visibleRows.length > 0 && (
+        <div className="space-y-2">
+          <BatchSelectToolbar
+            total={visibleRows.length}
+            selectedCount={deviceBatch.count}
+            onSelectAll={() => deviceBatch.toggleAll(visibleRowIds)}
+            onClear={deviceBatch.clear}
+            onDelete={() => void onBatchDelete()}
+            deleting={batchDeleting}
+            deleteLabel="删除选中设备"
+          />
+          {deviceBatch.count > 0 && (
+            <button
+              type="button"
+              onClick={() => void onBatchPrint()}
+              className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs bg-white hover:bg-gray-50"
+            >
+              打印选中（{deviceBatch.count} 台）
+            </button>
+          )}
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <p className="text-sm text-gray-500 border border-dashed border-gray-200 rounded-xl p-6 text-center">暂无设备</p>
       ) : visibleGroups.length === 0 ? (
@@ -366,7 +559,15 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
                     {group.devices.map((r) => (
                       <CompactListRow
                         key={`${r.id}-${r.updated_at}`}
-                        primary={formatManualTrackedDeviceLabel(r)}
+                        primary={
+                          <span className="inline-flex items-center gap-2 min-w-0">
+                            <BatchSelectCheckbox
+                              checked={deviceBatch.isSelected(r.id)}
+                              onChange={() => deviceBatch.toggle(r.id)}
+                            />
+                            <span className="truncate">{formatManualTrackedDeviceLabel(r)}</span>
+                          </span>
+                        }
                         secondary={`登记编号 ${r.public_code}`}
                         meta={labelExternalDeviceStatus(r.external_status)}
                       />
@@ -377,7 +578,12 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
                 <CardList>
                   {group.devices.map((r) => (
                     <CardListItem key={`${r.id}-${r.updated_at}`}>
-                      <ManualTrackedDeviceRow row={r} onChanged={() => void refresh()} />
+                      <ManualTrackedDeviceRow
+                        row={r}
+                        onChanged={() => void refresh()}
+                        selected={deviceBatch.isSelected(r.id)}
+                        onToggleSelect={() => deviceBatch.toggle(r.id)}
+                      />
                     </CardListItem>
                   ))}
                 </CardList>

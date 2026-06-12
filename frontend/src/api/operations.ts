@@ -716,3 +716,30 @@ export async function deleteManualTrackedDevice(id: string): Promise<void> {
   const { error } = await supabase.from(MTD).delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
+
+export async function deleteManualTrackedDevices(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const { error } = await supabase.from(MTD).delete().in("id", ids);
+  if (error) throw new Error(error.message);
+}
+
+/** 同一甲方业务批量登记离线设备（最多 50 台，共用设备简称，编号自动递增）。 */
+export async function createManualTrackedDevicesBatch(input: {
+  group_id: string;
+  party_demand_id: string;
+  device_short_label: string;
+  count: number;
+}): Promise<ManualTrackedDevice[]> {
+  const n = Math.min(50, Math.max(1, Math.floor(input.count)));
+  const created: ManualTrackedDevice[] = [];
+  for (let i = 0; i < n; i++) {
+    created.push(
+      await createManualTrackedDevice({
+        group_id: input.group_id,
+        party_demand_id: input.party_demand_id,
+        device_short_label: input.device_short_label,
+      })
+    );
+  }
+  return created;
+}
