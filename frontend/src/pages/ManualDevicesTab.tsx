@@ -16,7 +16,17 @@ import {
   type ManualTrackedDevice,
   type PartyDemand,
 } from "../api/operations";
-import { fetchActiveGroupId } from "../api/groups";
+import {
+  assignManualTrackedDevicesToExecutor,
+  buildOfflineAssignmentMap,
+  executorOptionLabel,
+  formatManualDeviceExecutorLabel,
+  isManualDeviceAssignable,
+  releaseManualTrackedDevices,
+  type OfflineDeviceAssignmentView,
+} from "../api/deviceAssignments";
+import { fetchActiveGroupId, listGroupProfilesByRole } from "../api/groups";
+import type { ProfileContact } from "../api/profiles";
 import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
 import { BatchSelectCheckbox, BatchSelectToolbar } from "../components/ui/BatchSelectToolbar";
 import Spinner from "../components/Spinner";
@@ -31,11 +41,13 @@ const ManualTrackedDeviceRow = memo(function ManualTrackedDeviceRow({
   onChanged,
   selected,
   onToggleSelect,
+  executorLabel,
 }: {
   row: ManualTrackedDevice;
   onChanged: () => void;
   selected?: boolean;
   onToggleSelect?: () => void;
+  executorLabel: string;
 }) {
   const [localStatus, setLocalStatus] = useState<ExternalDeviceStatus>(normalizeExternalDeviceStatus(row.external_status));
   const [qr, setQr] = useState<string | null>(null);
@@ -102,6 +114,20 @@ const ManualTrackedDeviceRow = memo(function ManualTrackedDeviceRow({
           <span className="font-mono font-semibold text-indigo-800">{row.public_code}</span>
         </p>
         <p className="text-xs text-gray-400 font-mono break-all">内部 ID：{row.id}</p>
+        <p className="text-xs text-gray-600">
+          分配：
+          <span
+            className={
+              executorLabel === "空闲"
+                ? "text-emerald-700 font-medium"
+                : executorLabel === "—"
+                  ? "text-gray-400"
+                  : "text-indigo-800 font-medium"
+            }
+          >
+            {executorLabel}
+          </span>
+        </p>
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <span className="text-sm text-gray-700">设备状态</span>
           <select
@@ -162,6 +188,10 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
   const [batchCount, setBatchCount] = useState("5");
   const [batchAdding, setBatchAdding] = useState(false);
   const [batchDeleting, setBatchDeleting] = useState(false);
+  const [batchAssigning, setBatchAssigning] = useState(false);
+  const [assignExecutorId, setAssignExecutorId] = useState("");
+  const [assignExecutors, setAssignExecutors] = useState<ProfileContact[]>([]);
+  const [assignmentByCode, setAssignmentByCode] = useState<Map<string, OfflineDeviceAssignmentView>>(() => new Map());
   const deviceBatch = useBatchSelection();
 
   const partyGroups = useMemo(() => groupManualTrackedDevicesByParty(rows, demands), [rows, demands]);
@@ -178,6 +208,26 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
 
   const visibleRowIds = useMemo(() => visibleRows.map((r) => r.id), [visibleRows]);
 
+  const selectedAssignRows = useMemo(() => {
+    const ids = new Set(deviceBatch.selectedIds);
+    return visibleRows.filter((r) => ids.has(r.id));
+  }, [visibleRows, deviceBatch.selectedIds]);
+
+  const assignTargetGroupId = useMemo(() => {
+    if (selectedAssignRows.length > 0) {
+      const g = selectedAssignRows[0].group_id;
+      return selectedAssignRows.every((r) => r.group_id === g) ? g : null;
+    }
+    return groupId;
+  }, [selectedAssignRows, groupId]);
+
+  const assignGroupConflict = deviceBatch.count > 0 && selectedAssignRows.length > 0 && assignTargetGroupId === null;
+
+  const getAssignment = useCallback(
+    (row: ManualTrackedDevice) => assignmentByCode.get(row.public_code.toUpperCase()),
+    [assignmentByCode]
+  );
+
   const load = useCallback(async () => {
     const gid = await fetchActiveGroupId();
     setGroupId(gid);
@@ -185,17 +235,35 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
       const list = await listAllManualTrackedDevices();
       setRows(list);
       setDemands(gid ? await listPartyDemands(gid) : []);
+      setAssignmentByCode(await buildOfflineAssignmentMap(list.map((r) => r.public_code)));
       return;
     }
     if (!gid) {
       setRows([]);
       setDemands([]);
+      setAssignmentByCode(new Map());
       return;
     }
     const [list, pd] = await Promise.all([listManualTrackedDevices(gid), listPartyDemands(gid)]);
     setRows(list);
     setDemands(pd);
+    setAssignmentByCode(await buildOfflineAssignmentMap(list.map((r) => r.public_code)));
   }, [fleetMode]);
+
+  useEffect(() => {
+    const gid = assignTargetGroupId;
+    if (!gid) {
+      setAssignExecutors([]);
+      return;
+    }
+    let cancel = false;
+    void listGroupProfilesByRole(gid, "collection_executor").then((list) => {
+      if (!cancel) setAssignExecutors(list);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [assignTargetGroupId]);
 
   useEffect(() => {
     let cancel = false;
@@ -287,6 +355,56 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
       await load();
     } finally {
       setBatchDeleting(false);
+    }
+  }
+
+  async function onBatchAssign() {
+    if (!assignExecutorId || selectedAssignRows.length === 0) return;
+    if (assignGroupConflict || !assignTargetGroupId) {
+      setErr("所选设备须属于同一工作群才能批量分配。");
+      return;
+    }
+
+    const assignable = selectedAssignRows.filter((r) => isManualDeviceAssignable(r, getAssignment(r)));
+    if (assignable.length === 0) {
+      setErr("所选设备均不可分配（须为正常状态，且非悬赏借用中）。");
+      return;
+    }
+
+    setErr("");
+    setBatchAssigning(true);
+    try {
+      if (assignExecutorId === "__idle__") {
+        if (!confirm(`将 ${assignable.length} 台设备的分配设为空闲？`)) return;
+        const { released, failures } = await releaseManualTrackedDevices(assignable.map((r) => r.public_code));
+        deviceBatch.clear();
+        setAssignExecutorId("");
+        await load();
+        if (failures.length > 0) {
+          setErr(`已取消 ${released} 台分配；${failures.length} 台未能取消：${failures[0]}`);
+        }
+        return;
+      }
+
+      const executor = assignExecutors.find((e) => e.id === assignExecutorId);
+      const executorName = executor ? executorOptionLabel(executor) : "所选执行员";
+      if (!confirm(`将 ${assignable.length} 台正常设备分配给 ${executorName}？`)) return;
+
+      const { assigned, failures } = await assignManualTrackedDevicesToExecutor(
+        assignable.map((r) => r.public_code),
+        assignExecutorId
+      );
+      deviceBatch.clear();
+      setAssignExecutorId("");
+      await load();
+      if (failures.length > 0) {
+        setErr(`已分配 ${assigned} 台；${failures.length} 台失败：${failures[0]}`);
+      }
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "分配失败");
+      await load();
+    } finally {
+      setBatchAssigning(false);
     }
   }
 
@@ -526,13 +644,49 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
             deleteLabel="删除选中设备"
           />
           {deviceBatch.count > 0 && (
-            <button
-              type="button"
-              onClick={() => void onBatchPrint()}
-              className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs bg-white hover:bg-gray-50"
-            >
-              打印选中（{deviceBatch.count} 台）
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void onBatchPrint()}
+                className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs bg-white hover:bg-gray-50"
+              >
+                打印选中（{deviceBatch.count} 台）
+              </button>
+              {!assignGroupConflict && assignTargetGroupId ? (
+                <>
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                    <span>分配给</span>
+                    <select
+                      value={assignExecutorId}
+                      onChange={(e) => setAssignExecutorId(e.target.value)}
+                      className="rounded-lg border border-gray-300 px-2 py-1.5 text-xs bg-white min-w-[10rem]"
+                    >
+                      <option value="">选择执行员…</option>
+                      <option value="__idle__">设为空闲</option>
+                      {assignExecutors.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {executorOptionLabel(e)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={
+                      !assignExecutorId ||
+                      batchAssigning ||
+                      (assignExecutors.length === 0 && assignExecutorId !== "__idle__")
+                    }
+                    onClick={() => void onBatchAssign()}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-40"
+                  >
+                    {batchAssigning ? "分配中…" : "确认分配"}
+                  </button>
+                </>
+              ) : assignGroupConflict ? (
+                <span className="text-xs text-amber-700">所选设备分属不同工作群，请按群分别分配。</span>
+              ) : null}
+            </div>
           )}
         </div>
       )}
@@ -570,7 +724,7 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
                             <span className="truncate">{formatManualTrackedDeviceLabel(r)}</span>
                           </span>
                         }
-                        secondary={`登记编号 ${r.public_code}`}
+                        secondary={`登记编号 ${r.public_code} · 分配：${formatManualDeviceExecutorLabel(r, getAssignment(r))}`}
                         meta={labelExternalDeviceStatus(r.external_status)}
                       />
                     ))}
@@ -585,6 +739,7 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
                         onChanged={() => void refresh()}
                         selected={deviceBatch.isSelected(r.id)}
                         onToggleSelect={() => deviceBatch.toggle(r.id)}
+                        executorLabel={formatManualDeviceExecutorLabel(r, getAssignment(r))}
                       />
                     </CardListItem>
                   ))}
