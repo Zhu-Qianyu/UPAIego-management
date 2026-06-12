@@ -15,8 +15,9 @@ Hardware fleet and **cloud data-collection operations** for Rockchip-based board
 
 | Doc | Language | Purpose |
 |-----|----------|---------|
+| [docs/自建Supabase服务器连接说明.md](docs/自建Supabase服务器连接说明.md) | 中文 | **Production:** self-hosted Supabase on CVM — URLs, keys, SSH; **do not** connect to Supabase Cloud. |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | English | Short Supabase setup: base `devices` table, RLS snippet, env vars. |
-| [docs/从零搭建说明书.md](docs/从零搭建说明书.md) | 中文 | **Recommended** full bring-up: Supabase Auth, ordered SQL migrations, first admin, frontend env, optional CLI. |
+| [docs/从零搭建说明书.md](docs/从零搭建说明书.md) | 中文 | Full bring-up from empty DB (SQL migrations, Auth). Cloud signup section superseded by self-hosted doc above for **current production**. |
 | [docs/DATABASE_SPECIFICATION.md](docs/DATABASE_SPECIFICATION.md) | 中文 | Tables, columns, RLS intent, drift notes vs minimal DDL. |
 | [docs/网页使用手册.md](docs/网页使用手册.md) | 中文 | End-user flows by role and page. |
 | [board/README.md](board/README.md) | English | Web bridge modes (`supabase` vs `backend`) and parameters. |
@@ -38,7 +39,9 @@ Route guards live in `frontend/src/App.tsx` (`RoleRoute`). KPI copy targets the 
 
 ## Quick start (web + Supabase)
 
-1. Create a Supabase project and run migrations from **`docs/`** in order — see [docs/从零搭建说明书.md](docs/从零搭建说明书.md) §4–§5 (or [DEPLOYMENT.md](DEPLOYMENT.md) for a minimal device-only start, then add migrations).
+**Production** uses **self-hosted Supabase on CVM** (`146.56.200.250`), not Supabase Cloud — see [docs/自建Supabase服务器连接说明.md](docs/自建Supabase服务器连接说明.md) before changing any `.env` or running `supabase link`.
+
+1. Run migrations from **`docs/`** on the **self-hosted** Postgres (see 从零搭建说明书 §5, or [DEPLOYMENT.md](DEPLOYMENT.md) for a minimal legacy path).
 2. Promote the first user to `admin` in `profiles` (see 从零搭建说明书 §6).
 3. Frontend:
 

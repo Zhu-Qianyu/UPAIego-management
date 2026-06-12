@@ -310,6 +310,20 @@ export async function uploadWorkstationSnapshot(
   return { path: name, bucket: SNAPSHOT_BUCKET };
 }
 
+/** 上传新工位快照并尽力删除旧路径（编辑换图）。 */
+export async function replaceWorkstationSnapshot(
+  groupId: string,
+  file: File,
+  previousPath?: string | null
+): Promise<{ path: string; bucket: string }> {
+  const uploaded = await uploadWorkstationSnapshot(groupId, file);
+  const prev = previousPath?.trim();
+  if (prev && prev !== uploaded.path) {
+    await supabase.storage.from(SNAPSHOT_BUCKET).remove([prev]);
+  }
+  return uploaded;
+}
+
 /** 甲方业务「设备快照」：与工位快照同一 bucket，路径前缀便于区分。 */
 export async function uploadPartyDeviceSnapshot(
   groupId: string,
@@ -418,8 +432,9 @@ export async function updateScenarioPosition(
     payload.snapshot_bucket = SNAPSHOT_BUCKET;
   }
   if (Object.keys(payload).length === 0) return;
-  const { error } = await supabase.from(SP).update(payload).eq("id", id);
+  const { data, error } = await supabase.from(SP).update(payload).eq("id", id).select("id").maybeSingle();
   if (error) throw new Error(error.message);
+  if (!data) throw new Error("更新失败：无权限或记录不存在");
 }
 
 export async function deleteScenarioPosition(id: string): Promise<void> {

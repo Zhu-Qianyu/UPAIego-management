@@ -19,6 +19,7 @@ import {
   listPartyDemands,
   listScenarioPositions,
   listSceneMacroSites,
+  replaceWorkstationSnapshot,
   uploadWorkstationSnapshot,
   uploadPartyDeviceSnapshot,
   uploadMacroPanoramaSnapshot,
@@ -624,26 +625,51 @@ function PartyDemandDeviceSnapshot({ snapshotPath }: { snapshotPath: string | nu
 }
 
 function ScenarioRow({ row, macroTitle }: { row: ScenarioPosition; macroTitle?: string }) {
+  const pathKey = row.snapshot_path?.trim() ?? "";
   const [src, setSrc] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
+    if (!pathKey) {
+      setSrc(null);
+      setLoading(false);
+      return;
+    }
     let cancel = false;
-    getSnapshotPublicUrl(row.snapshot_path)
+    setSrc(null);
+    setLoading(true);
+    getSnapshotPublicUrl(pathKey)
       .then((u) => {
         if (!cancel) setSrc(u);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancel) setSrc(null);
+      })
+      .finally(() => {
+        if (!cancel) setLoading(false);
+      });
     return () => {
       cancel = true;
     };
-  }, [row.snapshot_path]);
+  }, [pathKey]);
 
   const displayTitle = macroTitle ? `${macroTitle} · ${row.title}` : row.title;
 
   return (
     <div className="bg-white p-4 flex flex-col sm:flex-row gap-4">
-      {src && (
-        <img src={src} alt="" className="w-full sm:w-40 h-32 object-cover rounded-lg border border-gray-100" />
-      )}
+      {loading && !src ? (
+        <div className="w-full sm:w-40 h-32 flex items-center justify-center text-xs text-gray-400 border border-gray-100 rounded-lg bg-gray-50 shrink-0">
+          加载快照…
+        </div>
+      ) : null}
+      {src ? (
+        <img
+          key={pathKey}
+          src={src}
+          alt=""
+          className="w-full sm:w-40 h-32 object-cover rounded-lg border border-gray-100 shrink-0"
+        />
+      ) : null}
       <div className="flex-1 min-w-0 pr-24">
         <p className="font-medium text-gray-900">{displayTitle}</p>
         <p className="text-xs text-gray-500 mt-1">
@@ -1060,6 +1086,10 @@ function ScenarioWorkstationsTab({
   async function onSaveEdit(e: React.FormEvent, rowId: string) {
     e.preventDefault();
     setErr("");
+    if (posImageProcessing) {
+      setErr("图片仍在处理中，请稍候再保存");
+      return;
+    }
     if (!eMacroSceneId) {
       setErr("请选择所属大场景");
       return;
@@ -1068,11 +1098,12 @@ function ScenarioWorkstationsTab({
       setErr("请填写省、市、区（县）");
       return;
     }
+    const editingRow = rows.find((r) => r.id === rowId);
     setEBusy(true);
     try {
       let snapshotPath: string | undefined;
       if (eFile) {
-        const { path } = await uploadWorkstationSnapshot(groupId, eFile);
+        const { path } = await replaceWorkstationSnapshot(groupId, eFile, editingRow?.snapshot_path);
         snapshotPath = path;
       }
       await updateScenarioPosition(rowId, {
@@ -1086,6 +1117,11 @@ function ScenarioWorkstationsTab({
         address_detail: eDetail.trim() || null,
         ...(snapshotPath ? { snapshot_path: snapshotPath } : {}),
       });
+      if (snapshotPath) {
+        setRows((prev) =>
+          prev.map((r) => (r.id === rowId ? { ...r, snapshot_path: snapshotPath! } : r))
+        );
+      }
       setEditingId(null);
       setEFile(null);
       await load();
@@ -1261,9 +1297,11 @@ function ScenarioWorkstationsTab({
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
         />
         <ImageFileInput
+          key={`edit-snapshot-${r.id}`}
           label="更换现场快照"
           optionalHint="可选，不选则保留原图"
           file={eFile}
+          existingSnapshotPath={r.snapshot_path}
           onFileChange={setEFile}
           onError={setErr}
           onProcessingChange={setPosImageProcessing}

@@ -34,6 +34,17 @@ done
 
 grep -E '^(API_EXTERNAL_URL|SUPABASE_PUBLIC_URL|SITE_URL|ANON_KEY)=' .env
 
+echo "=== Auth: phone signup without confirmation email ==="
+for key in ENABLE_EMAIL_SIGNUP ENABLE_EMAIL_AUTOCONFIRM; do
+  val=true
+  if grep -q "^${key}=" .env; then
+    sed -i "s|^${key}=.*|${key}=${val}|" .env
+  else
+    echo "${key}=${val}" >> .env
+  fi
+done
+grep -E '^ENABLE_EMAIL_(SIGNUP|AUTOCONFIRM)=' .env
+
 echo "=== Install nginx if missing ==="
 if ! command -v nginx >/dev/null 2>&1; then
   sudo apt-get update -qq

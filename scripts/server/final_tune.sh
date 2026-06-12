@@ -5,6 +5,13 @@ cd ~/supabase/docker
 sed -i 's|^API_EXTERNAL_URL=.*|API_EXTERNAL_URL=http://146.56.200.250:8000|' .env
 sed -i 's|^SUPABASE_PUBLIC_URL=.*|SUPABASE_PUBLIC_URL=http://146.56.200.250:8000|' .env
 sed -i 's|^SITE_URL=.*|SITE_URL=http://146.56.200.250:8000|' .env
+for key in ENABLE_EMAIL_SIGNUP ENABLE_EMAIL_AUTOCONFIRM; do
+  if grep -q "^${key}=" .env; then
+    sed -i "s|^${key}=.*|${key}=true|" .env
+  else
+    echo "${key}=true" >> .env
+  fi
+done
 
 sudo docker-compose stop studio 2>/dev/null || true
 sudo docker-compose restart auth kong functions

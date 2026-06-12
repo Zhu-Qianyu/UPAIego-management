@@ -98,10 +98,10 @@ function describeAction(action: AgentAction): string {
 function welcomeMessage(enabled: boolean, role: UserRole): UiMessage {
   const roleLabel = ROLE_LABELS[role];
   const roleHints: Record<UserRole, string> = {
-    admin: "我是您的职场小秘书，可帮您代填甲方业务、场景岗位、排班等表单；发通知、改群规定前都会先请示您。群发仅管理员可用。",
-    scene_operator: "我是您的职场小秘书，可帮您代填甲方业务、大场景、小岗位与排班；动手前会请您选「直接帮我干」或「跳转页面我自己搞」。",
-    device_operator: "我是您的职场小秘书，可帮您登记设备、走运维流程；动手前会请您选「直接帮我干」或「跳转页面我自己搞」。",
-    collection_executor: "我是您的职场小秘书，可帮看排班、悬赏与钱包；本群规定我会遵守。",
+    admin: "我是您的职场小秘书。也可在「群组」聊天室 @豆小秘 交流；此处可代填表单、群发（先请示）、答制度与跳转。",
+    scene_operator: "我是您的职场小秘书。群组聊天室 @豆小秘 可问流程与跳转；代填表单前会请您选「直接帮我干」或「跳转页面我自己搞」。",
+    device_operator: "我是您的职场小秘书。群组聊天室 @豆小秘 可问设备与运维流程；代填前会请您确认。",
+    collection_executor: "我是您的职场小秘书。群组聊天室 @豆小秘 可问排班、悬赏与钱包；本群规定我会遵守。",
   };
   return {
     id: "welcome",

@@ -1,21 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
-  createGroupTopic,
-  deleteGroupTopic,
   fetchActiveGroupId,
   fetchMyMemberships,
   fetchWorkGroupById,
   kickGroupMember,
   listAllGroupMembers,
-  listGroupTopics,
   submitJoinRequest,
   type GroupMember,
-  type GroupTopic,
   type WorkGroup,
 } from "../api/groups";
 import { fetchProfilesByIds } from "../api/profiles";
-import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
+import GroupChatRoom from "../components/GroupChatRoom";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
@@ -36,7 +32,6 @@ type GroupPageCacheV1 = {
   workGroup: WorkGroup | null;
   hasPending: boolean;
   members: (GroupMember & { displayName: string; roleLabel: string })[];
-  topics: GroupTopic[];
 };
 
 export default function GroupPage() {
@@ -53,11 +48,8 @@ export default function GroupPage() {
   const [members, setMembers] = useState<
     (GroupMember & { displayName: string; roleLabel: string })[]
   >([]);
-  const [topics, setTopics] = useState<GroupTopic[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
   const [err, setErr] = useState("");
 
   const [joinCode, setJoinCode] = useState("");
@@ -73,7 +65,6 @@ export default function GroupPage() {
     setWorkGroup(snap.workGroup);
     setHasPending(snap.hasPending);
     setMembers(snap.members);
-    setTopics(snap.topics);
     setLoading(false);
   }, [cacheKey]);
 
@@ -90,7 +81,6 @@ export default function GroupPage() {
       const gid = await fetchActiveGroupId();
       setGroupId(gid);
       if (!gid) {
-        setTopics([]);
         setWorkGroup(null);
         setMembers([]);
         if (cacheKey) {
@@ -100,20 +90,14 @@ export default function GroupPage() {
             workGroup: null,
             hasPending: pending,
             members: [],
-            topics: [],
           };
           writeRouteViewCache(cacheKey, snap);
         }
         return;
       }
 
-      const [wg, gmRows, t] = await Promise.all([
-        fetchWorkGroupById(gid),
-        listAllGroupMembers(gid),
-        listGroupTopics(gid),
-      ]);
+      const [wg, gmRows] = await Promise.all([fetchWorkGroupById(gid), listAllGroupMembers(gid)]);
       setWorkGroup(wg);
-      setTopics(t);
 
       const profs = await fetchProfilesByIds(gmRows.map((r) => r.user_id));
       const pMap = new Map(profs.map((p) => [p.id, p]));
@@ -138,7 +122,6 @@ export default function GroupPage() {
           workGroup: wg,
           hasPending: pending,
           members: enriched,
-          topics: t,
         });
       }
     } catch (e: unknown) {
@@ -153,32 +136,6 @@ export default function GroupPage() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!groupId) return;
-    setErr("");
-    try {
-      await createGroupTopic(groupId, title, body);
-      setTitle("");
-      setBody("");
-      await load();
-    } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "message" in e ? String((e as Error).message) : "发布失败";
-      setErr(msg);
-    }
-  }
-
-  async function handleDeleteTopic(id: string) {
-    if (!confirm("删除该话题？")) return;
-    try {
-      await deleteGroupTopic(id);
-      await load();
-    } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "message" in e ? String((e as Error).message) : "删除失败";
-      setErr(msg);
-    }
-  }
 
   async function handleKick(member: GroupMember & { displayName: string }) {
     if (
@@ -217,6 +174,10 @@ export default function GroupPage() {
   }
 
   const uid = session?.user?.id;
+  const displayNameByUserId = useMemo(
+    () => new Map(members.map((m) => [m.user_id, m.displayName])),
+    [members]
+  );
   const isPlatformAdmin = profile?.role === "admin";
   const ownerId = workGroup?.owner_user_id;
   const canModerateMembers = isPlatformAdmin || (!!uid && !!ownerId && uid === ownerId);
@@ -245,7 +206,7 @@ export default function GroupPage() {
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-6 text-sm text-amber-950">
             <p className="font-medium mb-2">你的入群申请正在等待审批</p>
             <p className="text-amber-900/90">
-              通过后即可在本页查看群名称、成员与话题。审批由群主（创建该群的）或平台管理员处理。
+              通过后即可在本页查看群名称、成员与聊天室。审批由群主（创建该群的）或平台管理员处理。
             </p>
           </div>
           <button
@@ -314,8 +275,9 @@ export default function GroupPage() {
         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">群组</p>
         <h1 className="text-2xl font-bold text-gray-900">{workGroup?.display_name ?? "本群"}</h1>
         <p className="text-sm text-gray-500 mt-1">
-          群组由平台管理员创建；话题仅本群已激活成员可见与发布。群主或管理员可将成员移出群。
+          群组由平台管理员创建；群聊天室供成员交流，@豆小秘 可问制度、跳转页面或（管理员）群发。群主或管理员可将成员移出群。
         </p>
+        {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
       </div>
 
       <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -381,83 +343,15 @@ export default function GroupPage() {
         )}
       </section>
 
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">话题</h2>
-        <p className="text-sm text-gray-500 mb-4">在下方发布或浏览本群话题。</p>
-      </div>
-
-      <form onSubmit={handleCreate} className="bg-white rounded-2xl border border-indigo-100 p-6 shadow-sm space-y-3">
-        <h2 className="text-sm font-semibold text-gray-800">发布话题</h2>
-        <input
-          required
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="标题"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+      {groupId && profile?.role && isUserRole(profile.role) && (
+        <GroupChatRoom
+          groupId={groupId}
+          userRole={profile.role}
+          userId={uid}
+          displayNameByUserId={displayNameByUserId}
+          setErr={setErr}
         />
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="正文（可选）"
-          rows={4}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        />
-        {err && <p className="text-sm text-red-600">{err}</p>}
-        <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium">
-          发布
-        </button>
-      </form>
-
-      <div className="space-y-4">
-        {topics.length === 0 ? (
-          <>
-            <h2 className="text-sm font-semibold text-gray-700">话题列表</h2>
-            <p className="text-gray-400 text-sm">暂无话题</p>
-          </>
-        ) : (
-          <ListViewSection
-            storageKey="group-topics"
-            header={<h2 className="text-sm font-semibold text-gray-700">话题列表</h2>}
-            compact={
-              <CompactList>
-                {topics.map((t) => (
-                  <CompactListRow
-                    key={t.id}
-                    primary={t.title}
-                    secondary={t.body ?? undefined}
-                    meta={new Date(t.created_at).toLocaleString()}
-                  />
-                ))}
-              </CompactList>
-            }
-          >
-          <CardList>
-            {topics.map((t) => (
-              <CardListItem key={t.id}>
-              <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm h-full w-full min-w-0 overflow-hidden box-border">
-                <div className="flex justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-gray-900">{t.title}</p>
-                    {t.body && <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{t.body}</p>}
-                    <p className="text-xs text-gray-400 mt-2">{new Date(t.created_at).toLocaleString()}</p>
-                  </div>
-                  {(profile?.role === "admin" || uid === t.created_by) && (
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteTopic(t.id)}
-                      className="text-xs text-red-600 shrink-0 h-fit"
-                    >
-                      删除
-                    </button>
-                  )}
-                </div>
-              </div>
-              </CardListItem>
-            ))}
-          </CardList>
-          </ListViewSection>
-        )}
-      </div>
+      )}
     </div>
   );
 }

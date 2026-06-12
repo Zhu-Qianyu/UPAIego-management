@@ -47,6 +47,13 @@ if [[ ! -f .env ]]; then
     echo "Generated POSTGRES_PASSWORD and JWT_SECRET (see ~/supabase/docker/.env)"
     echo "Run ./utils/generate-keys.sh manually if ANON_KEY is empty."
   fi
+  for key in ENABLE_EMAIL_SIGNUP ENABLE_EMAIL_AUTOCONFIRM; do
+    if grep -q "^${key}=" .env; then
+      sed -i "s|^${key}=.*|${key}=true|" .env
+    else
+      echo "${key}=true" >> .env
+    fi
+  done
 fi
 
 mkdir -p "${SUPABASE_DIR}/volumes/functions"

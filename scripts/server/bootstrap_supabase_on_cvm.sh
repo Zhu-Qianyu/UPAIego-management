@@ -20,6 +20,15 @@ if [[ ! -f .env ]]; then
   fi
 fi
 
+# 手机号注册（synthetic email）无需确认邮件
+for key in ENABLE_EMAIL_SIGNUP ENABLE_EMAIL_AUTOCONFIRM; do
+  if grep -q "^${key}=" .env; then
+    sed -i "s|^${key}=.*|${key}=true|" .env
+  else
+    echo "${key}=true" >> .env
+  fi
+done
+
 cat > docker-compose.override.yml <<'EOF'
 services:
   analytics:

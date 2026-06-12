@@ -9,6 +9,9 @@
 !.env.example
 !**/.env.example
 
+# Supabase CLI local link cache (NOT production; may point at deprecated cloud project)
+supabase/.temp/
+
 # Python
 __pycache__/
 *.py[cod]

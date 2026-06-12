@@ -21,8 +21,18 @@ export function formatAuthError(message: string | undefined | null): string {
     return "手机号/邮箱或密码不正确。";
   }
 
+  if (
+    lower.includes("error sending confirmation email") ||
+    lower.includes("sending confirmation email")
+  ) {
+    return (
+      "注册确认邮件发送失败。自建 Supabase 请在服务器 ~/supabase/docker/.env 设置 ENABLE_EMAIL_AUTOCONFIRM=true 后执行：" +
+      "bash scripts/server/fix_auth_email_autoconfirm.sh（或 docker compose restart auth）。"
+    );
+  }
+
   if (lower.includes("email not confirmed")) {
-    return "账号尚未激活。请在 Supabase 控制台关闭 Email 确认（Confirm email）后重试。";
+    return "账号尚未激活。请在服务器 ~/supabase/docker/.env 设置 ENABLE_EMAIL_AUTOCONFIRM=true 并重启 auth 容器。";
   }
 
   if (lower.includes("signup is disabled")) {
