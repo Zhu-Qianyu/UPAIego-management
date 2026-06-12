@@ -44,7 +44,6 @@ import {
   openSceneListPrint,
   type SceneMacroPrintFields,
 } from "../utils/sceneListPrintExport";
-import { IMAGE_UPLOAD_ACCEPT, applyPickedImageFile } from "../utils/compressImageFile";
 
 type Tab = "tasks" | "demands" | "stations";
 
@@ -71,6 +70,7 @@ function PartyDemandsTab({
   const [editDeviceType, setEditDeviceType] = useState("");
   const [editSummary, setEditSummary] = useState("");
   const [editDeviceFile, setEditDeviceFile] = useState<File | null>(null);
+  const [demandImageProcessing, setDemandImageProcessing] = useState(false);
   const [editTotalUnlimited, setEditTotalUnlimited] = useState(true);
   const [editTotalHours, setEditTotalHours] = useState("");
   const [editMaxPerScene, setEditMaxPerScene] = useState("8");
@@ -306,19 +306,14 @@ function PartyDemandsTab({
           onChange={(e) => setDeviceType(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">设备快照（必填）</label>
-          <input
-            type="file"
-            accept={IMAGE_UPLOAD_ACCEPT}
-            onChange={(e) => {
-              const raw = e.target.files?.[0];
-              e.target.value = "";
-              void applyPickedImageFile(raw, setDeviceFile, setErr);
-            }}
-            className="text-sm w-full"
-          />
-        </div>
+        <ImageFileInput
+          label="设备快照"
+          required
+          file={deviceFile}
+          onFileChange={setDeviceFile}
+          onError={setErr}
+          onProcessingChange={setDemandImageProcessing}
+        />
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={totalUnlimited} onChange={(e) => setTotalUnlimited(e.target.checked)} />
@@ -366,8 +361,12 @@ function PartyDemandsTab({
           rows={2}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         />
-        <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm">
-          添加甲方业务
+        <button
+          type="submit"
+          disabled={demandImageProcessing || !deviceFile}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50"
+        >
+          {demandImageProcessing ? "图片处理中…" : "添加甲方业务"}
         </button>
       </form>
       <BatchSelectToolbar
@@ -431,23 +430,15 @@ function PartyDemandsTab({
                   onChange={(e) => setEditDeviceType(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">当前设备快照</p>
-                  <PartyDemandDeviceSnapshot snapshotPath={r.device_snapshot_path} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">更换设备快照（可选）</label>
-                  <input
-                    type="file"
-                    accept={IMAGE_UPLOAD_ACCEPT}
-                    onChange={(e) => {
-                      const raw = e.target.files?.[0];
-                      e.target.value = "";
-                      void applyPickedImageFile(raw, setEditDeviceFile, setErr);
-                    }}
-                    className="text-sm w-full"
-                  />
-                </div>
+                <ImageFileInput
+                  label="设备快照"
+                  optionalHint="可选，不选则保留原图"
+                  file={editDeviceFile}
+                  existingSnapshotPath={r.device_snapshot_path}
+                  onFileChange={setEditDeviceFile}
+                  onError={setErr}
+                  onProcessingChange={setDemandImageProcessing}
+                />
                 <div className="flex flex-wrap items-center gap-3">
                   <label className="flex items-center gap-2 text-sm">
                     <input
@@ -500,8 +491,12 @@ function PartyDemandsTab({
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
                 <div className="flex flex-wrap gap-2">
-                  <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm">
-                    保存
+                  <button
+                    type="submit"
+                    disabled={demandImageProcessing}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm disabled:opacity-50"
+                  >
+                    {demandImageProcessing ? "图片处理中…" : "保存"}
                   </button>
                   <button type="button" onClick={closeEdit} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">
                     取消
@@ -788,6 +783,7 @@ function ScenarioWorkstationsTab({
   const [macroContactName, setMacroContactName] = useState("");
   const [macroContactPhone, setMacroContactPhone] = useState("");
   const [macroPanoramaFile, setMacroPanoramaFile] = useState<File | null>(null);
+  const [macroImageProcessing, setMacroImageProcessing] = useState(false);
   const [macroBusy, setMacroBusy] = useState(false);
   const [editingMacroId, setEditingMacroId] = useState<string | null>(null);
   const [eMacroTitle, setEMacroTitle] = useState("");
@@ -1400,25 +1396,20 @@ function ScenarioWorkstationsTab({
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
             />
           </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">全景图（必填）</label>
-            <input
-              type="file"
-              accept={IMAGE_UPLOAD_ACCEPT}
-              onChange={(e) => {
-                const raw = e.target.files?.[0];
-                e.target.value = "";
-                void applyPickedImageFile(raw, setMacroPanoramaFile, setErr);
-              }}
-              className="text-sm w-full"
-            />
-          </div>
+          <ImageFileInput
+            label="全景图"
+            required
+            file={macroPanoramaFile}
+            onFileChange={setMacroPanoramaFile}
+            onError={setErr}
+            onProcessingChange={setMacroImageProcessing}
+          />
           <button
             type="submit"
-            disabled={macroBusy}
+            disabled={macroBusy || macroImageProcessing || !macroPanoramaFile}
             className="px-4 py-2 bg-violet-700 text-white rounded-lg text-sm disabled:opacity-50"
           >
-            {macroBusy ? "保存中…" : "添加大场景"}
+            {macroBusy ? "保存中…" : macroImageProcessing ? "图片处理中…" : "添加大场景"}
           </button>
         </form>
       </section>
@@ -1657,30 +1648,22 @@ function ScenarioWorkstationsTab({
                                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
                               />
                             </div>
-                            <div>
-                              <p className="text-xs text-gray-500 mb-1">当前全景图</p>
-                              <MacroPanoramaSnapshot snapshotPath={m.panorama_path} />
-                            </div>
-                            <div>
-                              <label className="block text-xs text-gray-600 mb-1">更换全景图（可选）</label>
-                              <input
-                                type="file"
-                                accept={IMAGE_UPLOAD_ACCEPT}
-                                onChange={(e) => {
-                                  const raw = e.target.files?.[0];
-                                  e.target.value = "";
-                                  void applyPickedImageFile(raw, setEMacroPanoramaFile, setErr);
-                                }}
-                                className="text-sm w-full"
-                              />
-                            </div>
+                            <ImageFileInput
+                              label="全景图"
+                              optionalHint="可选，不选则保留原图"
+                              file={eMacroPanoramaFile}
+                              existingSnapshotPath={m.panorama_path}
+                              onFileChange={setEMacroPanoramaFile}
+                              onError={setErr}
+                              onProcessingChange={setMacroImageProcessing}
+                            />
                             <div className="flex flex-wrap gap-2">
                               <button
                                 type="submit"
-                                disabled={eMacroBusy}
+                                disabled={eMacroBusy || macroImageProcessing}
                                 className="px-4 py-2 bg-violet-700 text-white rounded-lg text-sm disabled:opacity-50"
                               >
-                                {eMacroBusy ? "保存中…" : "保存"}
+                                {eMacroBusy ? "保存中…" : macroImageProcessing ? "图片处理中…" : "保存"}
                               </button>
                               <button
                                 type="button"
