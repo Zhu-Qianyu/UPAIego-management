@@ -12,7 +12,7 @@ import {
   type WorkGroup,
 } from "../api/groups";
 import { fetchProfilesByIds } from "../api/profiles";
-import GroupChatRoom from "../components/GroupChatRoom";
+import ImShell from "../components/im/ImShell";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
@@ -57,6 +57,7 @@ export default function GroupPage() {
   const [joinMsg, setJoinMsg] = useState("");
   const [joinErr, setJoinErr] = useState("");
   const [joinBusy, setJoinBusy] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
 
   useLayoutEffect(() => {
     if (!cacheKey) return;
@@ -193,6 +194,8 @@ export default function GroupPage() {
   const isPlatformAdmin = profile?.role === "admin";
   const ownerId = workGroup?.owner_user_id;
   const canModerateMembers = isPlatformAdmin || (!!uid && !!ownerId && uid === ownerId);
+  const myMembership = members.find((m) => m.user_id === uid);
+  const canSendChat = myMembership?.membership_status === "active";
 
   function canKickRow(m: GroupMember): boolean {
     if (!canModerateMembers) return false;
@@ -288,108 +291,129 @@ export default function GroupPage() {
   }
 
   return (
-    <div className="w-full min-w-0 space-y-8">
+    <div className="w-full min-w-0 space-y-4">
       <RefreshStrip active={refreshing} />
       <GroupTabs />
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 mb-1">群组</p>
         <h1 className="text-2xl font-bold text-gray-900">{workGroup?.display_name ?? "本群"}</h1>
         <p className="text-sm text-gray-500 mt-1">
-          群组由平台管理员创建；群聊天室供成员交流，@豆小秘 可问制度、跳转页面或（管理员）群发。群主或管理员可将成员移出群。
+          微信式聊天：左侧切换群聊、豆小秘与成员私聊；群主或管理员可在「群成员管理」审批与移出成员。
         </p>
         {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
       </div>
 
-      <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/80">
-          <h2 className="text-sm font-semibold text-gray-800">群成员</h2>
-          <p className="text-xs text-gray-500 mt-0.5">共 {members.length} 人</p>
-        </div>
-        {members.length === 0 ? (
-          <p className="text-sm text-gray-400 px-4 py-6">暂无成员数据</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 text-left text-xs text-gray-500 uppercase tracking-wide">
-                  <th className="px-4 py-2 font-medium">成员</th>
-                  <th className="px-4 py-2 font-medium">角色</th>
-                  <th className="px-4 py-2 font-medium">状态</th>
-                  {canModerateMembers && <th className="px-4 py-2 font-medium w-32">操作</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {members.map((m) => (
-                  <tr key={m.id} className="hover:bg-indigo-50/30">
-                    <td className="px-4 py-2.5 text-gray-900">
-                      <span className="font-medium">{m.displayName}</span>
-                      {uid === m.user_id && <span className="ml-2 text-xs text-indigo-600">（我）</span>}
-                      {ownerId === m.user_id && <span className="ml-2 text-xs text-gray-500">（群主）</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-600">{m.roleLabel}</td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
-                          m.membership_status === "active"
-                            ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
-                            : m.membership_status === "pending"
-                              ? "bg-amber-50 text-amber-900 ring-1 ring-amber-100"
-                              : "bg-gray-100 text-gray-600"
-                        }`}
-                      >
-                        {membershipLabel(m.membership_status)}
-                      </span>
-                    </td>
-                    {canModerateMembers && (
-                      <td className="px-4 py-2.5">
-                        {canReviewRow(m) ? (
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void handleMembershipReview(m.id, "active")}
-                              className="text-xs font-medium text-emerald-700 hover:text-emerald-900"
-                            >
-                              {m.membership_status === "rejected" ? "重新同意" : "同意"}
-                            </button>
-                            {m.membership_status === "pending" ? (
-                              <button
-                                type="button"
-                                onClick={() => void handleMembershipReview(m.id, "rejected")}
-                                className="text-xs font-medium text-gray-600 hover:text-gray-800"
-                              >
-                                拒绝
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : canKickRow(m) ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleKick(m)}
-                            className="text-xs font-medium text-red-600 hover:text-red-800"
-                          >
-                            移出
-                          </button>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
       {groupId && profile?.role && isUserRole(profile.role) && (
-        <GroupChatRoom
+        <ImShell
           groupId={groupId}
+          groupName={workGroup?.display_name ?? "本工作群"}
+          members={members}
           userRole={profile.role}
           userId={uid}
+          canSend={canSendChat}
           displayNameByUserId={displayNameByUserId}
           setErr={setErr}
+          canModerateMembers={canModerateMembers}
+          onOpenMembers={() => setMembersOpen(true)}
         />
+      )}
+
+      {membersOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="关闭成员管理"
+            className="fixed inset-0 z-40 bg-black/30"
+            onClick={() => setMembersOpen(false)}
+          />
+          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-lg flex flex-col bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+              <h2 className="text-sm font-semibold text-gray-900">群成员 · {members.length} 人</h2>
+              <button
+                type="button"
+                onClick={() => setMembersOpen(false)}
+                className="text-sm text-gray-500 hover:text-gray-800"
+              >
+                关闭
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {members.length === 0 ? (
+                <p className="text-sm text-gray-400 px-4 py-6">暂无成员数据</p>
+              ) : (
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-left text-xs text-gray-500 uppercase tracking-wide">
+                      <th className="px-4 py-2 font-medium">成员</th>
+                      <th className="px-4 py-2 font-medium">角色</th>
+                      <th className="px-4 py-2 font-medium">状态</th>
+                      {canModerateMembers && <th className="px-4 py-2 font-medium w-32">操作</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {members.map((m) => (
+                      <tr key={m.id} className="hover:bg-indigo-50/30">
+                        <td className="px-4 py-2.5 text-gray-900">
+                          <span className="font-medium">{m.displayName}</span>
+                          {uid === m.user_id && <span className="ml-2 text-xs text-indigo-600">（我）</span>}
+                          {ownerId === m.user_id && <span className="ml-2 text-xs text-gray-500">（群主）</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-600">{m.roleLabel}</td>
+                        <td className="px-4 py-2.5">
+                          <span
+                            className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
+                              m.membership_status === "active"
+                                ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-100"
+                                : m.membership_status === "pending"
+                                  ? "bg-amber-50 text-amber-900 ring-1 ring-amber-100"
+                                  : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {membershipLabel(m.membership_status)}
+                          </span>
+                        </td>
+                        {canModerateMembers && (
+                          <td className="px-4 py-2.5">
+                            {canReviewRow(m) ? (
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleMembershipReview(m.id, "active")}
+                                  className="text-xs font-medium text-emerald-700 hover:text-emerald-900"
+                                >
+                                  {m.membership_status === "rejected" ? "重新同意" : "同意"}
+                                </button>
+                                {m.membership_status === "pending" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleMembershipReview(m.id, "rejected")}
+                                    className="text-xs font-medium text-gray-600 hover:text-gray-800"
+                                  >
+                                    拒绝
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : canKickRow(m) ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleKick(m)}
+                                className="text-xs font-medium text-red-600 hover:text-red-800"
+                              >
+                                移出
+                              </button>
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

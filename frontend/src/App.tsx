@@ -14,7 +14,6 @@ import PendingApprovalGate from "./components/PendingApprovalGate";
 import Spinner from "./components/Spinner";
 import { SITE_DISPLAY_NAME } from "./branding";
 import { accountDisplayLabel } from "./utils/phoneAuth";
-import SceneAiAssistant from "./components/SceneAiAssistant";
 import { AitebotProvider } from "./aitebot/AitebotContext";
 
 const DeviceManagePage = lazy(() => import("./pages/DeviceManagePage"));
@@ -509,10 +508,6 @@ export default function App() {
         </Suspense>
         </PendingApprovalGate>
         </main>
-        {(profile.role === "admin" ||
-          profile.role === "scene_operator" ||
-          profile.role === "device_operator" ||
-          profile.role === "collection_executor") && <SceneAiAssistant />}
       </div>
     </div>
     </AitebotProvider>

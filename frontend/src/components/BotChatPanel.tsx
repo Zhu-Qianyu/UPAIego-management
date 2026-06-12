@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { fetchActiveGroupId } from "../api/groups";
 import {
   appendAgentChatMessage,
   clearAgentChatHistory,
@@ -37,7 +36,6 @@ import {
 import { IMAGE_UPLOAD_ACCEPT, prepareImageFileForUpload } from "../utils/compressImageFile";
 import { AGENT_TASK_CHOICE_PROMPT, resolveSelfServiceActions } from "../aitebot/selfServiceNavigation";
 import { useAitebot } from "../aitebot/AitebotContext";
-import { useAuth } from "../auth/AuthContext";
 import { ROLE_LABELS } from "../auth/roleLabels";
 import type { UserRole } from "../types/roles";
 import DouXiaoMiAvatar from "./DouXiaoMiAvatar";
@@ -98,10 +96,10 @@ function describeAction(action: AgentAction): string {
 function welcomeMessage(enabled: boolean, role: UserRole): UiMessage {
   const roleLabel = ROLE_LABELS[role];
   const roleHints: Record<UserRole, string> = {
-    admin: "我是您的职场小秘书。也可在「群组」聊天室 @豆小秘 交流；此处可代填表单、群发（先请示）、答制度与跳转。",
-    scene_operator: "我是您的职场小秘书。群组聊天室 @豆小秘 可问流程与跳转；代填表单前会请您选「直接帮我干」或「跳转页面我自己搞」。",
-    device_operator: "我是您的职场小秘书。群组聊天室 @豆小秘 可问设备与运维流程；代填前会请您确认。",
-    collection_executor: "我是您的职场小秘书。群组聊天室 @豆小秘 可问排班、悬赏与钱包；本群规定我会遵守。",
+    admin: "我是您的职场小秘书。可代填表单、群发（先请示）、答制度与跳转；群聊里 @豆小秘 也能找到我。",
+    scene_operator: "我是您的职场小秘书。可问流程与跳转；代填表单前会请您选「直接帮我干」或「跳转页面我自己搞」。",
+    device_operator: "我是您的职场小秘书。可问设备与运维流程；代填前会请您确认。",
+    collection_executor: "我是您的职场小秘书。可问排班、悬赏与钱包；本群规定我会遵守。",
   };
   return {
     id: "welcome",
@@ -311,13 +309,15 @@ function snippetAroundKeyword(text: string, keyword: string, maxLen = 72): strin
   return `${start > 0 ? "…" : ""}${chunk}${end < text.length ? "…" : ""}`;
 }
 
-export default function SceneAiAssistant() {
+export default function BotChatPanel({
+  groupId,
+  userRole,
+}: {
+  groupId: string;
+  userRole: UserRole;
+}) {
   const enabled = sceneAiFeatureEnabled();
-  const { role } = useAuth();
-  const userRole: UserRole = role ?? "scene_operator";
   const { pageContext, executeActions, toast, clearToast } = useAitebot();
-  const [open, setOpen] = useState(false);
-  const [groupId, setGroupId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [inputMode, setInputMode] = useState<InputMode>("text");
   const [voiceLang, setVoiceLang] = useState<VoiceLang>("zh-CN");
@@ -358,7 +358,7 @@ export default function SceneAiAssistant() {
     if (!el || inputMode !== "text") return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 112)}px`;
-  }, [input, inputMode, open, compactCompose]);
+  }, [input, inputMode, compactCompose]);
 
   const clearFormFillImagesForMessage = useCallback((msgId: string) => {
     setFormFillImages((prev) => {
@@ -472,36 +472,18 @@ export default function SceneAiAssistant() {
   }, [enabled, userRole]);
 
   useEffect(() => {
-    void fetchActiveGroupId()
-      .then((gid) => {
-        setGroupId(gid);
-        void refreshUnread(gid);
-        if (gid) void loadChatHistory(gid);
-        else {
-          setMessages([welcomeMessage(enabled, userRole)]);
-          setHistoryLoading(false);
-        }
-      })
-      .catch(() => {
-        setGroupId(null);
-        setMessages([welcomeMessage(enabled, userRole)]);
-        setHistoryLoading(false);
-      });
-  }, [refreshUnread, loadChatHistory, enabled, userRole]);
+    void refreshUnread(groupId);
+    void loadChatHistory(groupId);
+    void pullInboxIntoChat(groupId);
+  }, [groupId, refreshUnread, loadChatHistory, pullInboxIntoChat]);
 
   useEffect(() => {
-    if (!groupId) return;
     const t = window.setInterval(() => {
       void refreshUnread(groupId);
-      if (open) void pullInboxIntoChat(groupId);
+      void pullInboxIntoChat(groupId);
     }, 30000);
     return () => window.clearInterval(t);
-  }, [groupId, open, refreshUnread, pullInboxIntoChat]);
-
-  useEffect(() => {
-    if (!open || !groupId) return;
-    void pullInboxIntoChat(groupId);
-  }, [open, groupId, pullInboxIntoChat]);
+  }, [groupId, refreshUnread, pullInboxIntoChat]);
 
   const scrollToBottom = useCallback((instant = false) => {
     requestAnimationFrame(() => {
@@ -512,14 +494,9 @@ export default function SceneAiAssistant() {
   }, []);
 
   useEffect(() => {
-    if (open) snapScrollRef.current = true;
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
     scrollToBottom(snapScrollRef.current || historyLoading);
     snapScrollRef.current = false;
-  }, [open, messages, busy, historyLoading, scrollToBottom]);
+  }, [messages, busy, historyLoading, scrollToBottom]);
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -881,75 +858,36 @@ export default function SceneAiAssistant() {
   }
 
   return (
-    <>
-      {!open && (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg ring-2 ring-rose-100 hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-rose-300 overflow-visible"
-          aria-label={`打开${BOT_NAME}${unreadCount ? `，${unreadCount}条未读` : ""}`}
-          title={BOT_NAME}
-        >
-          <DouXiaoMiAvatar size="lg" className="h-14 w-14 ring-0 shadow-none" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-              {unreadCount > 99 ? "99+" : unreadCount}
-            </span>
-          )}
-        </button>
-      )}
-
-      {open && (
-        <>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f5f5f5]">
+      <header className="flex shrink-0 items-center justify-between border-b border-gray-200/80 bg-[#ededed] px-4 py-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <DouXiaoMiAvatar size="md" />
+          <div className="min-w-0">
+            <p className="font-semibold text-gray-900">{BOT_NAME}</p>
+            <p className="text-xs text-gray-500 truncate">
+              群组智能体 · {ROLE_LABELS[userRole]}
+              {unreadCount > 0 ? ` · ${unreadCount} 条未读通知` : ""}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
-            aria-label={`关闭${BOT_NAME}`}
-            className="fixed inset-0 z-40 bg-black/20"
-            onClick={() => setOpen(false)}
-          />
-          <div
-            className="fixed bottom-0 left-0 right-0 z-50 flex h-[75vh] min-h-[420px] flex-col overflow-hidden bg-[#f5f5f5] shadow-[0_-8px_32px_rgba(0,0,0,0.12)] animate-[slideUp_0.25s_ease-out]"
-            role="dialog"
-            aria-label={BOT_NAME}
+            onClick={() => {
+              setSearchOpen((v) => !v);
+              if (searchOpen) {
+                setSearchQuery("");
+                setSearchResults([]);
+              }
+            }}
+            className={`p-2 rounded-lg ${searchOpen ? "bg-rose-50 text-rose-600" : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}
+            aria-label="搜索聊天记录"
+            title="搜索聊天记录"
           >
-            <header className="flex shrink-0 items-center justify-between border-b border-gray-200/80 bg-white px-4 py-2.5">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <DouXiaoMiAvatar size="md" />
-                <div className="min-w-0">
-                  <p className="font-semibold text-gray-900">{BOT_NAME}</p>
-                  <p className="text-xs text-gray-500 truncate">
-                    群组智能体 · {ROLE_LABELS[userRole]} · {pageContext.pageTitle}
-                    {pageContext.sceneTab
-                      ? ` · ${pageContext.sceneTab === "tasks" ? "采集排班" : pageContext.sceneTab === "demands" ? "甲方业务" : "场景岗位"}`
-                      : ""}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchOpen((v) => !v);
-                    if (searchOpen) {
-                      setSearchQuery("");
-                      setSearchResults([]);
-                    }
-                  }}
-                  className={`p-2 rounded-lg ${searchOpen ? "bg-rose-50 text-rose-600" : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"}`}
-                  aria-label="搜索聊天记录"
-                  title="搜索聊天记录"
-                >
-                  <IconSearch className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="text-sm text-gray-500 hover:text-gray-800 px-2 py-1"
-                >
-                  收起
-                </button>
-              </div>
-            </header>
+            <IconSearch className="h-5 w-5" />
+          </button>
+        </div>
+      </header>
 
             {searchOpen && (
               <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-2.5">
@@ -1331,17 +1269,7 @@ export default function SceneAiAssistant() {
                 </div>
               )}
             </footer>
-          </div>
-        </>
-      )}
-
-      <style>{`
-        @keyframes slideUp {
-          from { transform: translateY(100%); opacity: 0.6; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-      `}</style>
-    </>
+    </div>
   );
 }
 

@@ -85,21 +85,38 @@ export async function sendBotGroupChatMessage(
   content: string,
   metadata: AgentChatMetadata = {}
 ): Promise<GroupChatMessage> {
-  const { data, error } = await supabase
-    .from(TABLE)
-    .insert({
-      group_id: groupId,
-      sender_type: "bot",
-      sender_user_id: null,
-      content: content.trim(),
-      message_kind: "bot_action",
-      metadata,
-    })
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc("insert_group_bot_message", {
+    p_group_id: groupId,
+    p_content: content.trim(),
+    p_metadata: metadata,
+  });
 
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (error.message.includes("insert_group_bot_message") || error.code === "PGRST202") {
+      const { data: fallback, error: fbErr } = await supabase
+        .from(TABLE)
+        .insert({
+          group_id: groupId,
+          sender_type: "bot",
+          sender_user_id: null,
+          content: content.trim(),
+          message_kind: "bot_action",
+          metadata,
+        })
+        .select()
+        .single();
+      if (fbErr) throw new Error(fbErr.message);
+      return normalizeRow(fallback as Record<string, unknown>);
+    }
+    throw new Error(error.message);
+  }
   return normalizeRow(data as Record<string, unknown>);
+}
+
+export async function probeGroupChatTable(groupId: string): Promise<"ok" | "missing"> {
+  const { error } = await supabase.from(TABLE).select("id").eq("group_id", groupId).limit(1);
+  if (error && isMissingTableError(error.message)) return "missing";
+  return "ok";
 }
 
 export async function updateGroupChatMessage(
@@ -121,7 +138,9 @@ export function subscribeGroupChat(
   handlers: {
     onInsert?: (msg: GroupChatMessage) => void;
     onUpdate?: (msg: GroupChatMessage) => void;
-  }
+    onPoll?: () => void;
+  },
+  pollIntervalMs = 3000
 ): () => void {
   const channel = supabase
     .channel(`group-chat:${groupId}`)
@@ -151,7 +170,12 @@ export function subscribeGroupChat(
     )
     .subscribe();
 
+  const pollId = handlers.onPoll
+    ? window.setInterval(() => handlers.onPoll?.(), pollIntervalMs)
+    : null;
+
   return () => {
+    if (pollId != null) window.clearInterval(pollId);
     void supabase.removeChannel(channel);
   };
 }

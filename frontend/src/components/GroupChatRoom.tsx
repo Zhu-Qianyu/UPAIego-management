@@ -4,6 +4,7 @@ import {
   BOT_NAME,
   isBotInvocation,
   listGroupChatMessages,
+  probeGroupChatTable,
   sendBotGroupChatMessage,
   sendUserGroupChatMessage,
   subscribeGroupChat,
@@ -77,12 +78,22 @@ export default function GroupChatRoom({
   userId,
   displayNameByUserId,
   setErr,
+  embedded = false,
+  canSend = true,
+  groupName,
+  memberCount,
+  onOpenMembers,
 }: {
   groupId: string;
   userRole: UserRole;
   userId: string | undefined;
   displayNameByUserId: Map<string, string>;
   setErr: (s: string) => void;
+  embedded?: boolean;
+  canSend?: boolean;
+  groupName?: string;
+  memberCount?: number;
+  onOpenMembers?: () => void;
 }) {
   const enabled = sceneAiFeatureEnabled();
   const { pageContext, executeActions, toast, clearToast } = useAitebot();
@@ -91,6 +102,7 @@ export default function GroupChatRoom({
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState("");
   const [tableMissing, setTableMissing] = useState(false);
+  const [sendErr, setSendErr] = useState("");
   const [formFillImages, setFormFillImages] = useState<Record<string, Record<number, FormFillImageEntry>>>({});
   const formImageInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -114,8 +126,14 @@ export default function GroupChatRoom({
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      const probe = await probeGroupChatTable(groupId);
+      if (probe === "missing") {
+        setTableMissing(true);
+        setMessages([]);
+        return;
+      }
       const rows = await listGroupChatMessages(groupId);
-      if (rows.length === 0) setTableMissing(false);
+      setTableMissing(false);
       seenIdsRef.current = new Set(rows.map((r) => r.id));
       setMessages(rows);
     } catch (e: unknown) {
@@ -143,9 +161,10 @@ export default function GroupChatRoom({
         mergeMessage(msg);
       },
       onUpdate: (msg) => mergeMessage(msg),
+      onPoll: () => void load(),
     });
     return unsub;
-  }, [groupId, mergeMessage]);
+  }, [groupId, mergeMessage, load]);
 
   useEffect(() => {
     scrollToBottom();
@@ -286,12 +305,17 @@ export default function GroupChatRoom({
   async function onSend() {
     const text = input.trim();
     if (!text || busy) return;
+    if (!canSend) {
+      setSendErr("入群审批通过后可发言");
+      return;
+    }
     if (tableMissing) {
-      setErr("群聊天室尚未初始化，请在 Supabase 执行 docs/GROUP_CHAT_MIGRATION.sql");
+      setSendErr("群聊天室尚未初始化，请在服务器执行 docs/GROUP_CHAT_MIGRATION.sql");
       return;
     }
 
     setErr("");
+    setSendErr("");
     setBusy(true);
     setInput("");
 
@@ -338,6 +362,7 @@ export default function GroupChatRoom({
       mergeMessage(botMsg);
     } catch (e: unknown) {
       const reason = e instanceof Error ? e.message : "发送失败";
+      setSendErr(reason);
       setErr(reason);
       try {
         const fail = await sendBotGroupChatMessage(groupId, `抱歉，这次没能处理：${reason}`, {});
@@ -367,17 +392,45 @@ export default function GroupChatRoom({
   );
 
   if (loading) {
-    return <p className="text-sm text-gray-500 py-8 text-center">加载聊天室…</p>;
+    return (
+      <p className={`text-sm text-gray-500 py-8 text-center ${embedded ? "h-full flex items-center justify-center" : ""}`}>
+        加载聊天室…
+      </p>
+    );
   }
 
+  const shellClass = embedded
+    ? "flex flex-col h-full min-h-0 overflow-hidden bg-[#f5f5f5]"
+    : "bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[28rem] max-h-[70vh]";
+
   return (
-    <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[28rem] max-h-[70vh]">
-      <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-rose-50/80 to-indigo-50/50">
-        <h2 className="text-sm font-semibold text-gray-900">群聊天室</h2>
-        <p className="text-xs text-gray-500 mt-0.5">
-          同事交流 + {BOT_NAME}（输入 {BOT_MENTION} 提问、跳转或群发）
-        </p>
-      </div>
+    <section className={shellClass}>
+      {embedded ? (
+        <div className="shrink-0 border-b border-gray-200 bg-[#ededed] px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="font-semibold text-gray-900">{groupName ?? "本工作群"}</p>
+            <p className="text-xs text-gray-500">
+              {memberCount != null ? `${memberCount} 人 · ` : ""}输入 {BOT_MENTION} 可问豆小秘
+            </p>
+          </div>
+          {onOpenMembers && (
+            <button
+              type="button"
+              onClick={onOpenMembers}
+              className="text-xs text-gray-600 hover:text-gray-900 px-2 py-1 rounded-md hover:bg-gray-200/60"
+            >
+              成员
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-rose-50/80 to-indigo-50/50">
+          <h2 className="text-sm font-semibold text-gray-900">群聊天室</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            同事交流 + {BOT_NAME}（输入 {BOT_MENTION} 提问、跳转或群发）
+          </p>
+        </div>
+      )}
 
       {tableMissing && (
         <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -425,7 +478,9 @@ export default function GroupChatRoom({
                 <div
                   className={`rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words shadow-sm ${
                     isUser
-                      ? "bg-indigo-600 text-white rounded-tr-md"
+                      ? embedded
+                        ? "bg-[#95ec69] text-gray-900 rounded-tr-md"
+                        : "bg-indigo-600 text-white rounded-tr-md"
                       : "bg-white border border-gray-200 text-gray-800 rounded-tl-md"
                   }`}
                 >
@@ -563,7 +618,15 @@ export default function GroupChatRoom({
         </div>
       )}
 
-      <div className="shrink-0 border-t border-gray-100 bg-white px-3 py-2 space-y-2">
+      <div className={`shrink-0 border-t border-gray-100 bg-white px-3 py-2 space-y-2 ${embedded ? "bg-[#f5f5f5]" : ""}`}>
+        {sendErr && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2 py-1">{sendErr}</p>
+        )}
+        {!canSend && (
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+            入群审批通过后可发言
+          </p>
+        )}
         <div className="flex gap-2 overflow-x-auto pb-1">
           {quickTopics.map((item) => (
             <button
@@ -593,9 +656,11 @@ export default function GroupChatRoom({
           />
           <button
             type="button"
-            disabled={busy || !input.trim() || tableMissing}
+            disabled={busy || !input.trim() || tableMissing || !canSend}
             onClick={() => void onSend()}
-            className="shrink-0 rounded-xl bg-indigo-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-40"
+            className={`shrink-0 rounded-xl text-white px-4 py-2 text-sm font-medium disabled:opacity-40 ${
+              embedded ? "bg-[#07c160] rounded-lg" : "bg-indigo-600"
+            }`}
           >
             发送
           </button>
