@@ -4,6 +4,7 @@ import {
   createWorkGroup,
   fetchOwnedWorkGroup,
   listPendingMembers,
+  listRejectedMembers,
   setMembershipStatus,
   type GroupMember,
   type WorkGroup,
@@ -18,7 +19,82 @@ import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../u
 import { useAuth } from "../auth/AuthContext";
 import GroupTabs from "../components/GroupTabs";
 
-type AdminGroupCacheV1 = { v: 1; owned: WorkGroup | null; pending: GroupMember[] };
+type AdminGroupCacheV1 = { v: 1; owned: WorkGroup | null; pending: GroupMember[]; rejected: GroupMember[] };
+
+type MemberProfileMap = Record<string, { name: string; phone: string; role: string }>;
+
+async function loadMemberProfiles(members: GroupMember[]): Promise<MemberProfileMap> {
+  if (!members.length) return {};
+  const profs = await fetchProfilesByIds(members.map((m) => m.user_id));
+  const map: MemberProfileMap = {};
+  for (const row of members) {
+    const prof = profs.find((x) => x.id === row.user_id);
+    map[row.user_id] = {
+      name: prof ? profileDisplayName(prof) : row.user_id.slice(0, 8),
+      phone: formatPhoneDisplay(prof?.phone ?? row.request_phone),
+      role: prof?.role ? ROLE_LABELS[prof.role] : "—",
+    };
+  }
+  return map;
+}
+
+function MemberReviewCard({
+  m,
+  info,
+  busyId,
+  onApprove,
+  onReject,
+  rejectLabel = "拒绝",
+  approveLabel = "同意",
+}: {
+  m: GroupMember;
+  info?: { name: string; phone: string; role: string };
+  busyId: string | null;
+  onApprove: () => void;
+  onReject?: () => void;
+  rejectLabel?: string;
+  approveLabel?: string;
+}) {
+  return (
+    <CardListItem>
+      <div className="rounded-xl border border-gray-200 bg-white p-4 h-full w-full min-w-0 overflow-hidden box-border flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium text-gray-900">{info?.name ?? m.user_id.slice(0, 8)}</p>
+          <p className="text-xs text-gray-600 mt-0.5">
+            {info?.role ?? "—"} · 手机 {info?.phone ?? "—"}
+            {m.request_email && !m.request_email.endsWith("@upaiego.auth") && (
+              <span> · {m.request_email}</span>
+            )}
+          </p>
+          <p className="text-xs text-gray-400">
+            申请 {new Date(m.created_at).toLocaleString()}
+            {m.decided_at ? ` · 处理 ${new Date(m.decided_at).toLocaleString()}` : ""}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={busyId === m.id}
+            onClick={onApprove}
+            className="px-3 py-1 rounded-lg bg-emerald-600 text-white text-xs font-medium disabled:opacity-50"
+          >
+            {approveLabel}
+          </button>
+          {onReject ? (
+            <button
+              type="button"
+              disabled={busyId === m.id}
+              onClick={onReject}
+              className="px-3 py-1 rounded-lg border border-gray-300 text-xs text-gray-700 disabled:opacity-50"
+            >
+              {rejectLabel}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </CardListItem>
+  );
+}
 
 export default function AdminGroupPage() {
   const { session } = useAuth();
@@ -30,9 +106,9 @@ export default function AdminGroupPage() {
 
   const [owned, setOwned] = useState<WorkGroup | null | undefined>(undefined);
   const [pending, setPending] = useState<GroupMember[]>([]);
-  const [pendingProfiles, setPendingProfiles] = useState<
-    Record<string, { name: string; phone: string; role: string }>
-  >({});
+  const [rejected, setRejected] = useState<GroupMember[]>([]);
+  const [pendingProfiles, setPendingProfiles] = useState<MemberProfileMap>({});
+  const [rejectedProfiles, setRejectedProfiles] = useState<MemberProfileMap>({});
   const [name, setName] = useState("");
   const [customCode, setCustomCode] = useState("");
   const [loading, setLoading] = useState(true);
@@ -46,6 +122,7 @@ export default function AdminGroupPage() {
     if (!snap || snap.v !== 1) return;
     setOwned(snap.owned);
     setPending(snap.pending);
+    setRejected(snap.rejected ?? []);
     setLoading(false);
   }, [cacheKey]);
 
@@ -58,27 +135,19 @@ export default function AdminGroupPage() {
       const g = await fetchOwnedWorkGroup();
       setOwned(g);
       if (g) {
-        const p = await listPendingMembers(g.id);
+        const [p, rej] = await Promise.all([listPendingMembers(g.id), listRejectedMembers(g.id)]);
         setPending(p);
-        if (p.length) {
-          const profs = await fetchProfilesByIds(p.map((m) => m.user_id));
-          const map: Record<string, { name: string; phone: string; role: string }> = {};
-          for (const row of p) {
-            const prof = profs.find((x) => x.id === row.user_id);
-            map[row.user_id] = {
-              name: prof ? profileDisplayName(prof) : row.user_id.slice(0, 8),
-              phone: formatPhoneDisplay(prof?.phone ?? row.request_phone),
-              role: prof?.role ? ROLE_LABELS[prof.role] : "—",
-            };
-          }
-          setPendingProfiles(map);
-        } else {
-          setPendingProfiles({});
-        }
-        if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, owned: g, pending: p });
+        setRejected(rej);
+        const [pProf, rProf] = await Promise.all([loadMemberProfiles(p), loadMemberProfiles(rej)]);
+        setPendingProfiles(pProf);
+        setRejectedProfiles(rProf);
+        if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, owned: g, pending: p, rejected: rej });
       } else {
         setPending([]);
-        if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, owned: null, pending: [] });
+        setRejected([]);
+        setPendingProfiles({});
+        setRejectedProfiles({});
+        if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, owned: null, pending: [], rejected: [] });
       }
     } catch (e: any) {
       setErr(e.message ?? "加载失败");
@@ -192,45 +261,48 @@ export default function AdminGroupPage() {
               </CompactList>
             }>
             <CardList>
-              {pending.map((m) => {
-                const info = pendingProfiles[m.user_id];
-                return (
-                <CardListItem key={m.id}>
-                <div className="rounded-xl border border-gray-200 bg-white p-4 h-full w-full min-w-0 overflow-hidden box-border flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{info?.name ?? m.user_id.slice(0, 8)}</p>
-                    <p className="text-xs text-gray-600 mt-0.5">
-                      {info?.role ?? "—"} · 手机 {info?.phone ?? "—"}
-                      {m.request_email && !m.request_email.endsWith("@upaiego.auth") && (
-                        <span> · {m.request_email}</span>
-                      )}
-                    </p>
-                    <p className="text-xs text-gray-400">{new Date(m.created_at).toLocaleString()}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      disabled={busyId === m.id}
-                      onClick={() => void approve(m, true)}
-                      className="px-3 py-1 rounded-lg bg-emerald-600 text-white text-xs font-medium disabled:opacity-50"
-                    >
-                      同意
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyId === m.id}
-                      onClick={() => void approve(m, false)}
-                      className="px-3 py-1 rounded-lg border border-gray-300 text-xs text-gray-700 disabled:opacity-50"
-                    >
-                      拒绝
-                    </button>
-                  </div>
-                </div>
-                </CardListItem>
-                );
-              })}
+              {pending.map((m) => (
+                <MemberReviewCard
+                  key={m.id}
+                  m={m}
+                  info={pendingProfiles[m.user_id]}
+                  busyId={busyId}
+                  onApprove={() => void approve(m, true)}
+                  onReject={() => void approve(m, false)}
+                />
+              ))}
             </CardList>
             </ListViewSection>
+          )}
+        </div>
+      )}
+
+      {owned && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-800">已拒绝（可重新同意）</h2>
+              <p className="text-xs text-gray-500 mt-0.5">误拒后可在此恢复入群，无需用户重新申请</p>
+            </div>
+            <button type="button" onClick={() => void refresh()} className="text-xs text-indigo-600 hover:underline">
+              刷新
+            </button>
+          </div>
+          {rejected.length === 0 ? (
+            <p className="text-sm text-gray-400">暂无已拒绝记录</p>
+          ) : (
+            <CardList>
+              {rejected.map((m) => (
+                <MemberReviewCard
+                  key={m.id}
+                  m={m}
+                  info={rejectedProfiles[m.user_id]}
+                  busyId={busyId}
+                  approveLabel="重新同意"
+                  onApprove={() => void approve(m, true)}
+                />
+              ))}
+            </CardList>
           )}
         </div>
       )}

@@ -148,6 +148,18 @@ export async function listPendingMembers(groupId: string): Promise<GroupMember[]
   return (data ?? []) as GroupMember[];
 }
 
+export async function listRejectedMembers(groupId: string): Promise<GroupMember[]> {
+  const { data, error } = await supabase
+    .from(GM)
+    .select("*")
+    .eq("group_id", groupId)
+    .eq("membership_status", "rejected")
+    .order("decided_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as GroupMember[];
+}
+
 /** 群主或平台管理员将成员移出（标记为已拒绝） */
 export async function kickGroupMember(memberId: string): Promise<void> {
   const u = (await supabase.auth.getUser()).data.user;

@@ -6,6 +6,7 @@ import {
   fetchWorkGroupById,
   kickGroupMember,
   listAllGroupMembers,
+  setMembershipStatus,
   submitJoinRequest,
   type GroupMember,
   type WorkGroup,
@@ -155,6 +156,17 @@ export default function GroupPage() {
     }
   }
 
+  async function handleMembershipReview(memberId: string, status: "active" | "rejected") {
+    setErr("");
+    try {
+      await setMembershipStatus(memberId, status);
+      await load();
+    } catch (e: unknown) {
+      const msg = e && typeof e === "object" && "message" in e ? String((e as Error).message) : "操作失败";
+      setErr(msg);
+    }
+  }
+
   async function onJoinSubmit(e: React.FormEvent) {
     e.preventDefault();
     setJoinErr("");
@@ -187,8 +199,16 @@ export default function GroupPage() {
     if (!uid || !ownerId) return false;
     if (m.user_id === uid) return false;
     if (m.user_id === ownerId) return false;
-    if (m.membership_status === "rejected") return false;
+    if (m.membership_status !== "active") return false;
     return true;
+  }
+
+  function canReviewRow(m: GroupMember): boolean {
+    if (!canModerateMembers) return false;
+    if (!uid || !ownerId) return false;
+    if (m.user_id === uid) return false;
+    if (m.user_id === ownerId) return false;
+    return m.membership_status === "pending" || m.membership_status === "rejected";
   }
 
   if (loading) return <Spinner />;
@@ -295,7 +315,7 @@ export default function GroupPage() {
                   <th className="px-4 py-2 font-medium">成员</th>
                   <th className="px-4 py-2 font-medium">角色</th>
                   <th className="px-4 py-2 font-medium">状态</th>
-                  {canModerateMembers && <th className="px-4 py-2 font-medium w-24">操作</th>}
+                  {canModerateMembers && <th className="px-4 py-2 font-medium w-32">操作</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -322,7 +342,26 @@ export default function GroupPage() {
                     </td>
                     {canModerateMembers && (
                       <td className="px-4 py-2.5">
-                        {canKickRow(m) ? (
+                        {canReviewRow(m) ? (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleMembershipReview(m.id, "active")}
+                              className="text-xs font-medium text-emerald-700 hover:text-emerald-900"
+                            >
+                              {m.membership_status === "rejected" ? "重新同意" : "同意"}
+                            </button>
+                            {m.membership_status === "pending" ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleMembershipReview(m.id, "rejected")}
+                                className="text-xs font-medium text-gray-600 hover:text-gray-800"
+                              >
+                                拒绝
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : canKickRow(m) ? (
                           <button
                             type="button"
                             onClick={() => void handleKick(m)}
