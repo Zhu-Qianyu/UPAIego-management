@@ -123,7 +123,7 @@ export default function GroupChatRoom({
     });
   }, []);
 
-  const load = useCallback(async () => {
+  const loadInitial = useCallback(async () => {
     setLoading(true);
     try {
       const probe = await probeGroupChatTable(groupId);
@@ -149,9 +149,19 @@ export default function GroupChatRoom({
     }
   }, [groupId, setErr]);
 
+  const refreshMessages = useCallback(async () => {
+    try {
+      const rows = await listGroupChatMessages(groupId);
+      seenIdsRef.current = new Set(rows.map((r) => r.id));
+      setMessages(rows);
+    } catch {
+      /* 后台轮询失败不打断输入 */
+    }
+  }, [groupId]);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadInitial();
+  }, [loadInitial]);
 
   useEffect(() => {
     const unsub = subscribeGroupChat(groupId, {
@@ -161,10 +171,10 @@ export default function GroupChatRoom({
         mergeMessage(msg);
       },
       onUpdate: (msg) => mergeMessage(msg),
-      onPoll: () => void load(),
+      onPoll: () => void refreshMessages(),
     });
     return unsub;
-  }, [groupId, mergeMessage, load]);
+  }, [groupId, mergeMessage, refreshMessages]);
 
   useEffect(() => {
     scrollToBottom();
@@ -391,7 +401,7 @@ export default function GroupChatRoom({
     [userRole]
   );
 
-  if (loading) {
+  if (loading && messages.length === 0) {
     return (
       <p className={`text-sm text-gray-500 py-8 text-center ${embedded ? "h-full flex items-center justify-center" : ""}`}>
         加载聊天室…

@@ -39,8 +39,8 @@ export default function DirectChatPanel({
     return id;
   }, [conversationId, groupId, otherUserId]);
 
-  const loadMessages = useCallback(async (convId: string) => {
-    setLoading(true);
+  const loadMessages = useCallback(async (convId: string, silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const rows = await listDirectMessages(convId);
       setMessages(rows);
@@ -51,11 +51,11 @@ export default function DirectChatPanel({
       if (msg.includes("does not exist") || msg.includes("Could not find")) {
         setTableMissing(true);
         setMessages([]);
-      } else {
+      } else if (!silent) {
         setSendErr(msg);
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -80,7 +80,7 @@ export default function DirectChatPanel({
       },
     });
     const pollId = window.setInterval(() => {
-      void loadMessages(conversationId);
+      void loadMessages(conversationId, true);
     }, 3000);
     return () => {
       window.clearInterval(pollId);
