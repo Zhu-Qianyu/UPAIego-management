@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { supabase } from "../api/supabase";
 import { fetchActiveGroupId, fetchMyMemberships, completeSignupGroupRequest } from "../api/groups";
@@ -19,9 +19,12 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
   const [pendingGroupName, setPendingGroupName] = useState<string | null>(null);
 
   const [blocked, setBlocked] = useState<"none" | "pending" | "rejected" | "no_group">("none");
+  const profileId = profile?.id;
+  const profileRole = profile?.role;
+  const initialCheckDoneRef = useRef(false);
 
   const check = useCallback(async () => {
-    if (!profile || profile.role === "admin") {
+    if (!profileId || profileRole === "admin") {
       setBlocked("none");
       setChecking(false);
       return;
@@ -50,10 +53,13 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
     } finally {
       setChecking(false);
     }
-  }, [profile]);
+  }, [profileId, profileRole]);
 
   useEffect(() => {
-    setChecking(true);
+    if (!initialCheckDoneRef.current) {
+      setChecking(true);
+      initialCheckDoneRef.current = true;
+    }
     void check();
   }, [check]);
 
@@ -119,7 +125,6 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
                 try {
                   await completeSignupGroupRequest(reapplyCode.trim());
                   setReapplyCode("");
-                  setChecking(true);
                   await check();
                 } catch (e: unknown) {
                   const msg =
@@ -141,7 +146,6 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
           <button
             type="button"
             onClick={() => {
-              setChecking(true);
               void refreshProfile().then(() => check());
             }}
             className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"

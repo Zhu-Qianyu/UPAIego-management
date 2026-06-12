@@ -1859,6 +1859,7 @@ export default function SceneTasksPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [demands, setDemands] = useState<PartyDemand[]>([]);
   const [err, setErr] = useState("");
+  const shellLoadedOnceRef = useRef(false);
 
   const setTab = useCallback(
     (next: Tab) => {
@@ -1915,7 +1916,7 @@ export default function SceneTasksPage() {
     let cancel = false;
     (async () => {
       const stale = shellKey ? readRouteViewCache<SceneShellCacheV1>(shellKey) : null;
-      if (stale) setRefreshing(true);
+      if (shellLoadedOnceRef.current || stale) setRefreshing(true);
       else setLoading(true);
       try {
         const gid = await fetchActiveGroupId();
@@ -1931,6 +1932,7 @@ export default function SceneTasksPage() {
         if (!cancel) {
           setLoading(false);
           setRefreshing(false);
+          shellLoadedOnceRef.current = true;
         }
       }
     })();
@@ -1961,7 +1963,7 @@ export default function SceneTasksPage() {
     </button>
   );
 
-  if (loading) return <Spinner />;
+  if (loading && !shellLoadedOnceRef.current) return <Spinner />;
 
   if (!groupId) {
     return (
