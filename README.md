@@ -11,7 +11,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
 > **Live site:** [https://upaieasy.cn](https://upaieasy.cn)  
-> upaieasy! is a **data-collection internal management system** for devices, crews, schedules, and settlement. Its core differentiator is **豆小秘**—an AI teammate embedded in group chat: @ mention to get **where to click**, **forms filled for you**, and **role-aware workflow answers**. That lifts **affordance** across a deep admin UI and **lowers the barrier** for new operators, scene planners, and field executors.
+> upaieasy! is a **data-collection internal management system** for devices, crews, schedules, and settlement. Its core differentiator is **豆小秘**—an AI teammate embedded in group chat: @ mention to get **where to click**, **forms filled for you**, and **role-aware workflow answers**. That lifts **affordance** across a deep admin UI and **lowers the barrier** for new operators, scene planners, and field executors. The repo also includes a **six-camera collection hat** that **connects online** via [`board/`](board/) firmware.
 
 [中文版 README](README.zh-CN.md)
 
@@ -35,6 +35,12 @@
     <td width="50%" align="center"><b>Device cards · status</b><br><sub>Assign executors, scan info, fault / RMA</sub><br><br><a href="https://upaieasy.cn"><img src="show/5.png" alt="Device cards" width="100%"></a></td>
   </tr>
 </table>
+
+<p align="center">
+  <img src="show/6.png" alt="Six-camera collection hat design sketch" width="75%">
+</p>
+
+<p align="center"><sub>Six-camera collection hat — wearable multi-cam rig; design sketch (repo: <code>hardware/</code> + <code>board/</code>)</sub></p>
 
 <p align="center">
   <a href="https://upaieasy.cn"><strong>→ Try it at upaieasy.cn</strong></a>
@@ -75,7 +81,7 @@
 > **Internal ops backbone** (devices, scenes, shifts, KPIs) + **豆小秘** so the same system stays approachable for every role.
 
 ### Device management
-- **Online devices:** registration, heartbeat, calibration, firmware, notes; QR scan to identify
+- **Online devices:** registration, heartbeat, calibration, firmware, notes; QR scan to identify — includes the **six-camera collection hat** when running [`board/`](board/) on-board code
 - **Offline / external devices:** linked to a client project; **10-char hex registration ID** and printable QR label
 - **Bulk assignment:** ops assigns idle devices to executors; executor overview shows **assigned devices only**
 
@@ -92,6 +98,18 @@
 ### Admin console
 - Role-based **KPIs** (device health / scene count / data volume) and review periods
 - **Broadcast announcements**, **financial estimate board**
+
+---
+
+## Companion hardware · Six-camera hat
+
+This repo ships alongside a **six-camera collection hat** (六目采集帽)—a wearable rig with a **six-lens front array** and an **on-board compute module** (LubanCat + ROS 2). After provisioning, it **connects online** to upaieasy! and reports **heartbeat, recording state, CPU load, and firmware** in the web console, while capturing video and optional IMU data.
+
+| In this repo | Contents |
+|--------------|----------|
+| [`board/`](board/) | **On-board program** — ROS 2 Web Bridge: Supabase/API heartbeat, ffmpeg recording, optional MPU6050 gyro CSV. See [`board/README.md`](board/README.md). |
+| [`hardware/`](hardware/) | **Partial open release** — incomplete BOM plus some **STL / STEP** enclosure and bracket models. **Full BOM, production files, and detailed mechanical/electrical docs are not open-sourced.** |
+| [`show/6.png`](show/6.png) | **Design sketch** — front / side / top / rear views of the hat assembly |
 
 ---
 
@@ -127,9 +145,10 @@ flowchart LR
   end
 
   subgraph EdgeHW["Field"]
-    Online["Online devices\nheartbeat / storage"]
+    Hat["Six-camera hat\n(六目采集帽)"]
+    Online["Other online devices\nheartbeat / storage"]
     Offline["Offline labeled devices"]
-    Board["ROS2 Web Bridge\n(optional)"]
+    Board["board/ ROS2 bridge"]
   end
 
   SPA --> Auth
@@ -138,6 +157,8 @@ flowchart LR
   Bot --> Edge
   Edge --> PG
   Board --> PG
+  Hat --> Board
+  Hat --> PG
   Online --> PG
   Offline --> PG
 ```
@@ -148,7 +169,8 @@ flowchart LR
 | [`supabase/functions/`](supabase/functions/) | Edge Functions (scene AI, etc.) |
 | [`docs/`](docs/) | User & ops docs (mostly Chinese) |
 | [`backend/`](backend/) | Optional FastAPI + CLI (USB provisioning) |
-| [`board/`](board/) | Optional ROS 2 → HTTPS heartbeat bridge |
+| [`board/`](board/) | **Six-camera hat on-board code** — ROS 2 → HTTPS heartbeat, recording, gyro sync |
+| [`hardware/`](hardware/) | **Partial** mechanical models (STL/STEP); full BOM & production files not open |
 
 ---
 
@@ -177,15 +199,15 @@ Open `http://localhost:5173`. Promote the first user to `admin` in `profiles`, o
 bash scripts/server/deploy_scene_ai_agent.sh
 ```
 
-### 4. Optional: device CLI / board
+### 4. Optional: six-camera hat / device CLI
+
+**On-board (hat):** flash and run the ROS 2 bridge on LubanCat — [`board/README.md`](board/README.md).
 
 ```bash
 cd backend
 pip install -r requirements.txt
 python cli.py provision --port /dev/ttyUSB0   # Linux; use COM port on Windows
 ```
-
-Board-side ROS 2 bridge: [`board/README.md`](board/README.md).
 
 ---
 
@@ -195,7 +217,7 @@ Board-side ROS 2 bridge: [`board/README.md`](board/README.md).
 |------|------|------|
 | [User manual](docs/网页使用手册.md) | End users | Role- and page-level guide (Chinese) |
 | [Self-hosted Supabase guide](docs/自建Supabase服务器连接说明.md) | Ops / dev | Production CVM, keys, Edge Functions |
-| [board/README.md](board/README.md) | Embedded | ROS 2 Web Bridge heartbeat |
+| [board/README.md](board/README.md) | Embedded | Six-camera hat ROS 2 bridge & recording |
 
 ---
 
@@ -205,7 +227,7 @@ Board-side ROS 2 bridge: [`board/README.md`](board/README.md).
 - **Data layer:** Supabase (PostgREST · GoTrue · Row Level Security · Storage)
 - **Maps:** Amap JS API (collection map; feature-flagged per environment)
 - **AI:** Volcengine Ark / Doubao (configurable in Edge Function)
-- **Devices:** Python FastAPI · ROS 2 Web Bridge · USB serial provisioning CLI
+- **Devices:** Six-camera hat (ROS 2 / LubanCat) · Python FastAPI · USB provisioning CLI
 
 ---
 
@@ -237,7 +259,8 @@ upaiego-management/
 ├── supabase/functions/       # Edge Functions
 ├── docs/                     # User & ops documentation
 ├── backend/                  # FastAPI + CLI (optional)
-├── board/ros2_web_bridge/    # Board heartbeat (optional)
+├── board/ros2_web_bridge/    # Six-camera hat on-board ROS 2 program
+├── hardware/                 # Partial STL/STEP models (full BOM not open)
 └── scripts/server/           # Deploy & acceptance scripts
 ```
 

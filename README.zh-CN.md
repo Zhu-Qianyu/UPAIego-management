@@ -11,7 +11,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
 > **在线地址：** [https://upaieasy.cn](https://upaieasy.cn)  
-> upaieasy! 是面向数采团队的**内部管理系统**，覆盖设备、排班、结算与管理台。核心亮点是群聊里的 **AI 智能员工豆小秘**：@ 即可问「点哪里」「帮我填表」「这一步怎么做」——在功能模块多、表单长的系统里**抬高 affordance、压低学习成本**，让管理员、场景业务员与执行员更快进入工作状态。
+> upaieasy! 是面向数采团队的**内部管理系统**，覆盖设备、排班、结算与管理台。核心亮点是群聊里的 **AI 智能员工豆小秘**：@ 即可问「点哪里」「帮我填表」「这一步怎么做」——在功能模块多、表单长的系统里**抬高 affordance、压低学习成本**，让管理员、场景业务员与执行员更快进入工作状态。仓库另含可**在线接入**平台的 **六目采集帽** 板端程序（[`board/`](board/)）与部分结构模型（[`hardware/`](hardware/)）。
 
 [English README](README.md)
 
@@ -35,6 +35,12 @@
     <td width="50%" align="center"><b>设备卡片 · 状态维护</b><br><sub>分配执行员、扫码信息、异常 / 返厂</sub><br><br><a href="https://upaieasy.cn"><img src="show/5.png" alt="设备卡片" width="100%"></a></td>
   </tr>
 </table>
+
+<p align="center">
+  <img src="show/6.png" alt="六目采集帽设计草图" width="75%">
+</p>
+
+<p align="center"><sub>六目采集帽 — 可穿戴多路相机采集设备设计草图（代码见 <code>board/</code>，结构见 <code>hardware/</code>）</sub></p>
 
 <p align="center">
   <a href="https://upaieasy.cn"><strong>→ 前往 upaieasy.cn 体验</strong></a>
@@ -75,7 +81,7 @@
 > **数采内部管理底座**（设备、场景、排班、KPI）+ **豆小秘**，让同一套系统对不同角色都「用得起来」。
 
 ### 设备管理
-- **在线设备**：注册、心跳、校准、固件与备注；设备二维码扫码识别
+- **在线设备**：注册、心跳、校准、固件与备注；设备二维码扫码识别 — 含烧录 [`board/`](board/) 程序后可**在线连接**的**六目采集帽**
 - **离线 / 外部设备**：关联甲方业务，生成 **10 位 hex 登记编号** 与贴签二维码
 - **批量分配**：运维将空闲设备分配给数采执行员；执行员总览**仅可见已分配设备**
 
@@ -92,6 +98,18 @@
 ### 管理台
 - 分角色 **KPI**（设备完好率 / 场景数 / 数据量）与考核周期
 - **全员公告**、**财务估算看板**
+
+---
+
+## 关联硬件 · 六目采集帽
+
+本仓库配套 **六目采集帽** — 帽檐前部 **六路相机阵列** + 后部 **嵌入式算力板**（鲁班猫 + ROS 2）。设备注册并运行 [`board/`](board/) 程序后，可**在线接入** upaieasy!，在网页「在线设备」中上报**心跳、录制状态、CPU 占用与固件版本**，并同步视频采集与可选陀螺仪数据。
+
+| 仓库目录 | 说明 |
+|----------|------|
+| [`board/`](board/) | **板端程序** — ROS 2 Web Bridge：Supabase/API 心跳、ffmpeg 录制、可选 MPU6050 陀螺仪 CSV。见 [`board/README.md`](board/README.md)。 |
+| [`hardware/`](hardware/) | **部分开源** — 不完整的 BOM 及部分 **STL / STEP** 外壳与支架模型；**完整 BOM、生产资料与详细机械/电气设计不开源**。 |
+| [`show/6.png`](show/6.png) | **设计草图** — 设备正视 / 侧视 / 俯视 / 后视 |
 
 ---
 
@@ -127,9 +145,10 @@ flowchart LR
   end
 
   subgraph EdgeHW["现场"]
-    Online["在线设备\n心跳 / 存储"]
+    Hat["六目采集帽"]
+    Online["其他在线设备\n心跳 / 存储"]
     Offline["离线贴签设备"]
-    Board["ROS2 Web Bridge\n(可选)"]
+    Board["board/ ROS2 桥接"]
   end
 
   SPA --> Auth
@@ -138,6 +157,8 @@ flowchart LR
   Bot --> Edge
   Edge --> PG
   Board --> PG
+  Hat --> Board
+  Hat --> PG
   Online --> PG
   Offline --> PG
 ```
@@ -148,7 +169,8 @@ flowchart LR
 | [`supabase/functions/`](supabase/functions/) | Edge Functions（场景 AI 等） |
 | [`docs/`](docs/) | 用户与运维文档 |
 | [`backend/`](backend/) | 可选 FastAPI + CLI（USB 注册 /  provisioning） |
-| [`board/`](board/) | 可选 ROS 2 → HTTPS 心跳桥接 |
+| [`board/`](board/) | **六目帽板端程序** — ROS 2 心跳、录制、陀螺仪同步 |
+| [`hardware/`](hardware/) | **部分** 机械模型（STL/STEP）；完整 BOM 与生产资料不开源 |
 
 ---
 
@@ -177,15 +199,15 @@ npm run dev
 bash scripts/server/deploy_scene_ai_agent.sh
 ```
 
-### 4. 可选：设备 CLI / 板端
+### 4. 可选：六目帽板端 / 设备 CLI
+
+**板端（六目帽）：** 在鲁班猫上编译运行 ROS 2 桥接 — [`board/README.md`](board/README.md)。
 
 ```bash
 cd backend
 pip install -r requirements.txt
 python cli.py provision --port /dev/ttyUSB0   # Linux；Windows 用 COM 口
 ```
-
-板端 ROS 2 桥接见 [`board/README.md`](board/README.md)。
 
 ---
 
@@ -195,7 +217,7 @@ python cli.py provision --port /dev/ttyUSB0   # Linux；Windows 用 COM 口
 |------|------|------|
 | [网页使用手册](docs/网页使用手册.md) | 终端用户 | 按角色与页面的操作说明 |
 | [自建 Supabase 服务器连接说明](docs/自建Supabase服务器连接说明.md) | 运维 / 开发 | 生产 CVM、密钥、Edge Function |
-| [board/README.md](board/README.md) | 嵌入式 | ROS 2 Web Bridge 板端心跳 |
+| [board/README.md](board/README.md) | 嵌入式 | 六目采集帽 ROS 2 桥接与录制 |
 
 ---
 
@@ -205,7 +227,7 @@ python cli.py provision --port /dev/ttyUSB0   # Linux；Windows 用 COM 口
 - **后端数据：** Supabase（PostgREST · GoTrue · Row Level Security · Storage）
 - **地图：** 高德 JS API（数采地图，可按环境开关）
 - **AI：** 火山方舟 / 豆包（Edge Function 可配置）
-- **设备侧：** Python FastAPI · ROS 2 Web Bridge · USB 串口 provisioning CLI
+- **设备侧：** 六目采集帽（ROS 2 / 鲁班猫）· Python FastAPI · USB 串口 provisioning CLI
 
 ---
 
@@ -237,7 +259,8 @@ upaiego-management/
 ├── supabase/functions/       # Edge Functions
 ├── docs/                     # 用户与运维文档
 ├── backend/                  # FastAPI + CLI（可选）
-├── board/ros2_web_bridge/    # 板端心跳（可选）
+├── board/ros2_web_bridge/    # 六目帽嵌入式 ROS 2 程序
+├── hardware/                 # 部分 STL/STEP 模型（完整 BOM 不开源）
 └── scripts/server/           # 部署与验收脚本
 ```
 
