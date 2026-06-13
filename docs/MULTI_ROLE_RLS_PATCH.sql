@@ -123,16 +123,16 @@ DROP POLICY IF EXISTS "mtd_update" ON "public"."manual_tracked_devices";
 CREATE POLICY "mtd_update" ON "public"."manual_tracked_devices" FOR UPDATE TO "authenticated" USING (((public.has_profile_role('admin')) OR ((public.has_profile_role('device_operator')) AND ("group_id" IS NOT NULL) AND ("group_id" = "public"."user_active_group_id"())))) WITH CHECK (((public.has_profile_role('admin')) OR ((public.has_profile_role('device_operator')) AND ("group_id" IS NOT NULL) AND ("group_id" = "public"."user_active_group_id"()))));
 
 DROP POLICY IF EXISTS "pd_delete" ON "public"."party_demands";
-CREATE POLICY "pd_delete" ON "public"."party_demands" FOR DELETE TO "authenticated" USING (((("created_by" = "auth"."uid"()) AND ("group_id" = "public"."user_active_group_id"())) OR (public.has_profile_role('admin'))));
+CREATE POLICY "pd_delete" ON "public"."party_demands" FOR DELETE TO "authenticated" USING ((public.has_profile_role('admin')));
 
 DROP POLICY IF EXISTS "pd_insert" ON "public"."party_demands";
-CREATE POLICY "pd_insert" ON "public"."party_demands" FOR INSERT TO "authenticated" WITH CHECK ((("created_by" = "auth"."uid"()) AND ("group_id" = "public"."user_active_group_id"()) AND (public.has_any_profile_role(ARRAY['scene_operator', 'admin']))));
+CREATE POLICY "pd_insert" ON "public"."party_demands" FOR INSERT TO "authenticated" WITH CHECK ((public.has_profile_role('admin') AND ("created_by" = "auth"."uid"()) AND ("group_id" = "public"."user_active_group_id"())));
 
 DROP POLICY IF EXISTS "pd_select" ON "public"."party_demands";
 CREATE POLICY "pd_select" ON "public"."party_demands" FOR SELECT TO "authenticated" USING ((("group_id" = "public"."user_active_group_id"()) OR (public.has_profile_role('admin'))));
 
 DROP POLICY IF EXISTS "pd_update" ON "public"."party_demands";
-CREATE POLICY "pd_update" ON "public"."party_demands" FOR UPDATE TO "authenticated" USING (((("created_by" = "auth"."uid"()) AND ("group_id" = "public"."user_active_group_id"()) AND (public.has_any_profile_role(ARRAY['scene_operator', 'admin']))) OR (public.has_profile_role('admin')))) WITH CHECK (((public.has_profile_role('admin')) OR (("group_id" = "public"."user_active_group_id"()) AND ("created_by" = "auth"."uid"()))));
+CREATE POLICY "pd_update" ON "public"."party_demands" FOR UPDATE TO "authenticated" USING ((public.has_profile_role('admin'))) WITH CHECK ((public.has_profile_role('admin')));
 
 DROP POLICY IF EXISTS "profiles_admin_update" ON "public"."profiles";
 CREATE POLICY "profiles_admin_update" ON "public"."profiles" FOR UPDATE TO "authenticated" USING ((public.has_profile_role('admin'))) WITH CHECK (true);

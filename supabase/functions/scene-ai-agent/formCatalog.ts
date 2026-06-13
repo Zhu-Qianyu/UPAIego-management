@@ -27,11 +27,11 @@ export const FORM_FILL_SKILL_PROMPT = `## 代填表单 form_fills（须先请示
 → form_fills: [{ "form":"scene_macro_create", ... }]
 → actions: []
 
-### party_demand_create（admin, scene_operator）
+### party_demand_create（admin）
 data: client_company, device_type, max_hours_per_scene(默认8), total_hours_unlimited(true), requirement_summary?, client_hourly_rate?
 仅给公司名时 device_type 可用「通用设备」，max_hours_per_scene 用 8
 
-### party_demand_update（admin, scene_operator）
+### party_demand_update（admin）
 target_id + data（部分字段）
 
 ### scene_macro_create / update、scenario_position_create / update
@@ -69,8 +69,8 @@ data: party_demand_id 或 client_company, device_short_label
 "form_fills": [ { "form", "label", "target_id?", "data" } ]  一次最多 3 条（批量算 1 条）`;
 
 export const FORM_ROLES: Record<string, string[]> = {
-  party_demand_create: ["admin", "scene_operator"],
-  party_demand_update: ["admin", "scene_operator"],
+  party_demand_create: ["admin"],
+  party_demand_update: ["admin"],
   scene_macro_create: ["admin", "scene_operator"],
   scene_macro_update: ["admin", "scene_operator"],
   scenario_position_create: ["admin", "scene_operator"],

@@ -584,7 +584,7 @@ export default function ManualDevicesTab({ fleetMode = false }: { fleetMode?: bo
           )}
 
           {demands.length === 0 && (
-            <p className="text-xs text-amber-700">当前群尚无甲方业务，请场景业务员先在「场景业务」里添加。</p>
+            <p className="text-xs text-amber-700">当前群尚无甲方业务，请平台管理员在「场景业务 → 甲方业务」中添加。</p>
           )}
         </div>
       )}

@@ -344,7 +344,7 @@ export default function BountyAdminPage() {
             <span className={uiLabel}>可用设备类型（甲方业务，可多选）</span>
             {partyDemands.length === 0 ? (
               <p className="text-xs text-amber-700 mt-2">
-                当前群尚无甲方业务，请场景业务员先在「场景业务 → 甲方业务」中添加。
+                当前群尚无甲方业务，请平台管理员在「场景业务 → 甲方业务」中添加。
               </p>
             ) : (
               <ul className="mt-2 flex flex-wrap gap-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200/80 p-3 bg-slate-50/50">

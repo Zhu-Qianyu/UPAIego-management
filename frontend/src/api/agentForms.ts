@@ -46,8 +46,8 @@ export type AgentFormFillResult = {
 };
 
 const FORM_ROLES: Record<string, UserRole[]> = {
-  party_demand_create: ["admin", "scene_operator"],
-  party_demand_update: ["admin", "scene_operator"],
+  party_demand_create: ["admin"],
+  party_demand_update: ["admin"],
   scene_macro_create: ["admin", "scene_operator"],
   scene_macro_update: ["admin", "scene_operator"],
   scenario_position_create: ["admin", "scene_operator"],

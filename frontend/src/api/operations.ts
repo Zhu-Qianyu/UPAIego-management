@@ -1,4 +1,6 @@
 import { supabase } from "./supabase";
+import { fetchProfile } from "./profiles";
+import { hasRole } from "../auth/roleUtils";
 import type { SceneCategoryKey } from "../utils/sceneCategories";
 import { isValidManualDevicePublicCode, normalizeManualDevicePublicCode } from "../utils/deviceCodePrefix";
 import { isMissingColumnError } from "../utils/supabaseSchemaCompat";
@@ -8,6 +10,15 @@ const SP = "scenario_positions";
 const SMS = "scene_macro_sites";
 const STA = "scene_task_assignments";
 export const SNAPSHOT_BUCKET = "scenario-workstation-snapshots";
+
+async function requireAdminForPartyDemand(): Promise<void> {
+  const u = (await supabase.auth.getUser()).data.user;
+  if (!u) throw new Error("未登录");
+  const prof = await fetchProfile(u.id);
+  if (!hasRole(prof?.roles, "admin")) {
+    throw new Error("仅平台管理员可维护甲方业务");
+  }
+}
 
 export interface PartyDemand {
   id: string;
@@ -98,6 +109,7 @@ export async function createPartyDemand(row: {
   requirement_summary?: string;
   client_hourly_rate?: number | null;
 }): Promise<PartyDemand> {
+  await requireAdminForPartyDemand();
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) throw new Error("未登录");
   const company = row.client_company.trim();
@@ -136,6 +148,7 @@ export type PartyDemandUpdatePatch = Partial<{
 }>;
 
 export async function updatePartyDemand(id: string, patch: PartyDemandUpdatePatch): Promise<void> {
+  await requireAdminForPartyDemand();
   const payload: Record<string, unknown> = {};
   if (patch.title !== undefined) payload.title = patch.title.trim();
   if (patch.client_company !== undefined) {
@@ -164,12 +177,14 @@ export async function updatePartyDemand(id: string, patch: PartyDemandUpdatePatc
 }
 
 export async function deletePartyDemand(id: string): Promise<void> {
+  await requireAdminForPartyDemand();
   const { error } = await supabase.from(PD).delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
 
 export async function deletePartyDemands(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
+  await requireAdminForPartyDemand();
   const { error } = await supabase.from(PD).delete().in("id", ids);
   if (error) throw new Error(error.message);
 }

@@ -17,7 +17,7 @@ import {
 
 const FORM_ROLES: Record<string, UserRole[]> = {
   scene_macro_create: ["admin", "scene_operator"],
-  party_demand_create: ["admin", "scene_operator"],
+  party_demand_create: ["admin"],
   manual_devices_batch_create: ["admin", "device_operator"],
   manual_devices_batch_delete: ["admin", "device_operator"],
   manual_devices_batch_assign: ["admin", "device_operator"],

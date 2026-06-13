@@ -40,6 +40,7 @@ const QUICK_TOPICS_BY_ROLE: Record<UserRole, { icon: string; label: string; prom
     { icon: "📢", label: "群发通知", prompt: `${BOT_MENTION} 帮我起草一条通知：明天全体放假，并发送给群组所有人。` },
     { icon: "📋", label: "采集流程", prompt: `${BOT_MENTION} 请说明从场景录入、排班到悬赏结算的完整数采制度。` },
     { icon: "👥", label: "群组管理", prompt: `${BOT_MENTION} 带我去看群组管理和待审批成员。` },
+    { icon: "🏢", label: "填甲方业务", prompt: `${BOT_MENTION} 帮我填一条甲方业务：公司名「示例科技」，设备类型「协作臂」，单场景上限 8 小时。` },
   ],
   scene_operator: [
     { icon: "📅", label: "采集排班", prompt: `${BOT_MENTION} 帮我打开采集排班，并说明发布排班前要准备什么。` },

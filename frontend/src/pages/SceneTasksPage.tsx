@@ -54,6 +54,7 @@ function PartyDemandsTab({
   groupId: string;
   setErr: (s: string) => void;
 }) {
+  const { hasRole, loading: authLoading } = useAuth();
   const [rows, setRows] = useState<PartyDemand[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -261,6 +262,15 @@ function PartyDemandsTab({
     } finally {
       setBatchDeleting(false);
     }
+  }
+
+  if (authLoading) return <Spinner />;
+  if (!hasRole("admin")) {
+    return (
+      <p className="text-sm text-gray-600 py-8 text-center">
+        仅平台管理员可填写与维护甲方业务。
+      </p>
+    );
   }
 
   if (loading && rows.length === 0) return <Spinner />;
@@ -1849,6 +1859,7 @@ export default function SceneTasksPage() {
 
   const isExecutorView =
     hasRole("collection_executor") && !hasAnyRole(["admin", "scene_operator"]);
+  const canManagePartyDemands = hasRole("admin");
 
   const tabFromUrl = searchParams.get("tab");
   const initialTab: Tab =
@@ -1875,9 +1886,9 @@ export default function SceneTasksPage() {
   useEffect(() => {
     if (isExecutorView) return;
     if (tabFromUrl === "demands" || tabFromUrl === "stations" || tabFromUrl === "tasks") {
-      setTabState(tabFromUrl);
+      setTabState(tabFromUrl === "demands" && !canManagePartyDemands ? "tasks" : tabFromUrl);
     }
-  }, [tabFromUrl, isExecutorView]);
+  }, [tabFromUrl, isExecutorView, canManagePartyDemands]);
 
   useEffect(() => {
     const onTab = (e: Event) => {
@@ -1971,7 +1982,7 @@ export default function SceneTasksPage() {
       <div className="max-w-xl mx-auto text-center py-16">
         <RefreshStrip active={refreshing} />
         <p className="text-gray-600 mb-4">
-          请先加入已审批的工作群组后，方可维护采集排班与甲方业务。工作群仅由平台管理员创建，请向管理员索取<strong>入群代码</strong>。
+          请先加入已审批的工作群组后，方可使用采集排班等功能。工作群仅由平台管理员创建，请向管理员索取<strong>入群代码</strong>。
         </p>
         <Link to="/group" className="text-indigo-600 font-medium underline">
           前往群组申请入群
@@ -1988,13 +1999,15 @@ export default function SceneTasksPage() {
         <p className="text-sm text-gray-500 mt-1">
           {isExecutorView
             ? "查看已发布排班、本批设备编号，并按时上下班打卡。"
-            : "采集排班、甲方业务、大场景与小岗位维护。"}
+            : canManagePartyDemands
+              ? "采集排班、甲方业务、大场景与小岗位维护。"
+              : "采集排班、大场景与小岗位维护；甲方业务由平台管理员维护。"}
         </p>
       </div>
       {!isExecutorView && (
         <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
           {tabBtn("tasks", "采集排班")}
-          {tabBtn("demands", "甲方业务")}
+          {canManagePartyDemands && tabBtn("demands", "甲方业务")}
           {tabBtn("stations", "场景岗位")}
         </div>
       )}
@@ -2002,7 +2015,9 @@ export default function SceneTasksPage() {
       {(tab === "tasks" || isExecutorView) && (
         <CollectionShiftsTab groupId={groupId} isExecutorView={isExecutorView} />
       )}
-      {!isExecutorView && tab === "demands" && <PartyDemandsTab groupId={groupId} setErr={setErr} />}
+      {canManagePartyDemands && !isExecutorView && tab === "demands" && (
+        <PartyDemandsTab groupId={groupId} setErr={setErr} />
+      )}
       {!isExecutorView && tab === "stations" && (
         <ScenarioWorkstationsTab groupId={groupId} setErr={setErr} />
       )}
