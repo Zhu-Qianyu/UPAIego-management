@@ -11,13 +11,15 @@ import {
   type GroupMember,
   type WorkGroup,
 } from "../api/groups";
-import { fetchProfilesByIds } from "../api/profiles";
+import { adminUpdateMemberRoles, fetchProfilesByIds } from "../api/profiles";
 import ImShell from "../components/im/ImShell";
+import MemberRoleCheckboxRow from "../components/MemberRoleCheckboxRow";
 import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 import { useAuth } from "../auth/AuthContext";
 import { hasRole, formatRolesLabel } from "../auth/roleUtils";
+import type { UserRole } from "../types/roles";
 import GroupTabs from "../components/GroupTabs";
 
 function membershipLabel(s: GroupMember["membership_status"]): string {
@@ -31,7 +33,7 @@ type GroupPageCacheV1 = {
   groupId: string | null;
   workGroup: WorkGroup | null;
   hasPending: boolean;
-  members: (GroupMember & { displayName: string; roleLabel: string })[];
+  members: (GroupMember & { displayName: string; roleLabel: string; roles: UserRole[] })[];
 };
 
 export default function GroupPage() {
@@ -46,8 +48,10 @@ export default function GroupPage() {
   const [workGroup, setWorkGroup] = useState<WorkGroup | null>(null);
   const [hasPending, setHasPending] = useState(false);
   const [members, setMembers] = useState<
-    (GroupMember & { displayName: string; roleLabel: string })[]
+    (GroupMember & { displayName: string; roleLabel: string; roles: UserRole[] })[]
   >([]);
+  const [roleEdits, setRoleEdits] = useState<Record<string, UserRole[]>>({});
+  const [roleSaveBusy, setRoleSaveBusy] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState("");
@@ -111,9 +115,11 @@ export default function GroupPage() {
               ? m.request_email!
               : `用户 ${m.user_id.slice(0, 8)}…`;
         const roleLabel = p?.roles?.length ? formatRolesLabel(p.roles) : "—";
-        return { ...m, displayName, roleLabel };
+        const roles = p?.roles?.length ? p.roles : (["device_operator"] as UserRole[]);
+        return { ...m, displayName, roleLabel, roles };
       });
       setMembers(enriched);
+      setRoleEdits(Object.fromEntries(enriched.map((m) => [m.user_id, m.roles])));
 
       if (cacheKey) {
         writeRouteViewCache(cacheKey, {
@@ -155,14 +161,37 @@ export default function GroupPage() {
     }
   }
 
-  async function handleMembershipReview(memberId: string, status: "active" | "rejected") {
+  async function handleMembershipReview(
+    member: GroupMember & { roles: UserRole[] },
+    status: "active" | "rejected"
+  ) {
     setErr("");
     try {
-      await setMembershipStatus(memberId, status);
+      if (status === "active") {
+        const roles = roleEdits[member.user_id] ?? member.roles;
+        await adminUpdateMemberRoles(member.user_id, roles);
+      }
+      await setMembershipStatus(member.id, status);
       await load();
     } catch (e: unknown) {
       const msg = e && typeof e === "object" && "message" in e ? String((e as Error).message) : "操作失败";
       setErr(msg);
+    }
+  }
+
+  async function handleSaveRoles(userId: string) {
+    setRoleSaveBusy(userId);
+    setErr("");
+    try {
+      const roles = roleEdits[userId];
+      if (!roles?.length) throw new Error("至少保留一种职能");
+      await adminUpdateMemberRoles(userId, roles);
+      await load();
+    } catch (e: unknown) {
+      const msg = e && typeof e === "object" && "message" in e ? String((e as Error).message) : "保存失败";
+      setErr(msg);
+    } finally {
+      setRoleSaveBusy(null);
     }
   }
 
@@ -202,6 +231,15 @@ export default function GroupPage() {
     if (m.user_id === ownerId) return false;
     if (m.membership_status !== "active") return false;
     return true;
+  }
+
+  function canEditRolesRow(m: GroupMember & { roles: UserRole[] }): boolean {
+    if (!canModerateMembers) return false;
+    if (!uid || !ownerId) return false;
+    if (m.user_id === uid) return false;
+    if (m.user_id === ownerId) return false;
+    if (hasRole(m.roles, "admin")) return false;
+    return m.membership_status === "active" || m.membership_status === "pending" || m.membership_status === "rejected";
   }
 
   function canReviewRow(m: GroupMember): boolean {
@@ -357,7 +395,32 @@ export default function GroupPage() {
                           {uid === m.user_id && <span className="ml-2 text-xs text-indigo-600">（我）</span>}
                           {ownerId === m.user_id && <span className="ml-2 text-xs text-gray-500">（群主）</span>}
                         </td>
-                        <td className="px-4 py-2.5 text-gray-600">{m.roleLabel}</td>
+                        <td className="px-4 py-2.5 text-gray-600 min-w-[10rem]">
+                          {canEditRolesRow(m) ? (
+                            <div className="space-y-1.5">
+                              <MemberRoleCheckboxRow
+                                roles={roleEdits[m.user_id] ?? m.roles}
+                                onChange={(next) =>
+                                  setRoleEdits((prev) => ({ ...prev, [m.user_id]: next }))
+                                }
+                              />
+                              {m.membership_status === "active" &&
+                              formatRolesLabel(roleEdits[m.user_id] ?? m.roles) !==
+                                formatRolesLabel(m.roles) ? (
+                                <button
+                                  type="button"
+                                  disabled={roleSaveBusy === m.user_id}
+                                  onClick={() => void handleSaveRoles(m.user_id)}
+                                  className="text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+                                >
+                                  {roleSaveBusy === m.user_id ? "保存中…" : "保存职能"}
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : (
+                            m.roleLabel
+                          )}
+                        </td>
                         <td className="px-4 py-2.5">
                           <span
                             className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${
@@ -377,7 +440,7 @@ export default function GroupPage() {
                               <div className="flex flex-wrap gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => void handleMembershipReview(m.id, "active")}
+                                  onClick={() => void handleMembershipReview(m, "active")}
                                   className="text-xs font-medium text-emerald-700 hover:text-emerald-900"
                                 >
                                   {m.membership_status === "rejected" ? "重新同意" : "同意"}
@@ -385,7 +448,7 @@ export default function GroupPage() {
                                 {m.membership_status === "pending" ? (
                                   <button
                                     type="button"
-                                    onClick={() => void handleMembershipReview(m.id, "rejected")}
+                                    onClick={() => void handleMembershipReview(m, "rejected")}
                                     className="text-xs font-medium text-gray-600 hover:text-gray-800"
                                   >
                                     拒绝
