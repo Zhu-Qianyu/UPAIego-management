@@ -1,123 +1,125 @@
 # upaieasy!
 
-**数采公司内部管理平台** — 接揽多甲方业务，把设备、人力、排班与成本收进一个系统，降低管理与协同开销，支撑智能制造现场交付。
+**Internal ops platform for data-collection contractors** — manage multiple client projects, devices, crews, schedules, and costs in one place. Cut coordination overhead and deliver smarter manufacturing field ops.
 
-[![Website](https://img.shields.io/badge/🌐_在线体验-upaieasy.cn-6366F1?style=for-the-badge)](https://upaieasy.cn)
+[![Website](https://img.shields.io/badge/🌐_Live-upaieasy.cn-6366F1?style=for-the-badge)](https://upaieasy.cn)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 [![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
-> **在线地址：** [https://upaieasy.cn](https://upaieasy.cn)  
-> 面向**同时承接多个甲方数据采集项目**的数采公司：用工作群隔离不同甲方业务，把设备贴签、现场排班、执行打卡与工时结算串成一条内部管理链路，**减少表格、群聊与人工对账带来的管理成本**，让智能制造数采现场更可控、更可算。
+> **Live site:** [https://upaieasy.cn](https://upaieasy.cn)  
+> Built for **data-collection companies running several client (甲方) projects at once**. Work groups isolate each client’s ops; device labeling, field scheduling, clock-in/out, and labor settlement sit on one internal workflow—**replacing spreadsheets, chat threads, and manual reconciliation** so smart-manufacturing collection sites stay controllable and cost-transparent.
+
+[中文版 README](README.zh-CN.md)
 
 ---
 
-## 产品预览
+## Preview
 
 <p align="center">
-  <a href="https://upaieasy.cn"><img src="show/2.png" alt="管理员数据看板" width="90%"></a>
+  <a href="https://upaieasy.cn"><img src="show/2.png" alt="Admin dashboard" width="90%"></a>
 </p>
 
-<p align="center"><sub>管理员数据看板 — 甲方业务、设备规模与财务估算一屏汇总</sub></p>
+<p align="center"><sub>Admin dashboard — client projects, fleet size, and financial estimates at a glance</sub></p>
 
 <table>
   <tr>
-    <td width="50%" align="center"><b>登录 · 多职能注册</b><br><sub>入群码 + 管理员 / 运维 / 场景 / 执行员</sub><br><br><a href="https://upaieasy.cn"><img src="show/1.png" alt="登录注册" width="100%"></a></td>
-    <td width="50%" align="center"><b>群组 · 豆小秘</b><br><sub>@ 机器人导航、代填表单、流程问答</sub><br><br><a href="https://upaieasy.cn"><img src="show/3.png" alt="群组与 AI 助手" width="100%"></a></td>
+    <td width="50%" align="center"><b>Sign-in · multi-role signup</b><br><sub>Group invite code · admin / ops / scene / executor</sub><br><br><a href="https://upaieasy.cn"><img src="show/1.png" alt="Auth" width="100%"></a></td>
+    <td width="50%" align="center"><b>Groups · AI assistant</b><br><sub>@ bot for navigation, form fill, workflow Q&amp;A</sub><br><br><a href="https://upaieasy.cn"><img src="show/3.png" alt="Group chat and AI" width="100%"></a></td>
   </tr>
   <tr>
-    <td width="50%" align="center"><b>设备登记 · 贴签二维码</b><br><sub>关联甲方业务，自动生成登记编号</sub><br><br><a href="https://upaieasy.cn"><img src="show/4.png" alt="设备登记" width="100%"></a></td>
-    <td width="50%" align="center"><b>设备卡片 · 状态维护</b><br><sub>分配执行员、扫码信息、异常 / 返厂</sub><br><br><a href="https://upaieasy.cn"><img src="show/5.png" alt="设备卡片" width="100%"></a></td>
+    <td width="50%" align="center"><b>Device registration · QR labels</b><br><sub>Linked to client project, auto-generated IDs</sub><br><br><a href="https://upaieasy.cn"><img src="show/4.png" alt="Device registration" width="100%"></a></td>
+    <td width="50%" align="center"><b>Device cards · status</b><br><sub>Assign executors, scan info, fault / RMA</sub><br><br><a href="https://upaieasy.cn"><img src="show/5.png" alt="Device cards" width="100%"></a></td>
   </tr>
 </table>
 
 <p align="center">
-  <a href="https://upaieasy.cn"><strong>→ 前往 upaieasy.cn 体验</strong></a>
+  <a href="https://upaieasy.cn"><strong>→ Try it at upaieasy.cn</strong></a>
 </p>
 
 ---
 
-## 为什么选 upaieasy!
+## Why upaieasy!
 
-| 数采公司常见难题 | upaieasy! 如何降本增效 |
+| Pain for collection contractors | How upaieasy! helps |
 |------|------------------|
-| 多甲方业务并行，设备与台账散落在 Excel、群聊和纸质贴签里 | 按工作群隔离甲方业务，在线 + 离线设备**统一登记与二维码贴签**，状态一屏总览 |
-| 场景、排班、人员调度各用各的表，协调成本高 | **大场景 → 小岗位 → 采集排班** 层级清晰，发布即分配设备编号，减少反复沟通 |
-| 执行员不清楚任务与设备归属，现场空转 | 执行员只看**分配给自己的设备**与排班，支持上下班打卡，降低调度失误 |
-| 多甲方并行时，管理人员难算清收入、成本与利润 | 管理台 **KPI + 财务估算**（甲方单价 × 工时 − 执行员成本），按甲方拆分一目了然 |
-| 新人培训与表单填写占用大量管理精力 | 群内 **AI 助手（豆小秘）** 代填甲方业务、大场景、排班等表单，降低培训与差错成本 |
+| Multiple client projects in parallel; devices and records scattered across Excel, chat, and paper labels | **Work groups per client**; online + offline devices registered in one place with **QR labels** and a single overview |
+| Scenes, schedules, and crew dispatch on separate sheets—high coordination cost | Clear **macro site → micro position → collection shift** hierarchy; publish once and auto-assign device IDs |
+| Executors unsure where to go or which device to use—idle time on site | Executors see **only assigned devices** and shifts; clock-in/out reduces dispatch errors |
+| Hard to track revenue, cost, and margin across parallel clients | Admin **KPI + financial estimates** (client rate × hours − executor cost), split by client |
+| Onboarding and form entry eat management time | In-group **AI assistant (豆小秘)** fills client projects, macro sites, shifts, etc.—less training and fewer mistakes |
 
-**开箱即用：** React 单页应用 + Supabase（Postgres / Auth / RLS / Storage / Edge Functions），数采公司无需自写后端业务 API。  
-**可私有化部署：** 支持自建 Supabase（Docker on CVM），甲方与现场数据留在企业自有服务器。
-
----
-
-## 核心能力
-
-> 围绕「**多甲方业务并行 → 内部统一调度 → 成本可算**」设计，服务数采承包商的日常运营。
-
-### 设备管理
-- **在线设备**：注册、心跳、校准、固件与备注；设备二维码扫码识别
-- **离线 / 外部设备**：关联甲方业务，生成 **10 位 hex 登记编号** 与贴签二维码
-- **批量分配**：运维将空闲设备分配给数采执行员；执行员总览**仅可见已分配设备**
-
-### 场景与排班
-- **甲方业务**（管理员）：设备类型、快照、总小时量、**按大场景批复小时**、结算单价
-- **场景岗位**：大场景（全景图 + 地址联系人）→ 小岗位（工位快照）
-- **采集排班**：选岗位 + 执行员 + 设备数 → 发布 → 自动匀出离线设备编号 → 执行员打卡
-
-### 协作与激励
-- **工作群组**：入群码审批、成员多职能、群内话题
-- **悬赏令**：管理员发布工时池，执行员领取
-- **钱包与结算**：执行员侧流水与积分体系（与悬赏 / 结算 RPC 联动）
-
-### 管理台
-- 分角色 **KPI**（设备完好率 / 场景数 / 数据量）与考核周期
-- **全员公告**、**财务估算看板**（按甲方拆分）
-
-### AI 助手
-- Supabase Edge Function `scene-ai-agent` + 前端 **豆小秘**
-- 群聊 @ 机器人：导航、代填表单、业务流程问答（权限与角色对齐）
+**Batteries included:** React SPA + Supabase (Postgres / Auth / RLS / Storage / Edge Functions)—no custom business API required.  
+**Self-hostable:** Run Supabase on your own server (Docker on CVM); client and field data stay on your infrastructure.
 
 ---
 
-## 多角色，一个数采公司
+## Features
 
-权限为 `profiles.roles[]` **并集**；支持一人身兼多职（如运维 + 场景），适配数采团队编制灵活、项目并行的组织方式。
+> Designed around **parallel client projects → unified internal dispatch → costs you can calculate**.
 
-| 职能 | 典型能力 |
+### Device management
+- **Online devices:** registration, heartbeat, calibration, firmware, notes; QR scan to identify
+- **Offline / external devices:** linked to a client project; **10-char hex registration ID** and printable QR label
+- **Bulk assignment:** ops assigns idle devices to executors; executor overview shows **assigned devices only**
+
+### Scenes & scheduling
+- **Client projects** (admin): device type, snapshots, total hours, **approved hours per macro site**, settlement rate
+- **Scene positions:** macro site (panorama + address/contacts) → micro position (workstation snapshot)
+- **Collection shifts:** pick position + executors + device count → publish → auto-allocate offline device IDs → executor clock-in
+
+### Collaboration & incentives
+- **Work groups:** invite-code approval, multi-role members, in-group topics
+- **Bounties:** admin publishes hour pools; executors claim tasks
+- **Wallet & settlement:** executor ledger and points (backed by bounty / settlement RPCs)
+
+### Admin console
+- Role-based **KPIs** (device health / scene count / data volume) and review periods
+- **Broadcast announcements**, **financial estimate board** (by client)
+
+### AI assistant
+- Supabase Edge Function `scene-ai-agent` + frontend **豆小秘**
+- @ mention in group chat: navigation, form fill, workflow Q&A (aligned with roles and permissions)
+
+---
+
+## Multi-role, one contractor org
+
+Permissions are the **union** of `profiles.roles[]`; one person can hold several hats (e.g. ops + scene planner), matching flexible crews and parallel projects.
+
+| Role | Typical access |
 |------|----------|
-| **平台管理员** | 管理台、群组、甲方业务、全量设备、悬赏发布、财务看板 |
-| **设备运维员** | 设备总览 / 管理、离线设备登记与分配、运维工作台 |
-| **场景业务员** | 采集排班、大场景与小岗位维护 |
-| **数采执行员** | 采集排班打卡、已分配设备只读总览、悬赏、钱包 |
+| **Platform admin** | Console, groups, client projects, full device fleet, bounty publish, finance board |
+| **Device operator** | Device overview / management, offline registration & assignment, ops workspace |
+| **Scene planner** | Collection shifts, macro sites & micro positions |
+| **Collection executor** | Shift clock-in, read-only assigned devices, bounties, wallet |
 
-详细交互说明见 **[网页使用手册](docs/网页使用手册.md)**。
+Full UI walkthrough (Chinese): **[User manual](docs/网页使用手册.md)**.
 
 ---
 
-## 架构一览
+## Architecture
 
 ```mermaid
 flowchart LR
-  subgraph Client["浏览器"]
+  subgraph Client["Browser"]
     SPA["React SPA\n(Vite + Tailwind)"]
-    Bot["豆小秘 / 群聊"]
+    Bot["AI assistant / chat"]
   end
 
-  subgraph Supabase["Supabase（可自建）"]
+  subgraph Supabase["Supabase (self-hostable)"]
     Auth["Auth"]
     PG["PostgreSQL + RLS"]
-    Storage["Storage\n工位 / 设备快照"]
+    Storage["Storage\nworkstation / device snapshots"]
     Edge["Edge Functions\nscene-ai-agent"]
   end
 
-  subgraph EdgeHW["现场"]
-    Online["在线设备\n心跳 / 存储"]
-    Offline["离线贴签设备"]
-    Board["ROS2 Web Bridge\n(可选)"]
+  subgraph EdgeHW["Field"]
+    Online["Online devices\nheartbeat / storage"]
+    Offline["Offline labeled devices"]
+    Board["ROS2 Web Bridge\n(optional)"]
   end
 
   SPA --> Auth
@@ -130,115 +132,115 @@ flowchart LR
   Offline --> PG
 ```
 
-| 目录 | 说明 |
+| Path | Description |
 |------|------|
-| [`frontend/`](frontend/) | **主产品**：React 19 + TypeScript + Tailwind 4 |
-| [`supabase/functions/`](supabase/functions/) | Edge Functions（场景 AI 等） |
-| [`docs/`](docs/) | 用户与运维文档 |
-| [`backend/`](backend/) | 可选 FastAPI + CLI（USB 注册 /  provisioning） |
-| [`board/`](board/) | 可选 ROS 2 → HTTPS 心跳桥接 |
+| [`frontend/`](frontend/) | **Main app:** React 19 + TypeScript + Tailwind 4 |
+| [`supabase/functions/`](supabase/functions/) | Edge Functions (scene AI, etc.) |
+| [`docs/`](docs/) | User & ops docs (mostly Chinese) |
+| [`backend/`](backend/) | Optional FastAPI + CLI (USB provisioning) |
+| [`board/`](board/) | Optional ROS 2 → HTTPS heartbeat bridge |
 
 ---
 
-## 快速开始
+## Quick start
 
-### 1. 连接 Supabase
+### 1. Connect Supabase
 
-生产库已在 **CVM 自建 Supabase** 上就绪，见 **[自建 Supabase 连接说明](docs/自建Supabase服务器连接说明.md)**（API 地址、`ANON_KEY`、禁止连官方云）。
+Production runs on **self-hosted Supabase on CVM**. See **[Self-hosted Supabase guide](docs/自建Supabase服务器连接说明.md)** (API URL, `ANON_KEY`, do not point at Supabase Cloud).
 
-### 2. 启动前端
+### 2. Run the frontend
 
 ```bash
 cd frontend
 npm install
 cp .env.example .env
-# 编辑 VITE_SUPABASE_URL、VITE_SUPABASE_ANON_KEY（仅 anon key，勿泄露 service_role）
+# Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (anon key only; never commit service_role)
 npm run dev
 ```
 
-浏览器打开 `http://localhost:5173`。首个用户可在 `profiles` 中设为 `admin`，或使用注册页的「平台管理员」入口（视部署策略而定）。
+Open `http://localhost:5173`. Promote the first user to `admin` in `profiles`, or use the “platform admin” signup path (depends on your deployment policy).
 
-### 3. 可选：Edge Function（AI 助手）
+### 3. Optional: Edge Function (AI assistant)
 
 ```bash
-# 见 scripts/server/deploy_scene_ai_agent.sh；密钥配置见 docs/自建Supabase服务器连接说明.md §6
+# See scripts/server/deploy_scene_ai_agent.sh; secrets in docs/自建Supabase服务器连接说明.md §6
 bash scripts/server/deploy_scene_ai_agent.sh
 ```
 
-### 4. 可选：设备 CLI / 板端
+### 4. Optional: device CLI / board
 
 ```bash
 cd backend
 pip install -r requirements.txt
-python cli.py provision --port /dev/ttyUSB0   # Linux；Windows 用 COM 口
+python cli.py provision --port /dev/ttyUSB0   # Linux; use COM port on Windows
 ```
 
-板端 ROS 2 桥接见 [`board/README.md`](board/README.md)。
+Board-side ROS 2 bridge: [`board/README.md`](board/README.md).
 
 ---
 
-## 文档索引
+## Documentation
 
-| 文档 | 读者 | 内容 |
+| Doc | Audience | Contents |
 |------|------|------|
-| [网页使用手册](docs/网页使用手册.md) | 终端用户 | 按角色与页面的操作说明 |
-| [自建 Supabase 服务器连接说明](docs/自建Supabase服务器连接说明.md) | 运维 / 开发 | 生产 CVM、密钥、SQL、Edge Function |
-| [board/README.md](board/README.md) | 嵌入式 | ROS 2 Web Bridge 板端心跳 |
+| [User manual](docs/网页使用手册.md) | End users | Role- and page-level guide (Chinese) |
+| [Self-hosted Supabase guide](docs/自建Supabase服务器连接说明.md) | Ops / dev | Production CVM, keys, Edge Functions |
+| [board/README.md](board/README.md) | Embedded | ROS 2 Web Bridge heartbeat |
 
 ---
 
-## 技术栈
+## Tech stack
 
-- **前端：** React 19 · React Router 7 · TypeScript · Vite 7 · Tailwind CSS 4
-- **后端数据：** Supabase（PostgREST · GoTrue · Row Level Security · Storage）
-- **地图：** 高德 JS API（数采地图，可按环境开关）
-- **AI：** 火山方舟 / 豆包（Edge Function 可配置）
-- **设备侧：** Python FastAPI · ROS 2 Web Bridge · USB 串口 provisioning CLI
+- **Frontend:** React 19 · React Router 7 · TypeScript · Vite 7 · Tailwind CSS 4
+- **Data layer:** Supabase (PostgREST · GoTrue · Row Level Security · Storage)
+- **Maps:** Amap JS API (collection map; feature-flagged per environment)
+- **AI:** Volcengine Ark / Doubao (configurable in Edge Function)
+- **Devices:** Python FastAPI · ROS 2 Web Bridge · USB serial provisioning CLI
 
 ---
 
-## 开发与测试
+## Development & testing
 
 ```bash
-# 前端
+# Frontend
 cd frontend && npm run build && npm run lint
 
-# 后端（可选）
+# Backend (optional)
 cd backend && python -m pytest tests/ -v
 
-# 交付抽检脚本（在 CVM 上）
+# Delivery smoke tests (on CVM)
 bash scripts/server/delivery_test_verify.sh
 bash scripts/server/run_delivery_test_rls.sh
 ```
 
 ---
 
-## 项目结构
+## Project layout
 
 ```
 upaiego-management/
-├── frontend/                 # Web 应用（主入口）
-│   ├── src/pages/            # 设备、场景、排班、管理台、悬赏…
-│   ├── src/api/              # Supabase 客户端封装
-│   ├── src/aitebot/          # 豆小秘上下文与表单推断
-│   └── edgeone.json          # 静态托管构建配置
+├── frontend/                 # Web app (main entry)
+│   ├── src/pages/            # Devices, scenes, shifts, admin, bounties…
+│   ├── src/api/              # Supabase client wrappers
+│   ├── src/aitebot/          # AI assistant context & form inference
+│   └── edgeone.json          # Static hosting build config
 ├── supabase/functions/       # Edge Functions
-├── docs/                     # 用户与运维文档
-├── backend/                  # FastAPI + CLI（可选）
-├── board/ros2_web_bridge/    # 板端心跳（可选）
-└── scripts/server/           # 部署与验收脚本
+├── docs/                     # User & ops documentation
+├── backend/                  # FastAPI + CLI (optional)
+├── board/ros2_web_bridge/    # Board heartbeat (optional)
+└── scripts/server/           # Deploy & acceptance scripts
 ```
 
 ---
 
-## 关于
+## About
 
-**upaieasy!** 面向接揽不同甲方数据采集业务的企业，提供**内部管理与成本管控**能力，帮助数采公司在智能制造交付中减少协同损耗、算清每个项目的投入产出。
+**upaieasy!** helps companies that **take on multiple client data-collection projects** run **internal ops and cost control**—less coordination waste on smart-manufacturing sites, clearer ROI per project.
 
-**官网：** [https://upaieasy.cn](https://upaieasy.cn)
+**Website:** [https://upaieasy.cn](https://upaieasy.cn)
 
 ---
 
 <p align="center">
-  <sub>如果这个项目对你有帮助，欢迎 Star ⭐ 并分享给正在承接多甲方数采业务的团队。</sub>
+  <sub>If this project helps your team, consider starring ⭐ and sharing it with others running multi-client collection ops.</sub>
 </p>
