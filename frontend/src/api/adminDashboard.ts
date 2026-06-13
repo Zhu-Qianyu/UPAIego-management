@@ -4,6 +4,8 @@ import {
   listAssignmentsForWorkGroup,
   listManualTrackedDevices,
   listPartyDemands,
+  listPartyDemandClientRatesForGroup,
+  mergeClientRatesIntoPartyDemands,
   type PartyDemand,
 } from "./operations";
 import { isOnOrAfter, shanghaiPeriodStarts } from "../utils/shanghaiPeriod";
@@ -131,8 +133,9 @@ function bumpCost(bucket: CostBucket, amount: number, settledAt: string, periods
 export async function fetchAdminDashboardStats(groupId: string): Promise<AdminDashboardStats> {
   const periods = shanghaiPeriodStarts();
 
-  const [demands, manuals, deviceRes, hourLogsRes, settlementRes, assignments] = await Promise.all([
+  const [demandsRaw, clientRates, manuals, deviceRes, hourLogsRes, settlementRes, assignments] = await Promise.all([
     listPartyDemands(groupId),
+    listPartyDemandClientRatesForGroup(groupId),
     listManualTrackedDevices(groupId),
     listDevices({ scope: "fleet", limit: 5000, offset: 0 }),
     supabase
@@ -146,6 +149,8 @@ export async function fetchAdminDashboardStats(groupId: string): Promise<AdminDa
       .eq("status", "settled"),
     listAssignmentsForWorkGroup(groupId),
   ]);
+
+  const demands = mergeClientRatesIntoPartyDemands(demandsRaw, clientRates);
 
   if (hourLogsRes.error) throw new Error(hourLogsRes.error.message);
   if (settlementRes.error) throw new Error(settlementRes.error.message);

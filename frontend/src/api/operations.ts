@@ -6,6 +6,7 @@ import { isValidManualDevicePublicCode, normalizeManualDevicePublicCode } from "
 import { isMissingColumnError } from "../utils/supabaseSchemaCompat";
 
 const PD = "party_demands";
+const PDCR = "party_demand_client_rates";
 const PDMC = "party_demand_macro_caps";
 const SP = "scenario_positions";
 const SMS = "scene_macro_sites";
@@ -34,7 +35,7 @@ export interface PartyDemand {
   total_hours_required: number | null;
   max_hours_per_scene: number;
   scene_categories: string[];
-  /** 甲方结算单价（元/小时），用于管理员收入估算 */
+  /** 甲方结算单价（元/小时）；仅管理员可读，来自 party_demand_client_rates */
   client_hourly_rate?: number | null;
   /** 离线设备登记编号前缀：同一甲方 4 位随机大写字母，如 SKAX */
   device_code_prefix?: string | null;
@@ -105,6 +106,57 @@ export function formatPartyDemandMacroHoursSummary(caps: PartyDemandMacroCap[]):
   return `${range}（${caps.length} 个大场景）`;
 }
 
+export interface PartyDemandClientRate {
+  party_demand_id: string;
+  client_hourly_rate: number;
+  updated_at: string;
+}
+
+export function mergeClientRatesIntoPartyDemands(
+  demands: PartyDemand[],
+  rates: PartyDemandClientRate[]
+): PartyDemand[] {
+  const map = new Map(rates.map((r) => [r.party_demand_id, r.client_hourly_rate]));
+  return demands.map((d) => ({
+    ...d,
+    client_hourly_rate: map.has(d.id) ? map.get(d.id)! : null,
+  }));
+}
+
+export async function listPartyDemandClientRatesForGroup(groupId: string): Promise<PartyDemandClientRate[]> {
+  await requireAdminForPartyDemand();
+  const { data, error } = await supabase
+    .from(PDCR)
+    .select("party_demand_id, client_hourly_rate, updated_at, party_demands!inner(group_id)")
+    .eq("party_demands.group_id", groupId);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => {
+    const { party_demands: _pd, ...rate } = row as PartyDemandClientRate & { party_demands?: unknown };
+    return rate as PartyDemandClientRate;
+  });
+}
+
+export async function upsertPartyDemandClientRate(
+  partyDemandId: string,
+  clientHourlyRate: number | null
+): Promise<void> {
+  await requireAdminForPartyDemand();
+  if (clientHourlyRate == null) {
+    const { error } = await supabase.from(PDCR).delete().eq("party_demand_id", partyDemandId);
+    if (error) throw new Error(error.message);
+    return;
+  }
+  const { error } = await supabase.from(PDCR).upsert(
+    {
+      party_demand_id: partyDemandId,
+      client_hourly_rate: clientHourlyRate,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "party_demand_id" }
+  );
+  if (error) throw new Error(error.message);
+}
+
 export async function listPartyDemands(groupId: string): Promise<PartyDemand[]> {
   const { data, error } = await supabase
     .from(PD)
@@ -132,24 +184,29 @@ export async function createPartyDemand(row: {
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) throw new Error("未登录");
   const company = row.client_company.trim();
+  const { client_hourly_rate: clientRate, ...rowRest } = row;
   const insertBase = {
-    group_id: row.group_id,
-    title: row.title.trim(),
+    group_id: rowRest.group_id,
+    title: rowRest.title.trim(),
     client_company: company,
-    device_type: row.device_type.trim(),
-    device_snapshot_bucket: row.device_snapshot_bucket,
-    device_snapshot_path: row.device_snapshot_path,
-    total_hours_required: row.total_hours_required,
-    max_hours_per_scene: row.max_hours_per_scene,
-    scene_categories: row.scene_categories,
-    requirement_summary: row.requirement_summary?.trim() || null,
+    device_type: rowRest.device_type.trim(),
+    device_snapshot_bucket: rowRest.device_snapshot_bucket,
+    device_snapshot_path: rowRest.device_snapshot_path,
+    total_hours_required: rowRest.total_hours_required,
+    max_hours_per_scene: rowRest.max_hours_per_scene,
+    scene_categories: rowRest.scene_categories,
+    requirement_summary: rowRest.requirement_summary?.trim() || null,
     created_by: u.id,
-    client_hourly_rate: row.client_hourly_rate ?? null,
   };
 
   const { data, error } = await supabase.from(PD).insert(insertBase).select().single();
   if (error) throw new Error(error.message);
-  return data as PartyDemand;
+  const created = data as PartyDemand;
+  if (clientRate != null && clientRate > 0) {
+    await upsertPartyDemandClientRate(created.id, clientRate);
+    return { ...created, client_hourly_rate: clientRate };
+  }
+  return created;
 }
 
 export type PartyDemandUpdatePatch = Partial<{
@@ -168,31 +225,37 @@ export type PartyDemandUpdatePatch = Partial<{
 
 export async function updatePartyDemand(id: string, patch: PartyDemandUpdatePatch): Promise<void> {
   await requireAdminForPartyDemand();
+  const { client_hourly_rate, ...rest } = patch;
   const payload: Record<string, unknown> = {};
-  if (patch.title !== undefined) payload.title = patch.title.trim();
-  if (patch.client_company !== undefined) {
-    payload.client_company = patch.client_company === null ? null : patch.client_company.trim() || null;
+  if (rest.title !== undefined) payload.title = rest.title.trim();
+  if (rest.client_company !== undefined) {
+    payload.client_company = rest.client_company === null ? null : rest.client_company.trim() || null;
   }
-  if (patch.device_type !== undefined) {
-    payload.device_type = patch.device_type === null ? null : patch.device_type.trim() || null;
+  if (rest.device_type !== undefined) {
+    payload.device_type = rest.device_type === null ? null : rest.device_type.trim() || null;
   }
-  if (patch.requirement_summary !== undefined) {
-    payload.requirement_summary = patch.requirement_summary === null ? null : patch.requirement_summary.trim() || null;
+  if (rest.requirement_summary !== undefined) {
+    payload.requirement_summary =
+      rest.requirement_summary === null ? null : rest.requirement_summary.trim() || null;
   }
-  if (patch.total_hours_required !== undefined) payload.total_hours_required = patch.total_hours_required;
-  if (patch.max_hours_per_scene !== undefined) payload.max_hours_per_scene = patch.max_hours_per_scene;
-  if (patch.scene_categories !== undefined) payload.scene_categories = patch.scene_categories;
-  if (patch.device_snapshot_bucket !== undefined) payload.device_snapshot_bucket = patch.device_snapshot_bucket;
-  if (patch.device_snapshot_path !== undefined) payload.device_snapshot_path = patch.device_snapshot_path;
-  if (patch.client_hourly_rate !== undefined) payload.client_hourly_rate = patch.client_hourly_rate;
-  if (Object.keys(payload).length === 0) return;
-  let { error } = await supabase.from(PD).update(payload).eq("id", id);
-  if (error && isMissingColumnError(error, "device_code_prefix") && "device_code_prefix" in payload) {
-    const { device_code_prefix: _drop, ...rest } = payload;
-    if (Object.keys(rest).length === 0) return;
-    ({ error } = await supabase.from(PD).update(rest).eq("id", id));
+  if (rest.total_hours_required !== undefined) payload.total_hours_required = rest.total_hours_required;
+  if (rest.max_hours_per_scene !== undefined) payload.max_hours_per_scene = rest.max_hours_per_scene;
+  if (rest.scene_categories !== undefined) payload.scene_categories = rest.scene_categories;
+  if (rest.device_snapshot_bucket !== undefined) payload.device_snapshot_bucket = rest.device_snapshot_bucket;
+  if (rest.device_snapshot_path !== undefined) payload.device_snapshot_path = rest.device_snapshot_path;
+  if (Object.keys(payload).length > 0) {
+    let { error } = await supabase.from(PD).update(payload).eq("id", id);
+    if (error && isMissingColumnError(error, "device_code_prefix") && "device_code_prefix" in payload) {
+      const { device_code_prefix: _drop, ...payloadRest } = payload;
+      if (Object.keys(payloadRest).length > 0) {
+        ({ error } = await supabase.from(PD).update(payloadRest).eq("id", id));
+      }
+    }
+    if (error) throw new Error(error.message);
   }
-  if (error) throw new Error(error.message);
+  if (client_hourly_rate !== undefined) {
+    await upsertPartyDemandClientRate(id, client_hourly_rate);
+  }
 }
 
 export async function deletePartyDemand(id: string): Promise<void> {

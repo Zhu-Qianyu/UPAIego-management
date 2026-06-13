@@ -18,9 +18,11 @@ import {
   formatScenarioPositionLabel,
   getSnapshotPublicUrl,
   listPartyDemands,
+  listPartyDemandClientRatesForGroup,
   listPartyDemandMacroCapsForGroup,
   listScenarioPositions,
   listSceneMacroSites,
+  mergeClientRatesIntoPartyDemands,
   replacePartyDemandMacroCaps,
   replaceWorkstationSnapshot,
   syncSceneTaskAssignments,
@@ -162,12 +164,13 @@ function PartyDemandsTab({
     if (loadedOnceRef.current) setRefreshing(true);
     else setLoading(true);
     try {
-      const [d, mac, caps] = await Promise.all([
+      const [d, mac, caps, rates] = await Promise.all([
         listPartyDemands(groupId),
         listSceneMacroSites(groupId),
         listPartyDemandMacroCapsForGroup(groupId),
+        listPartyDemandClientRatesForGroup(groupId),
       ]);
-      setRows(d);
+      setRows(mergeClientRatesIntoPartyDemands(d, rates));
       setMacros(mac);
       setMacroCaps(caps);
       loadedOnceRef.current = true;
@@ -411,7 +414,7 @@ function PartyDemandsTab({
         </button>
       </div>
       <p className="text-sm text-gray-500">
-        <strong>甲方业务</strong>：填写甲方公司、设备类型、<strong>甲方价格</strong>、设备快照与总小时量；并为每个<strong>大场景</strong>分别批复采集小时数。
+        <strong>甲方业务</strong>：填写甲方公司、设备类型、设备快照与总小时量，并为每个<strong>大场景</strong>分别批复采集小时数；<strong>甲方结算单价</strong>仅平台管理员可见。
       </p>
       <form onSubmit={onAdd} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-3">
         <input
@@ -459,7 +462,7 @@ function PartyDemandsTab({
           onChange={(macroId, value) => setAddMacroHours((prev) => ({ ...prev, [macroId]: value }))}
         />
         <div>
-          <label className="block text-xs text-gray-500 mb-1">甲方结算单价（元/小时，可选，用于管理员看板收入估算）</label>
+          <label className="block text-xs text-gray-500 mb-1">甲方结算单价（元/小时，可选，仅管理员可见）</label>
           <input
             type="number"
             min={0}
@@ -584,7 +587,7 @@ function PartyDemandsTab({
                   onChange={(macroId, value) => setEditMacroHours((prev) => ({ ...prev, [macroId]: value }))}
                 />
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">甲方结算单价（元/小时，可选）</label>
+                  <label className="block text-xs text-gray-500 mb-1">甲方结算单价（元/小时，可选，仅管理员可见）</label>
                   <input
                     type="number"
                     min={0}
