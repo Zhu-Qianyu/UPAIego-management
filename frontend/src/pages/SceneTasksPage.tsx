@@ -14,16 +14,21 @@ import {
   deleteScenarioPositions,
   deleteSceneMacroSite,
   deleteSceneMacroSites,
+  formatPartyDemandPositionHoursSummary,
   formatScenarioPositionLabel,
   getSnapshotPublicUrl,
   listPartyDemands,
+  listPartyDemandPositionCapsForGroup,
   listScenarioPositions,
   listSceneMacroSites,
+  replacePartyDemandPositionCaps,
   replaceWorkstationSnapshot,
+  syncSceneTaskAssignments,
   uploadWorkstationSnapshot,
   uploadPartyDeviceSnapshot,
   uploadMacroPanoramaSnapshot,
   type PartyDemand,
+  type PartyDemandPositionCap,
   type PartyDemandUpdatePatch,
   type ScenarioPosition,
   type SceneMacroSite,
@@ -37,7 +42,7 @@ import RefreshStrip from "../components/RefreshStrip";
 import { useBatchSelection } from "../hooks/useBatchSelection";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 import { useAuth } from "../auth/AuthContext";
-import { DEFAULT_SCENE_CATEGORIES } from "../utils/sceneCategories";
+import { DEFAULT_SCENE_CATEGORIES, sceneCategoriesOverlap } from "../utils/sceneCategories";
 import {
   buildMacroScenesPrintHtml,
   buildPartyDemandsPrintHtml,
@@ -46,6 +51,81 @@ import {
 } from "../utils/sceneListPrintExport";
 
 type Tab = "tasks" | "demands" | "stations";
+
+function parsePartyDemandPositionHours(
+  positions: ScenarioPosition[],
+  macros: SceneMacroSite[],
+  sceneCategories: string[],
+  hoursByPosition: Record<string, string>
+): { caps: { scenario_position_id: string; approved_hours: number }[]; error?: string } {
+  const overlapping = positions.filter((p) => sceneCategoriesOverlap(sceneCategories, p.scene_categories));
+  if (overlapping.length === 0) return { caps: [] };
+  const macroMap = new Map(macros.map((m) => [m.id, m]));
+  const caps: { scenario_position_id: string; approved_hours: number }[] = [];
+  for (const p of overlapping) {
+    const label = formatScenarioPositionLabel(p, macroMap);
+    const raw = hoursByPosition[p.id]?.trim();
+    if (!raw) return { caps: [], error: `请填写「${label}」的批复小时数` };
+    const h = Number(raw);
+    if (!Number.isFinite(h) || h <= 0 || !Number.isInteger(h)) {
+      return { caps: [], error: `「${label}」批复小时数须为正整数` };
+    }
+    caps.push({ scenario_position_id: p.id, approved_hours: h });
+  }
+  return { caps };
+}
+
+function PartyDemandPositionHoursFields({
+  positions,
+  macros,
+  sceneCategories,
+  hoursByPosition,
+  onChange,
+}: {
+  positions: ScenarioPosition[];
+  macros: SceneMacroSite[];
+  sceneCategories: string[];
+  hoursByPosition: Record<string, string>;
+  onChange: (positionId: string, value: string) => void;
+}) {
+  const macroMap = useMemo(() => new Map(macros.map((m) => [m.id, m])), [macros]);
+  const overlapping = useMemo(
+    () => positions.filter((p) => sceneCategoriesOverlap(sceneCategories, p.scene_categories)),
+    [positions, sceneCategories]
+  );
+  if (overlapping.length === 0) {
+    return (
+      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+        当前工作群尚无场景岗位，或岗位分类与甲方业务不匹配。可先保存甲方业务，待新增场景岗位后再编辑补全批复小时数。
+      </p>
+    );
+  }
+  const sorted = [...overlapping].sort((a, b) =>
+    formatScenarioPositionLabel(a, macroMap).localeCompare(formatScenarioPositionLabel(b, macroMap), "zh-CN")
+  );
+  return (
+    <div className="space-y-2">
+      <label className="block text-xs font-medium text-gray-700">各场景岗位批复小时数（必填，正整数）</label>
+      <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 max-h-64 overflow-y-auto">
+        {sorted.map((p) => (
+          <div key={p.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+            <span className="flex-1 min-w-0 truncate text-gray-800">{formatScenarioPositionLabel(p, macroMap)}</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              required
+              value={hoursByPosition[p.id] ?? ""}
+              onChange={(e) => onChange(p.id, e.target.value.replace(/\D/g, ""))}
+              className="w-20 shrink-0 rounded border border-gray-300 px-2 py-1 text-sm text-right"
+              placeholder="小时"
+            />
+            <span className="text-xs text-gray-500 shrink-0">h</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function PartyDemandsTab({
   groupId,
@@ -56,6 +136,9 @@ function PartyDemandsTab({
 }) {
   const { hasRole, loading: authLoading } = useAuth();
   const [rows, setRows] = useState<PartyDemand[]>([]);
+  const [positions, setPositions] = useState<ScenarioPosition[]>([]);
+  const [macros, setMacros] = useState<SceneMacroSite[]>([]);
+  const [positionCaps, setPositionCaps] = useState<PartyDemandPositionCap[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [clientCompany, setClientCompany] = useState("");
@@ -64,7 +147,7 @@ function PartyDemandsTab({
   const [deviceFile, setDeviceFile] = useState<File | null>(null);
   const [totalUnlimited, setTotalUnlimited] = useState(true);
   const [totalHours, setTotalHours] = useState("");
-  const [maxPerScene, setMaxPerScene] = useState("8");
+  const [addPositionHours, setAddPositionHours] = useState<Record<string, string>>({});
   const [clientRate, setClientRate] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCompany, setEditCompany] = useState("");
@@ -74,19 +157,36 @@ function PartyDemandsTab({
   const [demandImageProcessing, setDemandImageProcessing] = useState(false);
   const [editTotalUnlimited, setEditTotalUnlimited] = useState(true);
   const [editTotalHours, setEditTotalHours] = useState("");
-  const [editMaxPerScene, setEditMaxPerScene] = useState("8");
+  const [editPositionHours, setEditPositionHours] = useState<Record<string, string>>({});
   const [editClientRate, setEditClientRate] = useState("");
   const loadedOnceRef = useRef(false);
   const batch = useBatchSelection();
   const [batchDeleting, setBatchDeleting] = useState(false);
   const rowIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const capsByDemandId = useMemo(() => {
+    const m = new Map<string, PartyDemandPositionCap[]>();
+    for (const c of positionCaps) {
+      const arr = m.get(c.party_demand_id) ?? [];
+      arr.push(c);
+      m.set(c.party_demand_id, arr);
+    }
+    return m;
+  }, [positionCaps]);
 
   const load = useCallback(async () => {
     if (loadedOnceRef.current) setRefreshing(true);
     else setLoading(true);
     try {
-      const d = await listPartyDemands(groupId);
+      const [d, pos, mac, caps] = await Promise.all([
+        listPartyDemands(groupId),
+        listScenarioPositions(groupId),
+        listSceneMacroSites(groupId),
+        listPartyDemandPositionCapsForGroup(groupId),
+      ]);
       setRows(d);
+      setPositions(pos);
+      setMacros(mac);
+      setPositionCaps(caps);
       loadedOnceRef.current = true;
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "加载业务失败");
@@ -100,6 +200,21 @@ function PartyDemandsTab({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (positions.length === 0) return;
+    setAddPositionHours((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const p of positions) {
+        if (sceneCategoriesOverlap(DEFAULT_SCENE_CATEGORIES, p.scene_categories) && next[p.id] === undefined) {
+          next[p.id] = "8";
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [positions]);
+
   function openEdit(r: PartyDemand) {
     setEditingId(r.id);
     setEditCompany((r.client_company || r.title || "").trim());
@@ -107,7 +222,18 @@ function PartyDemandsTab({
     setEditSummary(r.requirement_summary ?? "");
     setEditTotalUnlimited(r.total_hours_required == null);
     setEditTotalHours(r.total_hours_required != null ? String(r.total_hours_required) : "");
-    setEditMaxPerScene(String(r.max_hours_per_scene));
+    const caps = capsByDemandId.get(r.id) ?? [];
+    const hours: Record<string, string> = {};
+    for (const c of caps) hours[c.scenario_position_id] = String(c.approved_hours);
+    for (const p of positions) {
+      if (
+        sceneCategoriesOverlap(r.scene_categories, p.scene_categories) &&
+        hours[p.id] === undefined
+      ) {
+        hours[p.id] = String(r.max_hours_per_scene || 8);
+      }
+    }
+    setEditPositionHours(hours);
     setEditClientRate(
       r.client_hourly_rate != null && r.client_hourly_rate > 0 ? String(r.client_hourly_rate) : ""
     );
@@ -132,9 +258,14 @@ function PartyDemandsTab({
       setErr("请填写设备类型");
       return;
     }
-    const maxH = Number(editMaxPerScene);
-    if (!Number.isFinite(maxH) || maxH <= 0 || !Number.isInteger(maxH)) {
-      setErr("每场景上限小时量须为正整数");
+    const parsedHours = parsePartyDemandPositionHours(
+      positions,
+      macros,
+      [...DEFAULT_SCENE_CATEGORIES],
+      editPositionHours
+    );
+    if (parsedHours.error) {
+      setErr(parsedHours.error);
       return;
     }
     let total: number | null = null;
@@ -163,7 +294,6 @@ function PartyDemandsTab({
         device_type: editDeviceType.trim(),
         requirement_summary: editSummary.trim() || null,
         total_hours_required: total,
-        max_hours_per_scene: maxH,
         scene_categories: [...DEFAULT_SCENE_CATEGORIES],
         client_hourly_rate: clientHourlyRate,
       };
@@ -173,6 +303,8 @@ function PartyDemandsTab({
         patch.device_snapshot_path = path;
       }
       await updatePartyDemand(editingId, patch);
+      await replacePartyDemandPositionCaps(editingId, parsedHours.caps);
+      await syncSceneTaskAssignments(groupId);
       closeEdit();
       await load();
     } catch (err: unknown) {
@@ -195,9 +327,14 @@ function PartyDemandsTab({
       setErr("请上传设备快照");
       return;
     }
-    const maxH = Number(maxPerScene);
-    if (!Number.isFinite(maxH) || maxH <= 0 || !Number.isInteger(maxH)) {
-      setErr("每场景上限小时量须为正整数");
+    const parsedHours = parsePartyDemandPositionHours(
+      positions,
+      macros,
+      [...DEFAULT_SCENE_CATEGORIES],
+      addPositionHours
+    );
+    if (parsedHours.error) {
+      setErr(parsedHours.error);
       return;
     }
     let total: number | null = null;
@@ -220,7 +357,7 @@ function PartyDemandsTab({
     }
     try {
       const { path, bucket } = await uploadPartyDeviceSnapshot(groupId, deviceFile);
-      await createPartyDemand({
+      const created = await createPartyDemand({
         group_id: groupId,
         title: clientCompany.trim(),
         client_company: clientCompany.trim(),
@@ -228,18 +365,19 @@ function PartyDemandsTab({
         device_snapshot_bucket: bucket,
         device_snapshot_path: path,
         total_hours_required: total,
-        max_hours_per_scene: maxH,
+        max_hours_per_scene: 8,
         scene_categories: [...DEFAULT_SCENE_CATEGORIES],
         requirement_summary: summary.trim() || undefined,
         client_hourly_rate: clientHourlyRate,
       });
+      await replacePartyDemandPositionCaps(created.id, parsedHours.caps);
+      await syncSceneTaskAssignments(groupId);
       setClientCompany("");
       setDeviceType("");
       setSummary("");
       setDeviceFile(null);
       setTotalUnlimited(true);
       setTotalHours("");
-      setMaxPerScene("8");
       setClientRate("");
       await load();
     } catch (e: unknown) {
@@ -286,7 +424,14 @@ function PartyDemandsTab({
             void (async () => {
               setErr("");
               try {
-                const html = await buildPartyDemandsPrintHtml("甲方业务列表", `工作群 ${groupId}`, rows);
+                const html = await buildPartyDemandsPrintHtml(
+                  "甲方业务列表",
+                  `工作群 ${groupId}`,
+                  rows,
+                  positions,
+                  macros,
+                  positionCaps
+                );
                 openSceneListPrint(html);
               } catch (e: unknown) {
                 setErr(e instanceof Error ? e.message : "无法打开打印窗口");
@@ -299,7 +444,7 @@ function PartyDemandsTab({
         </button>
       </div>
       <p className="text-sm text-gray-500">
-        <strong>甲方业务</strong>：填写甲方公司、设备类型、<strong>甲方价格</strong>、设备快照与小时量；下方列表可预览设备快照。
+        <strong>甲方业务</strong>：填写甲方公司、设备类型、<strong>甲方价格</strong>、设备快照与总小时量；并为每个场景岗位分别批复采集小时数。
       </p>
       <form onSubmit={onAdd} className="bg-white rounded-xl border border-indigo-100 p-4 space-y-3">
         <input
@@ -341,17 +486,15 @@ function PartyDemandsTab({
             />
           )}
         </div>
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">每场景上限小时量（必填，正整数）</label>
-          <input
-            type="text"
-            inputMode="numeric"
-            required
-            value={maxPerScene}
-            onChange={(e) => setMaxPerScene(e.target.value.replace(/\D/g, ""))}
-            className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-        </div>
+        <PartyDemandPositionHoursFields
+          positions={positions}
+          macros={macros}
+          sceneCategories={[...DEFAULT_SCENE_CATEGORIES]}
+          hoursByPosition={addPositionHours}
+          onChange={(positionId, value) =>
+            setAddPositionHours((prev) => ({ ...prev, [positionId]: value }))
+          }
+        />
         <div>
           <label className="block text-xs text-gray-500 mb-1">甲方结算单价（元/小时，可选，用于管理员看板收入估算）</label>
           <input
@@ -406,11 +549,13 @@ function PartyDemandsTab({
                   </span>
                 }
                 secondary={`设备类型：${r.device_type?.trim() || "—"}`}
-                meta={
-                  r.total_hours_required != null
-                    ? `上限 ${r.max_hours_per_scene}h/场景 · 总计 ${r.total_hours_required}h`
-                    : `上限 ${r.max_hours_per_scene}h/场景 · 总计无限`
-                }
+                meta={(() => {
+                  const caps = capsByDemandId.get(r.id) ?? [];
+                  const hoursLabel = formatPartyDemandPositionHoursSummary(caps);
+                  const totalLabel =
+                    r.total_hours_required != null ? `总计 ${r.total_hours_required}h` : "总计无限";
+                  return `${hoursLabel} · ${totalLabel}`;
+                })()}
               />
             ))}
           </CompactList>
@@ -470,17 +615,15 @@ function PartyDemandsTab({
                     />
                   )}
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">每场景上限小时量（正整数）</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    required
-                    value={editMaxPerScene}
-                    onChange={(e) => setEditMaxPerScene(e.target.value.replace(/\D/g, ""))}
-                    className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
+                <PartyDemandPositionHoursFields
+                  positions={positions}
+                  macros={macros}
+                  sceneCategories={[...DEFAULT_SCENE_CATEGORIES]}
+                  hoursByPosition={editPositionHours}
+                  onChange={(positionId, value) =>
+                    setEditPositionHours((prev) => ({ ...prev, [positionId]: value }))
+                  }
+                />
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">甲方结算单价（元/小时，可选）</label>
                   <input
@@ -521,9 +664,31 @@ function PartyDemandsTab({
                     <p className="font-medium text-gray-900">{r.client_company || r.title}</p>
                     <p className="text-sm text-gray-600 mt-1">设备类型：{r.device_type?.trim() || "—"}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      每场景上限 {r.max_hours_per_scene}h
+                      {formatPartyDemandPositionHoursSummary(capsByDemandId.get(r.id) ?? [])}
                       {r.total_hours_required != null ? ` · 需求总计 ${r.total_hours_required}h` : " · 需求总计：无限"}
                     </p>
+                    {(capsByDemandId.get(r.id) ?? []).length > 0 && (
+                      <ul className="text-xs text-gray-500 mt-1 space-y-0.5">
+                        {(capsByDemandId.get(r.id) ?? [])
+                          .slice()
+                          .sort((a, b) => {
+                            const pa = positions.find((p) => p.id === a.scenario_position_id);
+                            const pb = positions.find((p) => p.id === b.scenario_position_id);
+                            const la = pa ? formatScenarioPositionLabel(pa, macros) : a.scenario_position_id;
+                            const lb = pb ? formatScenarioPositionLabel(pb, macros) : b.scenario_position_id;
+                            return la.localeCompare(lb, "zh-CN");
+                          })
+                          .map((c) => {
+                            const p = positions.find((pos) => pos.id === c.scenario_position_id);
+                            const label = p ? formatScenarioPositionLabel(p, macros) : c.scenario_position_id;
+                            return (
+                              <li key={c.id}>
+                                {label}：{c.approved_hours}h
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    )}
                     {r.requirement_summary && (
                       <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{r.requirement_summary}</p>
                     )}

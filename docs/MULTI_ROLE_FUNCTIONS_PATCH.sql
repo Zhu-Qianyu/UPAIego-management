@@ -690,7 +690,16 @@ BEGIN
     AND NOT public.scene_categories_overlap(d.scene_categories, p.scene_categories);
 
   INSERT INTO public.scene_task_assignments (scene_task_id, scenario_position_id, party_demand_id, max_hours_cap)
-  SELECT st.id, p.id, d.id, d.max_hours_per_scene
+  SELECT st.id, p.id, d.id,
+    COALESCE(
+      (
+        SELECT cap.approved_hours
+        FROM public.party_demand_position_caps cap
+        WHERE cap.party_demand_id = d.id
+          AND cap.scenario_position_id = p.id
+      ),
+      d.max_hours_per_scene
+    )
   FROM public.scene_tasks st
   CROSS JOIN public.party_demands d
   INNER JOIN public.scenario_positions p
@@ -703,12 +712,12 @@ BEGIN
   ON CONFLICT (scene_task_id, scenario_position_id, party_demand_id) DO NOTHING;
 
   UPDATE public.scene_task_assignments sta
-  SET max_hours_cap = d.max_hours_per_scene
-  FROM public.party_demands d, public.scene_tasks st
-  WHERE sta.party_demand_id = d.id
+  SET max_hours_cap = cap.approved_hours
+  FROM public.party_demand_position_caps cap, public.scene_tasks st
+  WHERE sta.party_demand_id = cap.party_demand_id
+    AND sta.scenario_position_id = cap.scenario_position_id
     AND sta.scene_task_id = st.id
-    AND st.group_id = p_group_id
-    AND d.group_id = p_group_id;
+    AND st.group_id = p_group_id;
 END;
 $$;
 

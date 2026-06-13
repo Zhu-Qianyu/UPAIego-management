@@ -6,6 +6,7 @@ import { isValidManualDevicePublicCode, normalizeManualDevicePublicCode } from "
 import { isMissingColumnError } from "../utils/supabaseSchemaCompat";
 
 const PD = "party_demands";
+const PDPC = "party_demand_position_caps";
 const SP = "scenario_positions";
 const SMS = "scene_macro_sites";
 const STA = "scene_task_assignments";
@@ -76,6 +77,15 @@ export interface ScenarioPosition {
   created_at: string;
 }
 
+export interface PartyDemandPositionCap {
+  id: string;
+  party_demand_id: string;
+  scenario_position_id: string;
+  approved_hours: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SceneTaskAssignment {
   id: string;
   scene_task_id: string;
@@ -84,6 +94,15 @@ export interface SceneTaskAssignment {
   max_hours_cap: number;
   executed_hours: number;
   created_at: string;
+}
+
+export function formatPartyDemandPositionHoursSummary(caps: PartyDemandPositionCap[]): string {
+  if (caps.length === 0) return "未配置场景批复小时";
+  const hours = caps.map((c) => c.approved_hours);
+  const min = Math.min(...hours);
+  const max = Math.max(...hours);
+  const range = min === max ? `${min}h` : `${min}~${max}h`;
+  return `${range}（${caps.length} 个场景岗位）`;
 }
 
 export async function listPartyDemands(groupId: string): Promise<PartyDemand[]> {
@@ -186,6 +205,37 @@ export async function deletePartyDemands(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await requireAdminForPartyDemand();
   const { error } = await supabase.from(PD).delete().in("id", ids);
+  if (error) throw new Error(error.message);
+}
+
+export async function listPartyDemandPositionCapsForGroup(groupId: string): Promise<PartyDemandPositionCap[]> {
+  const { data, error } = await supabase
+    .from(PDPC)
+    .select("*, party_demands!inner(group_id)")
+    .eq("party_demands.group_id", groupId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => {
+    const { party_demands: _pd, ...cap } = row as PartyDemandPositionCap & { party_demands?: unknown };
+    return cap as PartyDemandPositionCap;
+  });
+}
+
+export async function replacePartyDemandPositionCaps(
+  partyDemandId: string,
+  caps: { scenario_position_id: string; approved_hours: number }[]
+): Promise<void> {
+  await requireAdminForPartyDemand();
+  const { error: delErr } = await supabase.from(PDPC).delete().eq("party_demand_id", partyDemandId);
+  if (delErr) throw new Error(delErr.message);
+  if (caps.length === 0) return;
+  const { error } = await supabase.from(PDPC).insert(
+    caps.map((c) => ({
+      party_demand_id: partyDemandId,
+      scenario_position_id: c.scenario_position_id,
+      approved_hours: c.approved_hours,
+    }))
+  );
   if (error) throw new Error(error.message);
 }
 
