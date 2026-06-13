@@ -61,8 +61,7 @@ def main() -> int:
 
     fn_src = REPO / "supabase/functions/scene-ai-agent"
     deploy_sh = REPO / "scripts/server/deploy_scene_ai_agent.sh"
-    sql = REPO / "docs/AGENT_CHAT_UPDATE_MIGRATION.sql"
-    for p in (fn_src, deploy_sh, sql):
+    for p in (fn_src, deploy_sh):
         if not p.exists():
             print(f"Missing {p}", file=sys.stderr)
             return 1
@@ -77,16 +76,9 @@ def main() -> int:
     sftp = ssh.open_sftp()
     print("==> Upload scene-ai-agent")
     upload_dir(sftp, fn_src, "/home/ubuntu/upaiego-management/supabase/functions/scene-ai-agent")
-    print("==> Upload deploy script + SQL")
+    print("==> Upload deploy script")
     sftp.put(str(deploy_sh), "/home/ubuntu/deploy_scene_ai_agent.sh")
-    sftp.put(str(sql), "/home/ubuntu/AGENT_CHAT_UPDATE_MIGRATION.sql")
     sftp.close()
-
-    print("==> Apply SQL migration")
-    run(
-        ssh,
-        "cd ~/supabase/docker && sudo docker-compose exec -T db psql -U postgres -d postgres -v ON_ERROR_STOP=1 < ~/AGENT_CHAT_UPDATE_MIGRATION.sql || true",
-    )
 
     print("==> Deploy edge function")
     code, _, _ = run(

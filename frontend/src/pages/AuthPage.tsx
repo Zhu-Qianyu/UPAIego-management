@@ -5,6 +5,7 @@ import { NON_ADMIN_ROLES } from "../types/roles";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "../auth/roleLabels";
 import { validateRegisterRoles } from "../auth/roleUtils";
 import { SITE_DISPLAY_NAME, SITE_SUBTITLE } from "../branding";
+import SiteFooter from "../components/SiteFooter";
 import { ensureProfileRow } from "../api/profiles";
 import { validateInviteCode } from "../api/groups";
 import { formatAuthError } from "../utils/authErrors";
@@ -368,6 +369,7 @@ export default function AuthPage() {
             </div>
           </div>
         </div>
+        <SiteFooter className="border-transparent bg-transparent" />
       </div>
     </div>
   );

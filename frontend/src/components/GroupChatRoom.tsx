@@ -327,7 +327,7 @@ export default function GroupChatRoom({
       return;
     }
     if (tableMissing) {
-      setSendErr("群聊天室尚未初始化，请在服务器执行 docs/GROUP_CHAT_MIGRATION.sql");
+      setSendErr("群聊天室尚未初始化，请联系管理员检查服务器数据库");
       return;
     }
 
@@ -462,8 +462,7 @@ export default function GroupChatRoom({
 
       {tableMissing && (
         <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          数据库尚未创建群聊天表。请在 Supabase SQL Editor 执行{" "}
-          <code className="font-mono">docs/GROUP_CHAT_MIGRATION.sql</code> 后刷新本页。
+          群聊功能尚未就绪，请联系管理员检查服务器数据库后刷新本页。
         </div>
       )}
 

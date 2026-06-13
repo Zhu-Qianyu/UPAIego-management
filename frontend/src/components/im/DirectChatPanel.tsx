@@ -98,7 +98,7 @@ export default function DirectChatPanel({
     const text = input.trim();
     if (!text || busy || !canSend) return;
     if (tableMissing) {
-      setSendErr("私聊尚未初始化，请在服务器执行 docs/DIRECT_CHAT_MIGRATION.sql");
+      setSendErr("私聊尚未初始化，请联系管理员检查服务器数据库");
       return;
     }
 
@@ -137,7 +137,7 @@ export default function DirectChatPanel({
 
       {tableMissing && (
         <div className="mx-4 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          私聊表尚未创建，请执行 <code className="font-mono">docs/DIRECT_CHAT_MIGRATION.sql</code>
+          私聊功能尚未就绪，请联系管理员检查服务器数据库。
         </div>
       )}
 

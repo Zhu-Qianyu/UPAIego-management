@@ -14,6 +14,7 @@ import AccountDeleteModal from "./components/AccountDeleteModal";
 import PendingApprovalGate from "./components/PendingApprovalGate";
 import Spinner from "./components/Spinner";
 import { SITE_DISPLAY_NAME } from "./branding";
+import SiteFooter from "./components/SiteFooter";
 import { accountDisplayLabel } from "./utils/phoneAuth";
 import { AitebotProvider } from "./aitebot/AitebotContext";
 
@@ -114,8 +115,7 @@ function MigrationNotice({
         </div>
 
         <p className="text-xs text-gray-600">
-          若尚未建表：在仓库中执行完整脚本{" "}
-          <code className="bg-gray-100 px-1 rounded">docs/ROLE_SYSTEM_MIGRATION.sql</code>
+          若尚未建表：请联系平台管理员在服务器数据库中初始化 <code className="bg-gray-100 px-1 rounded">profiles</code> 等基础表。
         </p>
 
         {profileSyncHint && (
@@ -489,6 +489,7 @@ export default function App() {
         </Suspense>
         </PendingApprovalGate>
         </main>
+        <SiteFooter />
       </div>
     </div>
     </AitebotProvider>

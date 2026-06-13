@@ -122,15 +122,17 @@ DATABASE_URL=postgresql://postgres:<密码>@127.0.0.1:5432/postgres
 
 ---
 
-## 5. SQL 迁移在哪里执行？
+## 5. 数据库说明
 
-| 方式 | 说明 |
+生产 PostgreSQL **已在 CVM 上构建完成**，本仓库**不包含** SQL 迁移脚本或 schema 导出文件。
+
+| 操作 | 说明 |
 |------|------|
-| **推荐：SSH + psql** | `sudo docker-compose exec -T db psql -U postgres -d postgres -f - < docs/XXX.sql`（在 `~/supabase/docker` 下） |
-| **禁止** | 在 Supabase Cloud Dashboard SQL Editor 执行（那是已弃用项目） |
-| **禁止** | `supabase db push` 指向云端 linked project |
+| **日常维护** | SSH 登录 CVM，`cd ~/supabase/docker` 后用 `docker-compose exec db psql -U postgres -d postgres` 交互或执行一次性 SQL |
+| **结构变更** | 在服务器上直接维护；如需灾备，请对 CVM 做 **Postgres 逻辑/物理备份**，勿依赖本仓库重建 |
+| **禁止** | 在 Supabase Cloud Dashboard 改表（已弃用项目）；`supabase db push` 指向云端 |
 
-迁移文件顺序见 `docs/从零搭建说明书.md` §5；生产库结构以 **`docs/*.sql`** 与 `schema.sql`（若从云导出备份）为准。
+健康检查见 §2.3；表/函数是否存在可在 psql 内 `\dt public.*`、`\df public.*` 自查。
 
 ---
 
@@ -147,7 +149,15 @@ python scripts/server/deploy_via_paramiko.py
 bash ~/upaiego-management/scripts/server/deploy_scene_ai_agent.sh ~/upaiego-management
 ```
 
-豆包密钥在服务器 `~/supabase/docker/.env`（`ARK_API_KEY`、`ARK_MODEL` 等），见 `docs/SCENE_AI_AGENT_SETUP.md`。
+豆包密钥在服务器 `~/supabase/docker/.env` 配置：
+
+```env
+ARK_API_KEY=你的火山方舟APIKey
+ARK_MODEL=你的推理接入点ID   # ep-xxxx
+AI_PROVIDER=doubao           # 可选，默认 doubao
+```
+
+在 [火山引擎控制台](https://www.volcengine.com/) 开通火山方舟文本模型并创建推理接入点。
 
 ---
 
@@ -173,7 +183,7 @@ ENABLE_EMAIL_AUTOCONFIRM=true
 | `supabase link --project-ref xbjgyxinbjpifbllqefw` | CLI 指向云端 | **不要 link**；改服务器 Docker 与 SQL |
 | 读取 `supabase/.temp/pooler-url` 写进 `.env` | 直连错误数据库 | 只读服务器 `~/supabase/docker/.env` |
 | `supabase functions deploy scene-ai-agent` 到云端 | 豆小秘不生效 | 用 `scripts/server/deploy_scene_ai_agent.*` |
-| 在云端 Dashboard 改 RLS/表 | 生产无变化 | SSH 进 CVM 用 psql 执行 `docs/*.sql` |
+| 在云端 Dashboard 改 RLS/表 | 生产无变化 | SSH 进 CVM，用 psql 直接维护生产库 |
 | 把 `SERVICE_ROLE_KEY` 放进前端 | 严重安全风险 | 仅服务端/脚本使用 |
 
 ---
@@ -186,17 +196,7 @@ ENABLE_EMAIL_AUTOCONFIRM=true
 | `scripts/server/setup_nginx_and_env.sh` | Nginx 反代 + URL/Auth 环境变量 |
 | `scripts/server/fix_auth_email_autoconfirm.sh` | 关闭注册邮件确认 |
 | `scripts/server/deploy_scene_ai_agent.sh` | 部署豆小秘 Edge Function |
-| `scripts/server/deploy_via_paramiko.py` | 从 Windows 一键部署 Function + SQL |
-| `scripts/server/upload_from_windows.ps1` | 上传 Supabase Docker 目录到 CVM |
-
----
-
-## 10. 文档关系
-
-- **本文**：生产连哪台服务器、密钥从哪来、禁止连云端。  
-- **`docs/从零搭建说明书.md`**：空库从零迁移 SQL（新环境/灾备）；其中「创建 Supabase 云项目」章节对**当前生产**已不适用，以本文为准。  
-- **`DEPLOYMENT.md`**：英文简版，默认假设官方云；生产部署请优先本文。  
-- **`docs/DATABASE_SPECIFICATION.md`**：表结构与 RLS 说明（与部署位置无关）。
+| `scripts/server/deploy_via_paramiko.py` | 从 Windows 一键部署豆小秘 Edge Function |
 
 ---
 

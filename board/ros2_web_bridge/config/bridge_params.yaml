@@ -20,7 +20,7 @@ web_bridge_node:
     frame_upload_interval_sec: 60
     frame_max_width: 640
     frame_jpeg_quality: 6
-    # MPU6050 陀螺仪（与录像同时启停；见 docs/陀螺仪与录制同步记录手册.md）
+    # MPU6050 陀螺仪（与录像同时启停；见 board/README.md）
     gyro_enable: true
     gyro_i2c_bus: 7
     gyro_sample_interval_sec: 0.01

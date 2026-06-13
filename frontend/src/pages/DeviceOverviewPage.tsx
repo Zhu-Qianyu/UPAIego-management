@@ -100,7 +100,10 @@ export default function DeviceOverviewPage({ listScopeOverride }: DashboardProps
       setTotal(res.total);
       let manuals: ManualTrackedDevice[] = [];
       try {
-        if (listScope === "fleet") {
+        if (readOnly) {
+          const gid = await fetchActiveGroupId();
+          if (gid) manuals = await listManualTrackedDevices(gid);
+        } else if (listScope === "fleet") {
           manuals = await listAllManualTrackedDevices();
         } else {
           const gid = await fetchActiveGroupId();
@@ -126,7 +129,7 @@ export default function DeviceOverviewPage({ listScopeOverride }: DashboardProps
       setLoading(false);
       setRefreshing(false);
     }
-  }, [page, statusFilter, calFilter, listScope, cacheKey]);
+  }, [page, statusFilter, calFilter, listScope, cacheKey, readOnly]);
 
   const refreshDeviceStatuses = useCallback(async () => {
     resetDeviceConnectivityHysteresis();
@@ -183,14 +186,16 @@ export default function DeviceOverviewPage({ listScopeOverride }: DashboardProps
           </h1>
           {readOnly && (
             <p className="text-xs text-slate-600 mt-1 max-w-xl">
-              只读模式：可查看本工作群联网与离线设备状态，无法登记、分配或修改。
+              只读模式：仅展示<strong>分配给您的</strong>联网与离线设备，无法登记、分配或修改。
             </p>
           )}
           <p className="text-xs text-gray-500 mt-1 max-w-xl">
             联网设备列表已优先展示<strong>心跳离线</strong>、<strong>非 active 状态</strong>与<strong>待校准/需重校准</strong>项；离线设备优先展示<strong>返厂维修</strong>、<strong>异常</strong>，其次为正常。
-            {listScope !== "fleet" && (
+            {readOnly ? (
+              <> 离线设备含运维分配或<strong>采集排班</strong>绑定给您的登记编号。</>
+            ) : listScope !== "fleet" ? (
               <> 离线设备仅展示<strong>当前工作群</strong>内登记。</>
-            )}
+            ) : null}
           </p>
           {listScope === "fleet" && hasRole("admin") && (
             <p className="text-xs text-gray-500 mt-1 max-w-xl">
@@ -238,7 +243,7 @@ export default function DeviceOverviewPage({ listScopeOverride }: DashboardProps
         <Spinner />
       ) : devices.length === 0 && manualRows.length === 0 && !loading ? (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-lg">{readOnly ? "暂无本群设备数据" : "暂无设备数据"}</p>
+          <p className="text-lg">{readOnly ? "暂无分配给您的设备" : "暂无设备数据"}</p>
           {!readOnly && (
             <Link to="/devices/manage" className="text-indigo-600 underline text-sm mt-2 inline-block">
               去注册第一台设备

@@ -8,7 +8,7 @@
 - 按设备 `device_id` 拉取网站侧最新设备信息
 - 支持两种模式：`supabase` 直连（默认）和 `backend` API 模式
 - 启动节点后自动调用 `ffmpeg` 录制视频到 `/home/cat/videos`
-- **可选**：与每段 MP4 同步记录 **MPU6050 陀螺仪** CSV（`board/ros2_web_bridge` 内 `gyro_recorder.py`，默认 I²C 总线 7）；详见仓库根目录 `docs/陀螺仪与录制同步记录手册.md`
+- **可选**：与每段 MP4 同步记录 **MPU6050 陀螺仪** CSV（`board/ros2_web_bridge` 内 `gyro_recorder.py`，默认 I²C 总线 7）；参数见 `config/bridge_params.yaml` 中 `gyro_enable` 等
 - 实时上报运行状态：是否开机、是否录制中、累计录制时长、CPU 占用率
 
 ## 目录结构

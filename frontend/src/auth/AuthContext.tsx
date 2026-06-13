@@ -106,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         p = await fetchProfile(uid);
         if (!p && !err) {
           setProfileSyncHint(
-            "无法读取 profiles：请确认表存在且已执行 docs/MULTI_ROLE_MIGRATION.sql"
+            "无法读取 profiles：请确认生产数据库已初始化且当前账号有 profile 行"
           );
         }
       }

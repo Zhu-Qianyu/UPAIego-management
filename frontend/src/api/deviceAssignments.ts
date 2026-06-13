@@ -119,7 +119,7 @@ export async function releaseManualTrackedDevices(publicCodes: string[]): Promis
       });
       if (error) {
         if (/release_manual_tracked_device_assignment|schema cache/i.test(error.message)) {
-          throw new Error("请先在服务器执行 MANUAL_DEVICE_EXECUTOR_ASSIGN_MIGRATION.sql");
+          throw new Error("设备分配功能未就绪，请联系管理员检查服务器数据库");
         }
         throw new Error(error.message);
       }

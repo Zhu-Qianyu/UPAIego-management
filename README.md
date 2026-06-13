@@ -1,162 +1,243 @@
-# UPAIego Fleet Management
+# upaieasy!
 
-Hardware fleet and **cloud data-collection operations** for Rockchip-based boards. The system detects boards over USB-serial, registers them with auto-generated names and UUIDs, stores metadata in **Supabase (PostgreSQL)** or local **SQLite** (optional backend), generates QR codes, and ships a **React (Vite) web app** that talks to Supabase with row-level security (RLS). Optional pieces: **Python CLI / FastAPI** for provisioning, and **ROS 2 Web Bridge** on the board for heartbeat-style updates.
+**数采一站式管理平台** — 把设备、场景、排班、结算和 AI 助手装进一个浏览器。
 
-## What’s in this repo
+[![Website](https://img.shields.io/badge/🌐_在线体验-upaieasy.cn-6366F1?style=for-the-badge)](https://upaieasy.cn)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
+[![Vite](https://img.shields.io/badge/Vite-7-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
-| Area | Description |
-|------|-------------|
-| **Web UI** (`frontend/`) | Role-based SPA: device registry & search, work groups, scene tasks / party demands / workstations, executor map (Leaflet), admin KPIs and announcements. Uses `@supabase/supabase-js` and the anon key plus user JWT. |
-| **Backend / CLI** (`backend/`) | Optional FastAPI server and `cli.py` for detect / register / provision / QR; uses `DATABASE_URL` (Postgres pooler or SQLite for dev). |
-| **Board** (`board/ros2_web_bridge/`) | Optional ROS 2 node to PATCH device fields over HTTPS; must align with Supabase keys and RLS (see `docs/DATABASE_SPECIFICATION.md`). |
-| **On-device stack** (`upaiego/`) | Separate ROS 2 package; see that tree for runtime nodes. |
+> **在线地址：** [https://upaieasy.cn](https://upaieasy.cn)  
+> 面向机器人 / 具身智能数采团队：**从设备贴签、现场排班到执行打卡、工时结算**，一条链路跑通。  
+> 由 [爱特沃（湖北省武汉市洪山区）智能机器人有限公司](https://beian.miit.gov.cn/) 研发维护。
 
-## Documentation
+---
 
-| Doc | Language | Purpose |
-|-----|----------|---------|
-| [docs/自建Supabase服务器连接说明.md](docs/自建Supabase服务器连接说明.md) | 中文 | **Production:** self-hosted Supabase on CVM — URLs, keys, SSH; **do not** connect to Supabase Cloud. |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | English | Short Supabase setup: base `devices` table, RLS snippet, env vars. |
-| [docs/从零搭建说明书.md](docs/从零搭建说明书.md) | 中文 | Full bring-up from empty DB (SQL migrations, Auth). Cloud signup section superseded by self-hosted doc above for **current production**. |
-| [docs/DATABASE_SPECIFICATION.md](docs/DATABASE_SPECIFICATION.md) | 中文 | Tables, columns, RLS intent, drift notes vs minimal DDL. |
-| [docs/网页使用手册.md](docs/网页使用手册.md) | 中文 | End-user flows by role and page. |
-| [board/README.md](board/README.md) | English | Web bridge modes (`supabase` vs `backend`) and parameters. |
+## 产品预览
 
-Production schema and policies are defined by the SQL files under **`docs/`** (run in the order listed in **从零搭建说明书** §5). The single-table summary in `DEPLOYMENT.md` is the minimal legacy path; the web app expects the full migration set.
+<p align="center">
+  <a href="https://upaieasy.cn"><img src="show/2.png" alt="管理员数据看板" width="90%"></a>
+</p>
 
-## Roles (web app)
+<p align="center"><sub>管理员数据看板 — 甲方业务、设备规模与财务估算一屏汇总</sub></p>
 
-Roles are stored in **`public.profiles.role`** (must match signup metadata where used). Four values, enforced in SQL and `frontend/src/types/roles.ts`:
+<table>
+  <tr>
+    <td width="50%" align="center"><b>登录 · 多职能注册</b><br><sub>入群码 + 管理员 / 运维 / 场景 / 执行员</sub><br><br><a href="https://upaieasy.cn"><img src="show/1.png" alt="登录注册" width="100%"></a></td>
+    <td width="50%" align="center"><b>群组 · 豆小秘</b><br><sub>@ 机器人导航、代填表单、流程问答</sub><br><br><a href="https://upaieasy.cn"><img src="show/3.png" alt="群组与 AI 助手" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><b>设备登记 · 贴签二维码</b><br><sub>关联甲方业务，自动生成登记编号</sub><br><br><a href="https://upaieasy.cn"><img src="show/4.png" alt="设备登记" width="100%"></a></td>
+    <td width="50%" align="center"><b>设备卡片 · 状态维护</b><br><sub>分配执行员、扫码信息、异常 / 返厂</sub><br><br><a href="https://upaieasy.cn"><img src="show/5.png" alt="设备卡片" width="100%"></a></td>
+  </tr>
+</table>
 
-| Value | UI label (zh) | Typical access |
-|-------|----------------|----------------|
-| `admin` | 管理员 | Admin console, create work group, fleet device tab, scene tasks (incl. batch draft), executor map, group moderation. |
-| `device_operator` | 设备运维员 | Own devices, device management (register + external devices + search), work group. |
-| `scene_operator` | 场景业务员 | Scene business (tasks, party demands, workstations), work group. |
-| `collection_executor` | 数采执行员 | Executor map, scene collection view (published tasks + hours), work group. |
+<p align="center">
+  <a href="https://upaieasy.cn"><strong>→ 前往 upaieasy.cn 体验</strong></a>
+</p>
 
-Route guards live in `frontend/src/App.tsx` (`RoleRoute`). KPI copy targets the three non-admin roles (`frontend/src/api/kpiMetrics.ts`).
+---
 
-## Quick start (web + Supabase)
+## 为什么选 upaieasy!
 
-**Production** uses **self-hosted Supabase on CVM** (`146.56.200.250`), not Supabase Cloud — see [docs/自建Supabase服务器连接说明.md](docs/自建Supabase服务器连接说明.md) before changing any `.env` or running `supabase link`.
+| 痛点 | upaieasy! 的做法 |
+|------|------------------|
+| 设备分散在 Excel、群聊和纸质贴签里 | 在线设备 + 离线设备统一登记，**二维码贴签**，心跳与校准状态一屏总览 |
+| 甲方需求、场景、排班各用各的表 | **大场景 → 小岗位 → 采集排班** 层级清晰，发布即分配设备编号 |
+| 执行员不知道今天去哪、用哪台机 | 执行员只看**分配给自己的设备**与排班，支持上下班打卡 |
+| 管理员算不清工时和收入 | 管理台 **KPI + 财务估算**（甲方单价 × 工时 − 执行员成本） |
+| 培训成本高、表单填错多 | 群内 **AI 助手（豆小秘）** 代填甲方业务、大场景、排班等表单 |
 
-1. Run migrations from **`docs/`** on the **self-hosted** Postgres (see 从零搭建说明书 §5, or [DEPLOYMENT.md](DEPLOYMENT.md) for a minimal legacy path).
-2. Promote the first user to `admin` in `profiles` (see 从零搭建说明书 §6).
-3. Frontend:
+**开箱即用：** React 单页应用 + Supabase（Postgres / Auth / RLS / Storage / Edge Functions），无需自写后端业务 API。  
+**可私有化部署：** 支持自建 Supabase（Docker on CVM），数据留在你的服务器。
+
+---
+
+## 核心能力
+
+### 设备管理
+- **在线设备**：注册、心跳、校准、固件与备注；设备二维码扫码识别
+- **离线 / 外部设备**：关联甲方业务，生成 **10 位 hex 登记编号** 与贴签二维码
+- **批量分配**：运维将空闲设备分配给数采执行员；执行员总览**仅可见已分配设备**
+
+### 场景与排班
+- **甲方业务**（管理员）：设备类型、快照、总小时量、**按大场景批复小时**、结算单价
+- **场景岗位**：大场景（全景图 + 地址联系人）→ 小岗位（工位快照）
+- **采集排班**：选岗位 + 执行员 + 设备数 → 发布 → 自动匀出离线设备编号 → 执行员打卡
+
+### 协作与激励
+- **工作群组**：入群码审批、成员多职能、群内话题
+- **悬赏令**：管理员发布工时池，执行员领取
+- **钱包与结算**：执行员侧流水与积分体系（与悬赏 / 结算 RPC 联动）
+
+### 管理台
+- 分角色 **KPI**（设备完好率 / 场景数 / 数据量）与考核周期
+- **全员公告**、**财务估算看板**（按甲方拆分）
+
+### AI 助手
+- Supabase Edge Function `scene-ai-agent` + 前端 **豆小秘**
+- 群聊 @ 机器人：导航、代填表单、业务流程问答（权限与角色对齐）
+
+---
+
+## 多角色，一个平台
+
+权限为 `profiles.roles[]` **并集**；支持一人身兼多职（如运维 + 场景）。
+
+| 职能 | 典型能力 |
+|------|----------|
+| **平台管理员** | 管理台、群组、甲方业务、全量设备、悬赏发布、财务看板 |
+| **设备运维员** | 设备总览 / 管理、离线设备登记与分配、运维工作台 |
+| **场景业务员** | 采集排班、大场景与小岗位维护 |
+| **数采执行员** | 采集排班打卡、已分配设备只读总览、悬赏、钱包 |
+
+详细交互说明见 **[网页使用手册](docs/网页使用手册.md)**。
+
+---
+
+## 架构一览
+
+```mermaid
+flowchart LR
+  subgraph Client["浏览器"]
+    SPA["React SPA\n(Vite + Tailwind)"]
+    Bot["豆小秘 / 群聊"]
+  end
+
+  subgraph Supabase["Supabase（可自建）"]
+    Auth["Auth"]
+    PG["PostgreSQL + RLS"]
+    Storage["Storage\n工位 / 设备快照"]
+    Edge["Edge Functions\nscene-ai-agent"]
+  end
+
+  subgraph EdgeHW["现场"]
+    Online["在线设备\n心跳 / 存储"]
+    Offline["离线贴签设备"]
+    Board["ROS2 Web Bridge\n(可选)"]
+  end
+
+  SPA --> Auth
+  SPA --> PG
+  SPA --> Storage
+  Bot --> Edge
+  Edge --> PG
+  Board --> PG
+  Online --> PG
+  Offline --> PG
+```
+
+| 目录 | 说明 |
+|------|------|
+| [`frontend/`](frontend/) | **主产品**：React 19 + TypeScript + Tailwind 4 |
+| [`supabase/functions/`](supabase/functions/) | Edge Functions（场景 AI 等） |
+| [`docs/`](docs/) | 用户与运维文档 |
+| [`backend/`](backend/) | 可选 FastAPI + CLI（USB 注册 /  provisioning） |
+| [`board/`](board/) | 可选 ROS 2 → HTTPS 心跳桥接 |
+
+---
+
+## 快速开始
+
+### 1. 连接 Supabase
+
+生产库已在 **CVM 自建 Supabase** 上就绪，见 **[自建 Supabase 连接说明](docs/自建Supabase服务器连接说明.md)**（API 地址、`ANON_KEY`、禁止连官方云）。
+
+### 2. 启动前端
 
 ```bash
 cd frontend
 npm install
 cp .env.example .env
-# Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+# 编辑 VITE_SUPABASE_URL、VITE_SUPABASE_ANON_KEY（仅 anon key，勿泄露 service_role）
 npm run dev
 ```
 
-App defaults to `http://localhost:5173`. Do **not** put the `service_role` key in the frontend `.env`.
+浏览器打开 `http://localhost:5173`。首个用户可在 `profiles` 中设为 `admin`，或使用注册页的「平台管理员」入口（视部署策略而定）。
 
-## Quick start (backend + CLI, optional)
+### 3. 可选：Edge Function（AI 助手）
+
+```bash
+# 见 scripts/server/deploy_scene_ai_agent.sh；密钥配置见 docs/自建Supabase服务器连接说明.md §6
+bash scripts/server/deploy_scene_ai_agent.sh
+```
+
+### 4. 可选：设备 CLI / 板端
 
 ```bash
 cd backend
 pip install -r requirements.txt
-cp .env.example .env
-# Set DATABASE_URL (Supabase pooler URI recommended for Postgres)
-
-python -m pytest tests/ -v
-
-# Example: one-shot provision (board on USB serial)
-python cli.py provision --port /dev/ttyUSB0
-
-# Or API server
-uvicorn app.main:app --reload --port 8000
+python cli.py provision --port /dev/ttyUSB0   # Linux；Windows 用 COM 口
 ```
 
-On Windows, replace `/dev/ttyUSB0` with the appropriate COM port.
+板端 ROS 2 桥接见 [`board/README.md`](board/README.md)。
 
-## Cloud deployment (Supabase-first)
+---
 
-- Static hosting (Vercel, Netlify, S3+CloudFront, etc.) for `frontend` build output; inject the same `VITE_*` variables.
-- No Node server required for the SPA; data goes through Supabase PostgREST.
-- Full checklist and SQL order: [docs/从零搭建说明书.md](docs/从零搭建说明书.md).
+## 文档索引
 
-## CLI reference
+| 文档 | 读者 | 内容 |
+|------|------|------|
+| [网页使用手册](docs/网页使用手册.md) | 终端用户 | 按角色与页面的操作说明 |
+| [自建 Supabase 服务器连接说明](docs/自建Supabase服务器连接说明.md) | 运维 / 开发 | 生产 CVM、密钥、SQL、Edge Function |
+| [board/README.md](board/README.md) | 嵌入式 | ROS 2 Web Bridge 板端心跳 |
 
-```
-python cli.py detect    [--port /dev/ttyUSB0]          # probe board, print CPU serial
-python cli.py generate                                  # new device_id + readable_name
-python cli.py register  [--port ... | --serial-id ...]  # register + QR
-python cli.py provision [--port ...]                    # detect + IDs + write board + register
-python cli.py list      [--status active] [--limit 20]
-python cli.py search    <query>
-python cli.py get       <device_id>
-python cli.py update    <device_id> --status ...
-python cli.py delete    <device_id>                   # soft-delete → retired
-python cli.py qr        <device_id> [-o file.png]
-```
+---
 
-### `provision` — one-shot device setup
+## 技术栈
 
-1. USB-serial: read CPU serial  
-2. Generate `device_id` (UUID) and `readable_name` (incrementing number)  
-3. Write JSON to the board under `/etc/UPAIego/device_id.json`  
-4. Save QR PNG locally  
-5. Insert row in the database  
+- **前端：** React 19 · React Router 7 · TypeScript · Vite 7 · Tailwind CSS 4
+- **后端数据：** Supabase（PostgREST · GoTrue · Row Level Security · Storage）
+- **地图：** 高德 JS API（数采地图，可按环境开关）
+- **AI：** 火山方舟 / 豆包（Edge Function 可配置）
+- **设备侧：** Python FastAPI · ROS 2 Web Bridge · USB 串口 provisioning CLI
 
-## API reference (FastAPI, optional)
+---
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/devices/detect` | Detect board → `serial_id` |
-| POST | `/api/devices/generate` | New `device_id` / `readable_name` |
-| POST | `/api/devices/register` | Register (port or `serial_id`) |
-| POST | `/api/devices/provision` | Full provision pipeline |
-| GET | `/api/devices` | List (`offset`, `limit`, `status`, `calibration_status`) |
-| GET | `/api/devices/search?q=` | Search id / name / serial / notes |
-| GET | `/api/devices/{id}` | One device |
-| PUT | `/api/devices/{id}` | Update fields |
-| DELETE | `/api/devices/{id}` | Soft-delete → `retired` |
-| GET | `/api/devices/{id}/qr` | QR PNG |
-
-## Database (summary)
-
-The canonical model for production is **PostgreSQL on Supabase**: `devices`, `profiles`, work-group and scene-business tables, `scene_task_assignments`, `manual_tracked_devices`, `admin_kpis`, `admin_messages`, plus `auth.users` and optional **Storage** buckets (see migrations). Column list for `devices` and RLS discussion: **[docs/DATABASE_SPECIFICATION.md](docs/DATABASE_SPECIFICATION.md)**.
-
-Local **SQLite** via SQLAlchemy may lag the cloud schema; treat Supabase as source of truth for the web app.
-
-## QR code format
-
-QR encodes JSON:
-
-```json
-{"readable_name": "1", "device_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"}
-```
-
-## Project structure
-
-```
-backend/                 # FastAPI + CLI (optional)
-  cli.py
-  app/                   # main, database, models, routes, services
-  tests/                 # pytest, mocked hardware / in-memory SQLite
-board/
-  ros2_web_bridge/       # Optional ROS 2 HTTPS bridge to Supabase
-docs/                    # SQL migrations + zh-CN operational docs
-frontend/                # React 19 + Vite + Tailwind
-  src/
-    api/                 # supabase, client, groups, scenes, operations, …
-    auth/                # AuthContext, role labels
-    pages/               # Dashboard, devices, scene, map, admin, group, …
-    components/
-DEPLOYMENT.md            # English minimal deploy
-upaiego/                 # On-device ROS 2 package (separate from web bridge)
-```
-
-## Tests
+## 开发与测试
 
 ```bash
-cd backend
-python -m pytest tests/ -v
+# 前端
+cd frontend && npm run build && npm run lint
+
+# 后端（可选）
+cd backend && python -m pytest tests/ -v
+
+# 交付抽检脚本（在 CVM 上）
+bash scripts/server/delivery_test_verify.sh
+bash scripts/server/run_delivery_test_rls.sh
 ```
 
-Tests use mocked hardware and an in-memory SQLite database where applicable.
+---
+
+## 项目结构
+
+```
+upaiego-management/
+├── frontend/                 # Web 应用（主入口）
+│   ├── src/pages/            # 设备、场景、排班、管理台、悬赏…
+│   ├── src/api/              # Supabase 客户端封装
+│   ├── src/aitebot/          # 豆小秘上下文与表单推断
+│   └── edgeone.json          # 静态托管构建配置
+├── supabase/functions/       # Edge Functions
+├── docs/                     # 用户与运维文档
+├── backend/                  # FastAPI + CLI（可选）
+├── board/ros2_web_bridge/    # 板端心跳（可选）
+└── scripts/server/           # 部署与验收脚本
+```
+
+---
+
+## 关于
+
+**upaieasy!** 由 **爱特沃（湖北省武汉市洪山区）智能机器人有限公司** 打造，聚焦具身智能与机器人数据采集的现场运营。
+
+**官网：** [https://upaieasy.cn](https://upaieasy.cn) · [鄂ICP备2026023428号-1](https://beian.miit.gov.cn/)
+
+---
+
+<p align="center">
+  <sub>如果这个项目对你有帮助，欢迎 Star ⭐ 并分享给需要数采管理的团队。</sub>
+</p>

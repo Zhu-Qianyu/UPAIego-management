@@ -103,8 +103,7 @@ export default function AccountDeleteModal({ open, onClose, email }: Props) {
             {error}
             {/delete_own_account|42883|does not exist|Could not find the function/i.test(error) ? (
               <p className="mt-2 text-gray-600">
-                若提示函数不存在，请在 Supabase SQL Editor 中执行仓库内{" "}
-                <code className="bg-white px-1 rounded">docs/USER_ACCOUNT_DELETE_MIGRATION.sql</code>。
+                若提示函数不存在，请联系管理员在服务器数据库中部署账号注销相关函数。
               </p>
             ) : null}
           </div>
