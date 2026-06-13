@@ -10,8 +10,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
 > **在线地址：** [https://upaieasy.cn](https://upaieasy.cn)  
-> 面向机器人 / 具身智能数采团队：**从设备贴签、现场排班到执行打卡、工时结算**，一条链路跑通。  
-> 由 [爱特沃（湖北省武汉市洪山区）智能机器人有限公司](https://beian.miit.gov.cn/) 研发维护。
+> 面向机器人 / 具身智能数采团队：**从设备贴签、现场排班到执行打卡、工时结算**，一条链路跑通。
 
 ---
 
@@ -232,9 +231,9 @@ upaiego-management/
 
 ## 关于
 
-**upaieasy!** 由 **爱特沃（湖北省武汉市洪山区）智能机器人有限公司** 打造，聚焦具身智能与机器人数据采集的现场运营。
+**upaieasy!** 聚焦具身智能与机器人数据采集的现场运营。
 
-**官网：** [https://upaieasy.cn](https://upaieasy.cn) · [鄂ICP备2026023428号-1](https://beian.miit.gov.cn/)
+**官网：** [https://upaieasy.cn](https://upaieasy.cn)
 
 ---
 

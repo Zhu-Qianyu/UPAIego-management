@@ -4,8 +4,7 @@ import type { UserRole } from "../types/roles";
 import { NON_ADMIN_ROLES } from "../types/roles";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "../auth/roleLabels";
 import { validateRegisterRoles } from "../auth/roleUtils";
-import { SITE_DISPLAY_NAME, SITE_SUBTITLE } from "../branding";
-import SiteFooter from "../components/SiteFooter";
+import { SITE_DISPLAY_NAME, SITE_SUBTITLE, SITE_COMPANY_NAME, SITE_ICP_NUMBER, SITE_ICP_URL } from "../branding";
 import { ensureProfileRow } from "../api/profiles";
 import { validateInviteCode } from "../api/groups";
 import { formatAuthError } from "../utils/authErrors";
@@ -367,9 +366,20 @@ export default function AuthPage() {
                 </button>
               </form>
             </div>
+            <p className="mt-4 text-center text-[11px] leading-relaxed text-gray-500">
+              {SITE_COMPANY_NAME}
+              <span className="mx-1.5 text-gray-400">·</span>
+              <a
+                href={SITE_ICP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-500 hover:text-indigo-700 underline-offset-2 hover:underline"
+              >
+                {SITE_ICP_NUMBER}
+              </a>
+            </p>
           </div>
         </div>
-        <SiteFooter className="border-transparent bg-transparent" />
       </div>
     </div>
   );
