@@ -21,6 +21,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [registerRoles, setRegisterRoles] = useState<UserRole[]>(["device_operator"]);
+  const [registerAsAdmin, setRegisterAsAdmin] = useState(false);
   const [realName, setRealName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [invitePreview, setInvitePreview] = useState<string | null>(null);
@@ -29,7 +30,7 @@ export default function AuthPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const needsGroupCode = mode === "register";
+  const needsGroupCode = mode === "register" && !registerAsAdmin;
   const groupCodeMissing = needsGroupCode && !inviteCode.trim();
   const canSubmitRegister = mode === "login" || !groupCodeMissing;
 
@@ -73,20 +74,22 @@ export default function AuthPage() {
         const contactEmail = email.trim();
         const code = inviteCode.trim().toUpperCase();
 
-        const roles = validateRegisterRoles(registerRoles);
+        const roles = registerAsAdmin ? (["admin"] as UserRole[]) : validateRegisterRoles(registerRoles);
 
-        if (!code) {
-          setError(`${NON_ADMIN_ROLE_LIST.map((r) => ROLE_LABELS[r]).join("、")}注册时必须填写群组号，否则无法注册`);
-          return;
+        if (!registerAsAdmin) {
+          if (!code) {
+            setError(`${NON_ADMIN_ROLE_LIST.map((r) => ROLE_LABELS[r]).join("、")}注册时必须填写群组号，否则无法注册`);
+            return;
+          }
+          await validateInviteCode(code);
         }
-        await validateInviteCode(code);
 
         const meta: Record<string, string | string[]> = {
           roles,
           role: roles[0],
           phone: tel,
-          invite_code: code,
         };
+        if (!registerAsAdmin && code) meta.invite_code = code;
         if (name) meta.real_name = name;
         if (contactEmail) meta.contact_email = contactEmail;
 
@@ -106,7 +109,11 @@ export default function AuthPage() {
         }
 
         if (data.session) {
-          setMessage("注册已提交，请等待平台管理员在「群组管理」中审批通过后再使用系统。");
+          setMessage(
+            registerAsAdmin
+              ? "注册成功，已自动登录。"
+              : "注册已提交，请等待平台管理员在「群组管理」中审批通过后再使用系统。"
+          );
           setPassword("");
           return;
         }
@@ -156,7 +163,9 @@ export default function AuthPage() {
               <p className="text-sm text-gray-500 mb-6">
                 {mode === "login"
                   ? "使用手机号或邮箱与密码登录（老账号若无手机号请用注册邮箱）。"
-                  : "手机号注册；须填写有效群组号（任意管理员发放的均可），填哪个就加入哪个工作群，由该群管理员审批。"}
+                  : registerAsAdmin
+                    ? "平台管理员注册：无需群组号，注册后可直接创建/管理工作群。"
+                    : "业务成员注册：须填写有效群组号，由对应管理员审批入群。"}
               </p>
 
               <div className="grid grid-cols-2 gap-2 bg-gray-100/90 rounded-lg p-1 mb-5">
@@ -182,43 +191,65 @@ export default function AuthPage() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {mode === "register" && (
-                  <div>
-                    <span className="block text-xs font-medium text-gray-500 mb-2">注册职能（可多选）</span>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      {NON_ADMIN_ROLE_LIST.map((r) => {
-                        const checked = registerRoles.includes(r);
-                        return (
-                          <label
-                            key={r}
-                            className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border px-2 py-3 text-center text-sm transition-colors ${
-                              checked
-                                ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200"
-                                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                setRegisterRoles((prev) => {
-                                  if (prev.includes(r)) {
-                                    const next = prev.filter((x) => x !== r);
-                                    return next.length ? next : prev;
-                                  }
-                                  return [...prev, r];
-                                });
-                              }}
-                              className="sr-only"
-                            />
-                            <span className="font-medium text-gray-900 leading-snug">{ROLE_LABELS[r]}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-                      {registerRoles.map((r) => ROLE_DESCRIPTIONS[r]).join("；")}
-                    </p>
-                    <p className="mt-1 text-xs text-amber-700">注册必填群组号，归属对应管理员工作群</p>
+                  <div className="space-y-3">
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-violet-200 bg-violet-50/80 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={registerAsAdmin}
+                        onChange={(e) => {
+                          setRegisterAsAdmin(e.target.checked);
+                          if (e.target.checked) setInviteCode("");
+                        }}
+                        className="mt-0.5 rounded border-violet-300 text-violet-600 focus:ring-violet-500"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-violet-950">注册为平台管理员</span>
+                        <span className="block text-xs text-violet-800/90 mt-0.5 leading-relaxed">
+                          {ROLE_DESCRIPTIONS.admin} 无需群组号，不与其它职能兼任。
+                        </span>
+                      </span>
+                    </label>
+
+                    {!registerAsAdmin && (
+                      <>
+                        <span className="block text-xs font-medium text-gray-500">业务职能（可多选）</span>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          {NON_ADMIN_ROLE_LIST.map((r) => {
+                            const checked = registerRoles.includes(r);
+                            return (
+                              <label
+                                key={r}
+                                className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border px-2 py-3 text-center text-sm transition-colors ${
+                                  checked
+                                    ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200"
+                                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setRegisterRoles((prev) => {
+                                      if (prev.includes(r)) {
+                                        const next = prev.filter((x) => x !== r);
+                                        return next.length ? next : prev;
+                                      }
+                                      return [...prev, r];
+                                    });
+                                  }}
+                                  className="sr-only"
+                                />
+                                <span className="font-medium text-gray-900 leading-snug">{ROLE_LABELS[r]}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <p className="text-xs text-gray-500 leading-relaxed">
+                          {registerRoles.map((r) => ROLE_DESCRIPTIONS[r]).join("；")}
+                        </p>
+                        <p className="text-xs text-amber-700">注册必填群组号，归属对应管理员工作群</p>
+                      </>
+                    )}
                   </div>
                 )}
 
