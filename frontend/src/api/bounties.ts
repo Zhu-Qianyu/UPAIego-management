@@ -1,4 +1,6 @@
 import { supabase } from "./supabase";
+import { fetchProfile } from "./profiles";
+import { hasRole } from "../auth/roleUtils";
 
 export type BountyStatus = "open" | "fulfilled" | "closed";
 export type BountyClaimStatus = "active" | "completed" | "failed" | "expired" | "abandoned";
@@ -309,6 +311,12 @@ export async function publishBounty(input: {
 }): Promise<string> {
   if (!input.partyDemandIds.length) {
     throw new Error("请至少选择一种可用设备类型（甲方业务）");
+  }
+  const u = (await supabase.auth.getUser()).data.user;
+  if (!u) throw new Error("未登录");
+  const prof = await fetchProfile(u.id);
+  if (!hasRole(prof?.roles, "admin")) {
+    throw new Error("仅平台管理员可发布悬赏令");
   }
   const { data, error } = await supabase.rpc("publish_bounty", {
     p_group_id: input.groupId,

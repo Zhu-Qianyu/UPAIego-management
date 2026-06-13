@@ -34,8 +34,10 @@ import {
   uiSelect,
   UiButton,
 } from "../components/ui/PageLayout";
+import { useAuth } from "../auth/AuthContext";
 
 export default function BountyAdminPage() {
+  const { hasRole, loading: authLoading } = useAuth();
   const [groupId, setGroupId] = useState<string | null>(null);
   const [bounties, setBounties] = useState<Bounty[]>([]);
   const [claimsByBounty, setClaimsByBounty] = useState<Record<string, BountyClaim[]>>({});
@@ -218,6 +220,22 @@ export default function BountyAdminPage() {
   }
 
   const openCount = useMemo(() => bounties.filter((b) => b.status === "open").length, [bounties]);
+
+  if (authLoading) {
+    return (
+      <div className="py-16 flex justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (!hasRole("admin")) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-16 text-center text-gray-600 text-sm">
+        仅平台管理员可发布与管理悬赏令。
+      </div>
+    );
+  }
 
   if (loading) {
     return (
