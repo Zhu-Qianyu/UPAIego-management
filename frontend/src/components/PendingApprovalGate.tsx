@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 import { supabase } from "../api/supabase";
 import { fetchActiveGroupId, fetchMyMemberships, completeSignupGroupRequest } from "../api/groups";
 import { useAuth } from "../auth/AuthContext";
-import { ROLE_LABELS } from "../auth/roleLabels";
+import { formatRolesLabel, hasRole } from "../auth/roleUtils";
 import { formatPhoneDisplay } from "../utils/phoneAuth";
 import Spinner from "./Spinner";
 
@@ -20,11 +20,11 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
 
   const [blocked, setBlocked] = useState<"none" | "pending" | "rejected" | "no_group">("none");
   const profileId = profile?.id;
-  const profileRole = profile?.role;
+  const isAdmin = hasRole(profile?.roles, "admin");
   const initialCheckDoneRef = useRef(false);
 
   const check = useCallback(async () => {
-    if (!profileId || profileRole === "admin") {
+    if (!profileId || isAdmin) {
       setBlocked("none");
       setChecking(false);
       return;
@@ -53,7 +53,7 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
     } finally {
       setChecking(false);
     }
-  }, [profileId, profileRole]);
+  }, [profileId, isAdmin]);
 
   useEffect(() => {
     if (!initialCheckDoneRef.current) {
@@ -95,7 +95,7 @@ export default function PendingApprovalGate({ children }: { children: React.Reac
         <p className="text-sm text-gray-600 leading-relaxed">
           {blocked === "pending" ? (
             <>
-              您的账号（{ROLE_LABELS[profile!.role]} · 手机 {formatPhoneDisplay(profile!.phone)}）
+              您的账号（{profile ? formatRolesLabel(profile.roles) : "—"} · 手机 {formatPhoneDisplay(profile!.phone)}）
               {pendingGroupName ? <> 已申请加入「{pendingGroupName}」</> : null}
               。请等待<strong>该工作群的平台管理员</strong>在「群组管理 → 待审批入群」中通过。
             </>

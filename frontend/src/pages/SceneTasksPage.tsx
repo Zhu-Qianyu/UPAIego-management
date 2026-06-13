@@ -1838,7 +1838,7 @@ function ScenarioWorkstationsTab({
 type SceneShellCacheV1 = { v: 1; groupId: string | null; demands: PartyDemand[]; tab: Tab };
 
 export default function SceneTasksPage() {
-  const { session, profile } = useAuth();
+  const { session, hasRole, hasAnyRole } = useAuth();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -1847,7 +1847,8 @@ export default function SceneTasksPage() {
     [session?.user?.id, location.pathname]
   );
 
-  const isExecutorView = profile?.role === "collection_executor";
+  const isExecutorView =
+    hasRole("collection_executor") && !hasAnyRole(["admin", "scene_operator"]);
 
   const tabFromUrl = searchParams.get("tab");
   const initialTab: Tab =

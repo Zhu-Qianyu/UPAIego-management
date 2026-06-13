@@ -1,5 +1,11 @@
 import { FORM_ROLES } from "./formCatalog.ts";
 
+function formAllowed(roles: string | readonly string[], form: string): boolean {
+  const list = Array.isArray(roles) ? roles : [roles];
+  const allowed = FORM_ROLES[form];
+  return !!allowed && list.some((r) => allowed.includes(r));
+}
+
 export type FormFillSpec = {
   form: string;
   label: string;
@@ -112,8 +118,8 @@ function extractPublicCodes(text: string): string[] {
   return [...found];
 }
 
-function inferManualDevicesBatchDelete(text: string, role: string): FormFillSpec | null {
-  if (!FORM_ROLES.manual_devices_batch_delete?.includes(role)) return null;
+function inferManualDevicesBatchDelete(text: string, roles: string | readonly string[]): FormFillSpec | null {
+  if (!formAllowed(roles, "manual_devices_batch_delete")) return null;
   if (!/(?:删除|移除|作废).*(?:离线)?设备|(?:离线)?设备.*(?:删除|移除|作废)/i.test(text)) return null;
   const public_codes = extractPublicCodes(text);
   const client_company = extractClientCompany(text);
@@ -131,8 +137,8 @@ function inferManualDevicesBatchDelete(text: string, role: string): FormFillSpec
   };
 }
 
-function inferManualDevicesBatchAssign(text: string, role: string): FormFillSpec | null {
-  if (!FORM_ROLES.manual_devices_batch_assign?.includes(role)) return null;
+function inferManualDevicesBatchAssign(text: string, roles: string | readonly string[]): FormFillSpec | null {
+  if (!formAllowed(roles, "manual_devices_batch_assign")) return null;
   const release = /(?:设为空闲|取消分配|释放设备|收回设备)/i.test(text);
   const assign = /(?:分配|分给|指派).*(?:设备|执行员)|把.*设备.*(?:给|到)/i.test(text);
   if (!release && !assign) return null;
@@ -162,8 +168,8 @@ function inferManualDevicesBatchAssign(text: string, role: string): FormFillSpec
   };
 }
 
-function inferManualDevicesBatch(text: string, role: string): FormFillSpec | null {
-  if (!FORM_ROLES.manual_devices_batch_create?.includes(role)) return null;
+function inferManualDevicesBatch(text: string, roles: string | readonly string[]): FormFillSpec | null {
+  if (!formAllowed(roles, "manual_devices_batch_create")) return null;
   if (!/(?:增加|添加|登记|创建).*(?:离线)?设备|(?:离线)?设备.*(?:增加|添加|登记)/i.test(text)) return null;
   const count = parseDeviceCount(text);
   const client_company = extractClientCompany(text);
@@ -181,8 +187,8 @@ function inferManualDevicesBatch(text: string, role: string): FormFillSpec | nul
   };
 }
 
-function inferPartyDemandCreate(text: string, role: string): FormFillSpec | null {
-  if (!FORM_ROLES.party_demand_create?.includes(role)) return null;
+function inferPartyDemandCreate(text: string, roles: string | readonly string[]): FormFillSpec | null {
+  if (!formAllowed(roles, "party_demand_create")) return null;
   const patterns = [
     /(?:添加|创建|填(?:写)?|录入)(?:一?[条个])?甲方业务\s*[，,：:\s]+([^，,\n]+)/i,
     /(?:添加|创建)甲方业务[，,]\s*([^，,\n]+)/i,
@@ -206,8 +212,8 @@ function inferPartyDemandCreate(text: string, role: string): FormFillSpec | null
   };
 }
 
-function inferSceneMacroCreate(text: string, role: string): FormFillSpec | null {
-  if (!FORM_ROLES.scene_macro_create?.includes(role)) return null;
+function inferSceneMacroCreate(text: string, roles: string | readonly string[]): FormFillSpec | null {
+  if (!formAllowed(roles, "scene_macro_create")) return null;
   const macroMatch = text.match(/(?:帮我)?(?:创建|填|录入|添加)(?:一?[条个])?大场景[：:]\s*([\s\S]+)/i);
   if (!macroMatch) return null;
   const body = macroMatch[1];
@@ -233,19 +239,19 @@ function inferSceneMacroCreate(text: string, role: string): FormFillSpec | null 
   };
 }
 
-export function inferFormFillsFromUserText(text: string, role: string): FormFillSpec[] {
+export function inferFormFillsFromUserText(text: string, roles: string | readonly string[]): FormFillSpec[] {
   const t = text.trim();
   if (!t) return [];
   const out: FormFillSpec[] = [];
-  const batchDelete = inferManualDevicesBatchDelete(t, role);
+  const batchDelete = inferManualDevicesBatchDelete(t, roles);
   if (batchDelete) out.push(batchDelete);
-  const batchAssign = inferManualDevicesBatchAssign(t, role);
+  const batchAssign = inferManualDevicesBatchAssign(t, roles);
   if (batchAssign) out.push(batchAssign);
-  const batch = inferManualDevicesBatch(t, role);
+  const batch = inferManualDevicesBatch(t, roles);
   if (batch && !batchDelete && !batchAssign) out.push(batch);
-  const party = inferPartyDemandCreate(t, role);
+  const party = inferPartyDemandCreate(t, roles);
   if (party && !batch && !batchDelete && !batchAssign) out.push(party);
-  const macro = inferSceneMacroCreate(t, role);
+  const macro = inferSceneMacroCreate(t, roles);
   if (macro) out.push(macro);
   return out.slice(0, 3);
 }

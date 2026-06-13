@@ -39,6 +39,7 @@ export default function ImShell({
   groupName,
   members,
   userRole,
+  userRoles,
   userId,
   canSend,
   displayNameByUserId,
@@ -50,6 +51,7 @@ export default function ImShell({
   groupName: string;
   members: MemberRow[];
   userRole: UserRole;
+  userRoles?: UserRole[];
   userId: string | undefined;
   canSend: boolean;
   displayNameByUserId: Map<string, string>;
@@ -148,6 +150,7 @@ export default function ImShell({
           embedded
           groupId={groupId}
           userRole={userRole}
+          userRoles={userRoles}
           userId={userId}
           displayNameByUserId={displayNameByUserId}
           setErr={setErr}
@@ -164,6 +167,7 @@ export default function ImShell({
         <BotChatPanel
           groupId={groupId}
           userRole={userRole}
+          userRoles={userRoles}
           onShowSessionList={showSessionList}
         />
       );

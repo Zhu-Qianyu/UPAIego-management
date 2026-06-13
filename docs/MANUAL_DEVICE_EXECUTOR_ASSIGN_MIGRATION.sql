@@ -1,4 +1,4 @@
--- 设备管理：离线登记设备分配给采集执行员（含管理员代操作）
+-- 设备管理：离线登记设备分配给采集执行员（身兼数职：has_profile_role / roles 数组）
 
 CREATE OR REPLACE FUNCTION public.assign_manual_tracked_device_to_executor(
   p_public_code text,
@@ -14,10 +14,8 @@ DECLARE
   v_group uuid;
   v_device_id text;
   v_id uuid;
-  v_role text;
 BEGIN
-  v_role := public.current_profile_role();
-  IF v_role NOT IN ('admin', 'device_operator') THEN
+  IF NOT public.has_any_profile_role(ARRAY['admin', 'device_operator']) THEN
     RAISE EXCEPTION 'forbidden';
   END IF;
 
@@ -35,7 +33,7 @@ BEGIN
     RAISE EXCEPTION 'device not found';
   END IF;
 
-  IF v_role = 'device_operator' THEN
+  IF public.has_profile_role('device_operator') AND NOT public.has_profile_role('admin') THEN
     IF v_group IS DISTINCT FROM public.user_active_group_id() THEN
       RAISE EXCEPTION 'device not in your active work group';
     END IF;
@@ -69,7 +67,7 @@ BEGIN
     FROM public.profiles p
     JOIN public.group_members gm ON gm.user_id = p.id
     WHERE p.id = p_executor_id
-      AND p.role = 'collection_executor'
+      AND 'collection_executor' = ANY(COALESCE(p.roles, ARRAY[p.role]))
       AND gm.group_id = v_group
       AND gm.membership_status = 'active'
   ) THEN
@@ -102,10 +100,8 @@ DECLARE
   v_code text;
   v_group uuid;
   v_device_id text;
-  v_role text;
 BEGIN
-  v_role := public.current_profile_role();
-  IF v_role NOT IN ('admin', 'device_operator') THEN
+  IF NOT public.has_any_profile_role(ARRAY['admin', 'device_operator']) THEN
     RAISE EXCEPTION 'forbidden';
   END IF;
 
@@ -123,7 +119,7 @@ BEGIN
     RAISE EXCEPTION 'device not found';
   END IF;
 
-  IF v_role = 'device_operator' THEN
+  IF public.has_profile_role('device_operator') AND NOT public.has_profile_role('admin') THEN
     IF v_group IS DISTINCT FROM public.user_active_group_id() THEN
       RAISE EXCEPTION 'device not in your active work group';
     END IF;

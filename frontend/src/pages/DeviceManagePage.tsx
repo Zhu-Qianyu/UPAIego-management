@@ -7,22 +7,22 @@ import { useAuth } from "../auth/AuthContext";
 type Tab = "devices" | "search" | "fleet";
 
 export default function DeviceManagePage() {
-  const { profile } = useAuth();
+  const { hasRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
 
   const tab: Tab =
     tabParam === "search"
       ? "search"
-      : tabParam === "fleet" && profile?.role === "admin"
+      : tabParam === "fleet" && hasRole("admin")
         ? "fleet"
         : "devices";
 
   useEffect(() => {
-    if (tabParam === "fleet" && profile?.role !== "admin") {
+    if (tabParam === "fleet" && !hasRole("admin")) {
       setSearchParams({}, { replace: true });
     }
-  }, [tabParam, profile?.role, setSearchParams]);
+  }, [tabParam, hasRole, setSearchParams]);
 
   useEffect(() => {
     if (tabParam === "register" || tabParam === "offline") {
@@ -79,7 +79,7 @@ export default function DeviceManagePage() {
         >
           搜索
         </button>
-        {profile?.role === "admin" && (
+        {hasRole("admin") && (
           <button
             type="button"
             role="tab"
@@ -104,7 +104,7 @@ export default function DeviceManagePage() {
       >
         {tab === "devices" && <ManualDevicesTab />}
         {tab === "search" && <Search embedded />}
-        {tab === "fleet" && profile?.role === "admin" && <ManualDevicesTab fleetMode />}
+        {tab === "fleet" && hasRole("admin") && <ManualDevicesTab fleetMode />}
       </section>
     </div>
   );

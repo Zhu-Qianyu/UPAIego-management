@@ -96,6 +96,7 @@ export async function sendSceneAgentMessage(args: {
   groupId: string;
   pageContext?: AitebotPageContext;
   role?: string;
+  roles?: string[];
 }): Promise<AgentResponse> {
   if (!isSceneAiEnabled()) {
     throw new Error("智能助手未启用。请在环境变量中设置 VITE_SCENE_AI_ENABLED=true 并部署 Edge Function（豆包：ARK_API_KEY + ARK_MODEL）。");
@@ -118,12 +119,16 @@ export async function sendSceneAgentMessage(args: {
     throw new Error(payload.error);
   }
 
-  const role = (args.role ?? "collection_executor") as import("../types/roles").UserRole;
+  const roles = (args.roles?.length
+    ? args.roles
+    : args.role
+      ? [args.role]
+      : ["collection_executor"]) as import("../types/roles").UserRole[];
   const lastUserText = [...args.messages].reverse().find((m) => m.role === "user")?.content ?? "";
-  let pending_form_fills = normalizePendingFormFills(payload.pending_form_fills, role);
+  let pending_form_fills = normalizePendingFormFills(payload.pending_form_fills, roles);
   const usedInfer = !pending_form_fills.length;
   if (usedInfer) {
-    pending_form_fills = inferFormFillsFromUserText(lastUserText, role);
+    pending_form_fills = inferFormFillsFromUserText(lastUserText, roles);
   }
 
   let assistant_message = payload.assistant_message ?? "";

@@ -12,8 +12,8 @@ import { useAuth } from "../auth/AuthContext";
 import Spinner from "../components/Spinner";
 
 export default function Search({ embedded }: { embedded?: boolean }) {
-  const { profile } = useAuth();
-  const searchScope = profile?.role === "admin" ? "fleet" : "own";
+  const { hasRole } = useAuth();
+  const searchScope = hasRole("admin") ? "fleet" : "own";
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ManualTrackedDevice[]>([]);

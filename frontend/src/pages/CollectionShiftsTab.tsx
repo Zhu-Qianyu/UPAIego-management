@@ -36,8 +36,8 @@ export default function CollectionShiftsTab({
   groupId: string;
   isExecutorView: boolean;
 }) {
-  const { profile } = useAuth();
-  const canManage = profile?.role === "admin" || profile?.role === "scene_operator";
+  const { hasAnyRole } = useAuth();
+  const canManage = hasAnyRole(["admin", "scene_operator"]);
 
   const [bundles, setBundles] = useState<CollectionShiftBundle[]>([]);
   const [positions, setPositions] = useState<ScenarioPosition[]>([]);

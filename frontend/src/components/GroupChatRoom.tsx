@@ -76,6 +76,7 @@ function groupChatToAiHistory(messages: GroupChatMessage[]): { role: "user" | "a
 export default function GroupChatRoom({
   groupId,
   userRole,
+  userRoles,
   userId,
   displayNameByUserId,
   setErr,
@@ -88,6 +89,7 @@ export default function GroupChatRoom({
 }: {
   groupId: string;
   userRole: UserRole;
+  userRoles?: UserRole[];
   userId: string | undefined;
   displayNameByUserId: Map<string, string>;
   setErr: (s: string) => void;
@@ -111,6 +113,7 @@ export default function GroupChatRoom({
   const bottomRef = useRef<HTMLDivElement>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
 
+  const roles = userRoles?.length ? userRoles : [userRole];
   const quickTopics = QUICK_TOPICS_BY_ROLE[userRole] ?? [];
 
   const scrollToBottom = useCallback(() => {
@@ -241,7 +244,7 @@ export default function GroupChatRoom({
         setErr("请先上传所需图片后再点「直接帮我干」");
         return;
       }
-      const result = await executeAgentFormFills(groupId, userRole, specs, imageMap);
+      const result = await executeAgentFormFills(groupId, roles, specs, imageMap);
       let text = msg.content;
       if (result.summaries.length) text += `\n\n✅ ${result.summaries.join("；")}`;
       if (result.errors.length) text += `\n\n⚠️ ${result.errors.join("；")}`;
@@ -262,7 +265,7 @@ export default function GroupChatRoom({
         executeActions([{ type: "refresh", target: "scene" }]);
       }
     },
-    [executeActions, formFillImages, groupId, patchBotMessage, setErr, userRole]
+    [executeActions, formFillImages, groupId, patchBotMessage, roles, setErr]
   );
 
   const onConfirmActions = useCallback(
@@ -354,6 +357,7 @@ export default function GroupChatRoom({
         groupId,
         pageContext,
         role: userRole,
+        roles,
       });
 
       const assistantText =

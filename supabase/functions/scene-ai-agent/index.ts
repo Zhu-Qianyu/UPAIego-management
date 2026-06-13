@@ -46,6 +46,25 @@ type GroupRulesUpdate = {
 
 const VALID_ROLES = ["admin", "device_operator", "scene_operator", "collection_executor"] as const;
 
+function normalizeProfileRoles(roleRaw: unknown, rolesRaw: unknown): string[] {
+  if (Array.isArray(rolesRaw) && rolesRaw.length) {
+    const picked = rolesRaw.map(String).filter((r) => (VALID_ROLES as readonly string[]).includes(r));
+    if (picked.includes("admin")) return ["admin"];
+    const unique = [...new Set(picked.filter((r) => r !== "admin"))];
+    if (unique.length) return unique;
+  }
+  const role = String(roleRaw ?? "").trim();
+  if ((VALID_ROLES as readonly string[]).includes(role)) {
+    return role === "admin" ? ["admin"] : [role];
+  }
+  return ["device_operator"];
+}
+
+function hasAnyProfileRole(roles: readonly string[], allow: readonly string[]): boolean {
+  if (roles.includes("admin")) return allow.includes("admin");
+  return allow.some((r) => roles.includes(r));
+}
+
 const ROLE_LABELS: Record<string, string> = {
   admin: "管理员",
   device_operator: "设备运维员",
@@ -197,7 +216,7 @@ function normalizeTargetRoles(raw: unknown): string[] | null {
   return out.length ? out : null;
 }
 
-function parseBroadcast(raw: unknown, callerRole: string): BroadcastSpec | null {
+function parseBroadcast(raw: unknown, callerRoles: readonly string[]): BroadcastSpec | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const title = String(o.title ?? "").trim();
@@ -205,7 +224,7 @@ function parseBroadcast(raw: unknown, callerRole: string): BroadcastSpec | null 
   const targetRoles = normalizeTargetRoles(o.target_roles);
   if (!title || !body || !targetRoles) return null;
 
-  if (callerRole !== "admin") {
+  if (!hasAnyProfileRole(callerRoles, ["admin"])) {
     return null;
   }
 
@@ -219,8 +238,8 @@ function parseBroadcast(raw: unknown, callerRole: string): BroadcastSpec | null 
   };
 }
 
-function parseGroupRulesUpdate(raw: unknown, callerRole: string): GroupRulesUpdate | null {
-  if (callerRole !== "admin") return null;
+function parseGroupRulesUpdate(raw: unknown, callerRoles: readonly string[]): GroupRulesUpdate | null {
+  if (!hasAnyProfileRole(callerRoles, ["admin"])) return null;
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const mode = String(o.mode ?? "").trim().toLowerCase();
@@ -270,14 +289,16 @@ async function fetchGroupMemberSummary(
   if (error || !members?.length) return "群内暂无 active 成员。";
 
   const ids = members.map((m) => m.user_id);
-  const { data: profiles } = await supabase.from("profiles").select("id, role, display_name").in("id", ids);
+  const { data: profiles } = await supabase.from("profiles").select("id, role, roles, display_name").in("id", ids);
 
   const counts: Record<string, number> = {};
   const names: string[] = [];
   for (const p of profiles ?? []) {
-    const role = String(p.role ?? "unknown");
-    counts[role] = (counts[role] ?? 0) + 1;
-    const label = ROLE_LABELS[role] ?? role;
+    const roles = normalizeProfileRoles(p.role, p.roles);
+    for (const role of roles) {
+      counts[role] = (counts[role] ?? 0) + 1;
+    }
+    const label = roles.map((r) => ROLE_LABELS[r] ?? r).join("/");
     const name = p.display_name?.trim() || "未命名";
     names.push(`${name}(${label})`);
   }
@@ -403,7 +424,10 @@ async function fetchFormContext(
     })
     .join("；");
   const executorLines = (profiles ?? [])
-    .filter((p) => p.role === "collection_executor" && memberIds.includes(p.id))
+    .filter((p) => {
+      const roles = normalizeProfileRoles(p.role, p.roles);
+      return roles.includes("collection_executor") && memberIds.includes(p.id);
+    })
     .slice(0, 20)
     .map((p) => {
       const name = p.real_name?.trim() || p.display_name?.trim() || p.id.slice(0, 8);
@@ -427,7 +451,7 @@ type FormFillSpec = {
   data: Record<string, unknown>;
 };
 
-function parseFormFills(raw: unknown, callerRole: string): FormFillSpec[] {
+function parseFormFills(raw: unknown, callerRoles: readonly string[]): FormFillSpec[] {
   if (!Array.isArray(raw)) return [];
   const out: FormFillSpec[] = [];
   for (const item of raw.slice(0, 3)) {
@@ -435,7 +459,7 @@ function parseFormFills(raw: unknown, callerRole: string): FormFillSpec[] {
     const o = item as Record<string, unknown>;
     const form = String(o.form ?? "").trim();
     const allowed = FORM_ROLES[form];
-    if (!allowed?.includes(callerRole)) continue;
+    if (!allowed || !hasAnyProfileRole(callerRoles, allowed)) continue;
     const label = String(o.label ?? "").trim();
     if (!label) continue;
     const data = o.data && typeof o.data === "object" ? (o.data as Record<string, unknown>) : null;
@@ -468,15 +492,15 @@ function needsGroupRulesDetail(turns: ChatTurn[]): boolean {
 
 function buildAgentPayload(args: {
   parsed: Record<string, unknown>;
-  role: string;
+  roles: string[];
   lastUserText: string;
   rawAssistantFallback?: string;
 }) {
-  const { parsed, role, lastUserText, rawAssistantFallback } = args;
-  const broadcastSpec = parseBroadcast(parsed.broadcast, role);
-  const rulesUpdate = parseGroupRulesUpdate(parsed.group_rules_update, role);
-  const llmFormFills = parseFormFills(parsed.form_fills, role);
-  const formFills = llmFormFills.length ? llmFormFills : inferFormFillsFromUserText(lastUserText, role);
+  const { parsed, roles, lastUserText, rawAssistantFallback } = args;
+  const broadcastSpec = parseBroadcast(parsed.broadcast, roles);
+  const rulesUpdate = parseGroupRulesUpdate(parsed.group_rules_update, roles);
+  const llmFormFills = parseFormFills(parsed.form_fills, roles);
+  const formFills = llmFormFills.length ? llmFormFills : inferFormFillsFromUserText(lastUserText, roles);
 
   let assistantMessage =
     String(parsed.assistant_message ?? "").trim() ||
@@ -539,14 +563,15 @@ Deno.serve(async (req) => {
 
   const { data: profile, error: profileErr } = await supabase
     .from("profiles")
-    .select("role, display_name")
+    .select("role, roles, display_name")
     .eq("id", userData.user.id)
     .maybeSingle();
 
   if (profileErr) {
     return jsonResponse({ error: profileErr.message }, 500);
   }
-  const role = profile?.role as string | undefined;
+  const roles = normalizeProfileRoles(profile?.role, profile?.roles);
+  const role = roles[0];
   if (!role || !(VALID_ROLES as readonly string[]).includes(role)) {
     return jsonResponse({ error: "无效的用户角色" }, 403);
   }
@@ -584,8 +609,16 @@ Deno.serve(async (req) => {
     ? await fetchFormContext(supabase, body.groupId)
     : "【业务 ID 列表】用户未涉及录入/创建时省略；需要引用甲方/场景 ID 时请说明具体名称。";
   const groupRulesBlock = await fetchGroupRules(supabase, body.groupId, !includeGroupRulesDetail);
-  const roleLabel = ROLE_LABELS[role] ?? role;
   const displayName = profile?.display_name?.trim() || "用户";
+
+  const roleLabels = roles.map((r) => ROLE_LABELS[r] ?? r).join("、");
+  const isAdmin = hasAnyProfileRole(roles, ["admin"]);
+  const isSceneOp = hasAnyProfileRole(roles, ["scene_operator"]);
+  const permissionLine = isAdmin
+    ? "【权限】管理员可输出 broadcast / group_rules_update / form_fills（须请示；用户选「直接帮我干」或「跳转页面我自己搞」后执行）。"
+    : isSceneOp
+      ? "【限制】不可群发 broadcast；不可输出 group_rules_update；可输出本角色授权的 form_fills。"
+      : "【限制】不可群发、不可改群规定；可输出本角色授权的 form_fills。";
 
   const contextNote = [
     WORKFLOW_RULES,
@@ -594,20 +627,14 @@ Deno.serve(async (req) => {
     memberSummary,
     groupChatSummary,
     formContext,
-    `【当前对话者】${displayName}，角色：${roleLabel}（${role}）`,
+    `【当前对话者】${displayName}，职能：${roleLabels}（${roles.join(",")}）`,
     pc
       ? `【用户当前页面】${pc.pageTitle} (${pc.route})${pc.sceneTab ? `，场景子标签：${pc.sceneTab}` : ""}`
       : "",
     pc?.navItems?.length
-      ? `【该角色可跳转菜单】${pc.navItems.map((n) => `${n.label}:${n.path}`).join("；")}`
+      ? `【该用户可跳转菜单】${pc.navItems.map((n) => `${n.label}:${n.path}`).join("；")}`
       : "",
-    role !== "admin" && role !== "scene_operator"
-      ? "【限制】不可向非授权角色群发。"
-      : role === "scene_operator"
-        ? "【限制】不可群发 broadcast；不可输出 group_rules_update。"
-        : role !== "admin"
-          ? "【限制】不可群发、不可改群规定。"
-          : "【权限】管理员可输出 broadcast / group_rules_update / form_fills（须请示；用户选「直接帮我干」或「跳转页面我自己搞」后执行）。",
+    permissionLine,
     "【能力】可代填表单见 form_fills 目录；用户给出具体字段并要求创建/填写时，必须输出 form_fills，禁止仅 scene_tab 跳转。",
   ]
     .filter(Boolean)
@@ -687,7 +714,7 @@ Deno.serve(async (req) => {
     return jsonResponse(
       buildAgentPayload({
         parsed: fallbackParsed,
-        role,
+        roles,
         lastUserText,
         rawAssistantFallback: raw,
       })
@@ -697,7 +724,7 @@ Deno.serve(async (req) => {
   return jsonResponse(
     buildAgentPayload({
       parsed,
-      role,
+      roles,
       lastUserText,
     })
   );

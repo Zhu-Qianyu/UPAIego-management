@@ -14,40 +14,13 @@ type AitebotContextValue = {
 
 const AitebotContext = createContext<AitebotContextValue | null>(null);
 
-function navForRole(role: AitebotPageContext["role"]): { path: string; label: string }[] {
-  const map: Record<string, { path: string; label: string }[]> = {
-    admin: [
-      { path: "/admin", label: "管理台" },
-      { path: "/group", label: "群组" },
-      { path: "/devices/manage", label: "设备管理" },
-      { path: "/scene", label: "场景业务" },
-      { path: "/bounties", label: "悬赏令" },
-    ],
-    scene_operator: [
-      { path: "/scene", label: "场景业务" },
-      { path: "/group", label: "群组" },
-    ],
-    device_operator: [
-      { path: "/", label: "设备总览" },
-      { path: "/operator-work", label: "运维工作台" },
-      { path: "/group", label: "群组" },
-    ],
-    collection_executor: [
-      { path: "/map", label: "数采地图" },
-      { path: "/bounties", label: "悬赏令" },
-      { path: "/scene", label: "采集排班" },
-      { path: "/group", label: "群组" },
-      { path: "/wallet", label: "我的钱包" },
-    ],
-  };
-  return map[role] ?? [];
-}
-
+import { navForRoles } from "../auth/roleUtils";
 export function AitebotProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile } = useAuth();
-  const role = profile?.role ?? "scene_operator";
+  const { profile, activeRole } = useAuth();
+  const roles = profile?.roles ?? [];
+  const role = activeRole ?? profile?.role ?? "scene_operator";
   const [lastActions, setLastActions] = useState<AgentAction[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -57,9 +30,9 @@ export function AitebotProvider({ children }: { children: ReactNode }) {
         pathname: location.pathname,
         search: location.search,
         role,
-        navItems: navForRole(role),
+        navItems: navForRoles(roles).map((n) => ({ path: n.to, label: n.label })),
       }),
-    [location.pathname, location.search, role]
+    [location.pathname, location.search, role, roles]
   );
 
   const executeActions = useCallback(

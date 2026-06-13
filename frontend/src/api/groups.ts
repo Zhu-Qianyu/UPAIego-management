@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { fetchProfile, fetchProfilesByIds, type ProfileContact } from "./profiles";
 import type { UserRole } from "../types/roles";
+import { hasRole } from "../auth/roleUtils";
 
 const WG = "work_groups";
 const GM = "group_members";
@@ -86,14 +87,14 @@ export async function listGroupProfilesByRole(groupId: string, role: UserRole): 
   const members = await listAllGroupMembers(groupId);
   const ids = members.filter((m) => m.membership_status === "active").map((m) => m.user_id);
   const profiles = await fetchProfilesByIds(ids);
-  return profiles.filter((p) => p.role === role);
+  return profiles.filter((p) => p.roles.includes(role));
 }
 
 export async function createWorkGroup(displayName: string, inviteCode?: string): Promise<WorkGroup> {
   const u = (await supabase.auth.getUser()).data.user;
   if (!u) throw new Error("未登录");
   const prof = await fetchProfile(u.id);
-  if (prof?.role !== "admin") {
+  if (!hasRole(prof?.roles, "admin")) {
     throw new Error("仅平台管理员可创建工作群组；其他角色请使用入群代码加入已有群组。");
   }
   const payload: Record<string, string> = {

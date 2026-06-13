@@ -7,7 +7,7 @@ import { useAuth } from "../auth/AuthContext";
  * 顶部提示：未入群 / 审批中
  */
 export default function GroupStatusBanner() {
-  const { profile } = useAuth();
+  const { hasRole } = useAuth();
   const [show, setShow] = useState<"none" | "pending" | "no_group">("none");
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export default function GroupStatusBanner() {
     );
   }
 
-  const isAdmin = profile?.role === "admin";
+  const isAdmin = hasRole("admin");
 
   return (
     <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 flex flex-wrap items-center gap-x-2 gap-y-1">

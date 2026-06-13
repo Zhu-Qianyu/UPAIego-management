@@ -35,6 +35,7 @@ import type { AgentFormKind, AgentPendingFormFill } from "../aitebot/agentFormTy
 import { formRequiresImage, getFormImageUploadLabel } from "../aitebot/agentFormImages";
 import { defaultLabelPrefix } from "../aitebot/formFillInferShared";
 import { DEFAULT_SCENE_CATEGORIES, type SceneCategoryKey } from "../utils/sceneCategories";
+import { hasAnyRole } from "../auth/roleUtils";
 import type { UserRole } from "../types/roles";
 
 export type AgentFormFillResult = {
@@ -94,7 +95,7 @@ function optionalNum(data: Record<string, unknown>, key: string): number | null 
   return Number.isFinite(n) ? n : null;
 }
 
-export function normalizePendingFormFills(raw: unknown, role: UserRole): AgentPendingFormFill[] {
+export function normalizePendingFormFills(raw: unknown, roles: UserRole[]): AgentPendingFormFill[] {
   if (!Array.isArray(raw)) return [];
   const out: AgentPendingFormFill[] = [];
   for (const item of raw.slice(0, 3)) {
@@ -102,7 +103,7 @@ export function normalizePendingFormFills(raw: unknown, role: UserRole): AgentPe
     const o = item as Record<string, unknown>;
     const form = String(o.form ?? "").trim() as AgentFormKind;
     const allowed = FORM_ROLES[form];
-    if (!allowed?.includes(role)) continue;
+    if (!allowed || !hasAnyRole(roles, allowed)) continue;
     const label = String(o.label ?? "").trim();
     if (!label) continue;
     const data = o.data && typeof o.data === "object" ? (o.data as Record<string, unknown>) : null;
@@ -261,12 +262,12 @@ async function resolveAssignableManualDeviceCodes(
 
 export async function executeAgentFormFill(
   groupId: string,
-  role: UserRole,
+  roles: UserRole[],
   spec: AgentPendingFormFill,
   imageFile?: File
 ): Promise<AgentFormFillResult> {
   const allowed = FORM_ROLES[spec.form];
-  if (!allowed?.includes(role)) {
+  if (!allowed || !hasAnyRole(roles, allowed)) {
     return { ok: false, error: "当前角色无权执行此表单操作" };
   }
 
@@ -509,7 +510,7 @@ export async function executeAgentFormFill(
 
 export async function executeAgentFormFills(
   groupId: string,
-  role: UserRole,
+  roles: UserRole[],
   specs: AgentPendingFormFill[],
   images?: Record<number, File>
 ): Promise<{ summaries: string[]; errors: string[] }> {
@@ -517,7 +518,7 @@ export async function executeAgentFormFills(
   const errors: string[] = [];
   for (let i = 0; i < specs.length; i++) {
     const spec = specs[i];
-    const result = await executeAgentFormFill(groupId, role, spec, images?.[i]);
+    const result = await executeAgentFormFill(groupId, roles, spec, images?.[i]);
     if (result.ok && result.summary) summaries.push(result.summary);
     else errors.push(result.error ?? `${spec.label} 失败`);
   }

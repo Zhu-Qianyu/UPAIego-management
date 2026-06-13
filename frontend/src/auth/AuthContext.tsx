@@ -12,12 +12,25 @@ import { supabase } from "../api/supabase";
 import { ensureProfileRow, fetchProfile, type Profile } from "../api/profiles";
 import type { UserRole } from "../types/roles";
 import { isUserRole } from "../types/roles";
+import {
+  hasAnyRole,
+  hasRole,
+  normalizeRoles,
+  resolveActiveRole,
+  writeStoredActiveRole,
+} from "./roleUtils";
 
 interface AuthContextValue {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
+  /** 主职（兼容） */
   role: UserRole | null;
+  roles: UserRole[];
+  activeRole: UserRole | null;
+  hasRole: (role: UserRole) => boolean;
+  hasAnyRole: (allow: readonly UserRole[]) => boolean;
+  setActiveRole: (role: UserRole) => void;
   refreshProfile: () => Promise<void>;
   profileSyncHint: string | null;
 }
@@ -27,6 +40,11 @@ const AuthContext = createContext<AuthContextValue>({
   profile: null,
   loading: true,
   role: null,
+  roles: [],
+  activeRole: null,
+  hasRole: () => false,
+  hasAnyRole: () => false,
+  setActiveRole: () => {},
   refreshProfile: async () => {},
   profileSyncHint: null,
 });
@@ -42,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileSyncHint, setProfileSyncHint] = useState<string | null>(null);
+  const [activeRole, setActiveRoleState] = useState<UserRole | null>(null);
   const profileUserIdRef = useRef<string | null>(null);
 
   const loadProfileForSession = useCallback(
@@ -51,6 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!next?.user) {
         profileUserIdRef.current = null;
         setProfile(null);
+        setActiveRoleState(null);
         setProfileSyncHint(null);
         setLoading(false);
         return;
@@ -70,20 +90,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       let p = await fetchProfile(uid);
       if (!p) {
-        const metaRole = next.user.user_metadata?.role;
-        const role: UserRole = isUserRole(metaRole) ? metaRole : "device_operator";
-        const err = await ensureProfileRow(uid, role);
+        const meta = next.user.user_metadata ?? {};
+        const metaRoles = Array.isArray(meta.roles) ? meta.roles : null;
+        const metaRole = meta.role;
+        const roles = normalizeRoles(
+          metaRoles,
+          isUserRole(metaRole) ? metaRole : "device_operator"
+        );
+        const err = await ensureProfileRow(uid, roles, {
+          realName: typeof meta.real_name === "string" ? meta.real_name : undefined,
+          phone: typeof meta.phone === "string" ? meta.phone : undefined,
+          contactEmail: typeof meta.contact_email === "string" ? meta.contact_email : undefined,
+        });
         if (err) setProfileSyncHint(err);
         p = await fetchProfile(uid);
         if (!p && !err) {
           setProfileSyncHint(
-            "无法读取 profiles：请确认表存在且字段 role 为 admin / device_operator / scene_operator / collection_executor"
+            "无法读取 profiles：请确认表存在且已执行 docs/MULTI_ROLE_MIGRATION.sql"
           );
         }
       }
 
       profileUserIdRef.current = uid;
       setProfile(p);
+      if (p) {
+        const nextActive = resolveActiveRole(p.roles);
+        setActiveRoleState(nextActive);
+        writeStoredActiveRole(nextActive);
+      } else {
+        setActiveRoleState(null);
+      }
       setLoading(false);
     },
     []
@@ -108,16 +144,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await loadProfileForSession(data.session, undefined, { force: true });
   }, [loadProfileForSession]);
 
+  const setActiveRole = useCallback(
+    (role: UserRole) => {
+      if (!profile || !hasRole(profile.roles, role)) return;
+      setActiveRoleState(role);
+      writeStoredActiveRole(role);
+    },
+    [profile]
+  );
+
+  const roles = profile?.roles ?? [];
+  const role = profile?.role ?? null;
+
   const value = useMemo(
     () => ({
       session,
       profile,
       loading,
-      role: profile?.role ?? null,
+      role,
+      roles,
+      activeRole: activeRole ?? (profile ? resolveActiveRole(profile.roles) : null),
+      hasRole: (r: UserRole) => hasRole(roles, r),
+      hasAnyRole: (allow: readonly UserRole[]) => hasAnyRole(roles, allow),
+      setActiveRole,
       refreshProfile,
       profileSyncHint,
     }),
-    [session, profile, loading, refreshProfile, profileSyncHint]
+    [session, profile, loading, role, roles, activeRole, setActiveRole, refreshProfile, profileSyncHint]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

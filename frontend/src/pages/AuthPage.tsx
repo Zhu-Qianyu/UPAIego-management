@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { supabase } from "../api/supabase";
 import type { UserRole } from "../types/roles";
+import { NON_ADMIN_ROLES } from "../types/roles";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "../auth/roleLabels";
+import { validateRegisterRoles } from "../auth/roleUtils";
 import { SITE_DISPLAY_NAME, SITE_SUBTITLE } from "../branding";
 import { ensureProfileRow } from "../api/profiles";
 import { validateInviteCode } from "../api/groups";
@@ -10,7 +12,7 @@ import { isValidChinaMobile, normalizePhone, phoneToAuthEmail, resolveLoginAuthE
 
 type Mode = "login" | "register";
 
-const NON_ADMIN_ROLES: UserRole[] = ["device_operator", "scene_operator", "collection_executor"];
+const NON_ADMIN_ROLE_LIST: UserRole[] = [...NON_ADMIN_ROLES];
 
 export default function AuthPage() {
   const [mode, setMode] = useState<Mode>("login");
@@ -18,7 +20,7 @@ export default function AuthPage() {
   const [registerPhone, setRegisterPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [registerRole, setRegisterRole] = useState<UserRole>("device_operator");
+  const [registerRoles, setRegisterRoles] = useState<UserRole[]>(["device_operator"]);
   const [realName, setRealName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [invitePreview, setInvitePreview] = useState<string | null>(null);
@@ -27,7 +29,7 @@ export default function AuthPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const needsGroupCode = mode === "register" && registerRole !== "admin";
+  const needsGroupCode = mode === "register";
   const groupCodeMissing = needsGroupCode && !inviteCode.trim();
   const canSubmitRegister = mode === "login" || !groupCodeMissing;
 
@@ -71,21 +73,22 @@ export default function AuthPage() {
         const contactEmail = email.trim();
         const code = inviteCode.trim().toUpperCase();
 
-        if (registerRole !== "admin") {
-          if (!code) {
-            setError(`${NON_ADMIN_ROLES.map((r) => ROLE_LABELS[r]).join("、")}注册时必须填写群组号，否则无法注册`);
-            return;
-          }
-          await validateInviteCode(code);
-        }
+        const roles = validateRegisterRoles(registerRoles);
 
-        const meta: Record<string, string> = {
-          role: registerRole,
+        if (!code) {
+          setError(`${NON_ADMIN_ROLE_LIST.map((r) => ROLE_LABELS[r]).join("、")}注册时必须填写群组号，否则无法注册`);
+          return;
+        }
+        await validateInviteCode(code);
+
+        const meta: Record<string, string | string[]> = {
+          roles,
+          role: roles[0],
           phone: tel,
+          invite_code: code,
         };
         if (name) meta.real_name = name;
         if (contactEmail) meta.contact_email = contactEmail;
-        if (registerRole !== "admin") meta.invite_code = code;
 
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: authEmail,
@@ -95,7 +98,7 @@ export default function AuthPage() {
         if (signUpError) throw signUpError;
 
         if (data.user?.id) {
-          await ensureProfileRow(data.user.id, registerRole, {
+          await ensureProfileRow(data.user.id, roles, {
             realName: name,
             phone: tel,
             contactEmail: contactEmail || undefined,
@@ -103,11 +106,7 @@ export default function AuthPage() {
         }
 
         if (data.session) {
-          setMessage(
-            registerRole === "admin"
-              ? "注册成功，已自动登录。"
-              : "注册已提交，请等待平台管理员在「群组管理」中审批通过后再使用系统。"
-          );
+          setMessage("注册已提交，请等待平台管理员在「群组管理」中审批通过后再使用系统。");
           setPassword("");
           return;
         }
@@ -184,32 +183,42 @@ export default function AuthPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 {mode === "register" && (
                   <div>
-                    <span className="block text-xs font-medium text-gray-500 mb-2">注册为</span>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
-                        <label
-                          key={r}
-                          className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border px-2 py-3 text-center text-sm transition-colors ${
-                            registerRole === r
-                              ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200"
-                              : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="role"
-                            checked={registerRole === r}
-                            onChange={() => setRegisterRole(r)}
-                            className="sr-only"
-                          />
-                          <span className="font-medium text-gray-900 leading-snug">{ROLE_LABELS[r]}</span>
-                        </label>
-                      ))}
+                    <span className="block text-xs font-medium text-gray-500 mb-2">注册职能（可多选）</span>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      {NON_ADMIN_ROLE_LIST.map((r) => {
+                        const checked = registerRoles.includes(r);
+                        return (
+                          <label
+                            key={r}
+                            className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border px-2 py-3 text-center text-sm transition-colors ${
+                              checked
+                                ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200"
+                                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setRegisterRoles((prev) => {
+                                  if (prev.includes(r)) {
+                                    const next = prev.filter((x) => x !== r);
+                                    return next.length ? next : prev;
+                                  }
+                                  return [...prev, r];
+                                });
+                              }}
+                              className="sr-only"
+                            />
+                            <span className="font-medium text-gray-900 leading-snug">{ROLE_LABELS[r]}</span>
+                          </label>
+                        );
+                      })}
                     </div>
-                    <p className="mt-2 text-xs text-gray-500 leading-relaxed">{ROLE_DESCRIPTIONS[registerRole]}</p>
-                    {registerRole !== "admin" && (
-                      <p className="mt-1 text-xs text-amber-700">注册必填群组号，归属对应管理员工作群</p>
-                    )}
+                    <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+                      {registerRoles.map((r) => ROLE_DESCRIPTIONS[r]).join("；")}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700">注册必填群组号，归属对应管理员工作群</p>
                   </div>
                 )}
 

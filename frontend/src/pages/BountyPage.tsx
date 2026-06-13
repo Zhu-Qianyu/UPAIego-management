@@ -5,7 +5,7 @@ import BountyExecutorPage from "./BountyExecutorPage";
 
 /** Role-based shell for /bounties — admin vs collection_executor views. */
 export default function BountyPage() {
-  const { profile, loading } = useAuth();
+  const { profile, loading, hasRole: userHasRole } = useAuth();
 
   if (loading || !profile) {
     return (
@@ -15,8 +15,8 @@ export default function BountyPage() {
     );
   }
 
-  if (profile.role === "admin") return <BountyAdminPage />;
-  if (profile.role === "collection_executor") return <BountyExecutorPage />;
+  if (userHasRole("admin")) return <BountyAdminPage />;
+  if (userHasRole("collection_executor")) return <BountyExecutorPage />;
 
   return (
     <div className="max-w-lg mx-auto px-4 py-16 text-center text-gray-600 text-sm">

@@ -4,6 +4,7 @@ import AuthPage from "./pages/AuthPage";
 import { useAuth } from "./auth/AuthContext";
 import { supabase } from "./api/supabase";
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from "./auth/roleLabels";
+import { formatRolesLabel, homePathForRoles, navForRoles } from "./auth/roleUtils";
 import type { UserRole } from "./types/roles";
 import RoleRoute from "./components/RoleRoute";
 import AnnouncementsBanner from "./components/AnnouncementsBanner";
@@ -56,37 +57,6 @@ function AccountNavActions({
       </button>
     </div>
   );
-}
-
-function navForRole(role: UserRole): { to: string; label: string }[] {
-  const byRole: Record<UserRole, { to: string; label: string }[]> = {
-    admin: [
-      { to: "/admin", label: "管理台" },
-      { to: "/group", label: "群组" },
-      { to: "/devices/manage", label: "设备管理" },
-      { to: "/scene", label: "场景业务" },
-      { to: "/bounties", label: "悬赏令" },
-      { to: "/map", label: "数采地图" },
-    ],
-    device_operator: [
-      { to: "/", label: "设备总览" },
-      { to: "/operator-work", label: "运维工作台" },
-      { to: "/group", label: "群组" },
-      { to: "/devices/manage", label: "设备管理" },
-    ],
-    scene_operator: [
-      { to: "/scene", label: "场景业务" },
-      { to: "/group", label: "群组" },
-    ],
-    collection_executor: [
-      { to: "/map", label: "数采地图" },
-      { to: "/bounties", label: "悬赏令" },
-      { to: "/wallet", label: "我的钱包" },
-      { to: "/scene", label: "采集排班" },
-      { to: "/group", label: "群组" },
-    ],
-  };
-  return byRole[role];
 }
 
 function MigrationNotice({
@@ -186,7 +156,7 @@ function MigrationNotice({
 }
 
 export default function App() {
-  const { session, profile, loading } = useAuth();
+  const { session, profile, loading, activeRole, setActiveRole } = useAuth();
   const location = useLocation();
   const isAuthed = !!session?.user;
   const [accountDeleteOpen, setAccountDeleteOpen] = useState(false);
@@ -244,16 +214,11 @@ export default function App() {
     );
   }
 
-  const navItems = navForRole(profile.role);
-
-  const homeTo =
-    profile.role === "admin"
-      ? "/admin"
-      : profile.role === "scene_operator"
-        ? "/scene"
-        : profile.role === "collection_executor"
-          ? "/map"
-          : "/";
+  const navItems = navForRoles(profile.roles);
+  const homeTo = homePathForRoles(profile.roles, activeRole);
+  const roleBadge =
+    profile.roles.length > 1 ? formatRolesLabel(profile.roles) : ROLE_LABELS[profile.role];
+  const operativeRoles = profile.roles.filter((r) => r !== "admin");
 
   return (
     <AitebotProvider>
@@ -378,7 +343,7 @@ export default function App() {
           <div className="hidden sm:block min-w-0 flex-1" />
           <div
             className="flex min-w-0 flex-1 sm:flex-initial items-center justify-end gap-2"
-            title={`${ROLE_LABELS[profile.role]} — ${ROLE_DESCRIPTIONS[profile.role]}`}
+            title={profile.roles.map((r) => `${ROLE_LABELS[r]} — ${ROLE_DESCRIPTIONS[r]}`).join("\n")}
           >
             <Link
               to="/profile"
@@ -387,12 +352,28 @@ export default function App() {
             >
               {accountDisplayLabel(profile.phone, session?.user?.email, profile.contact_email, profile.real_name)}
             </Link>
-            <span
-              className="shrink-0 rounded-md bg-indigo-100 px-2 py-0.5 text-[11px] sm:text-xs font-semibold text-indigo-800 ring-1 ring-indigo-200/80"
-              aria-label={`当前角色：${ROLE_LABELS[profile.role]}`}
-            >
-              {ROLE_LABELS[profile.role]}
-            </span>
+            {operativeRoles.length > 1 ? (
+              <select
+                value={activeRole ?? profile.role}
+                onChange={(e) => setActiveRole(e.target.value as UserRole)}
+                className="shrink-0 max-w-[8rem] rounded-md bg-indigo-100 px-2 py-0.5 text-[11px] sm:text-xs font-semibold text-indigo-800 ring-1 ring-indigo-200/80"
+                aria-label="当前工作台职能"
+                title={`身兼：${roleBadge}`}
+              >
+                {operativeRoles.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span
+                className="shrink-0 rounded-md bg-indigo-100 px-2 py-0.5 text-[11px] sm:text-xs font-semibold text-indigo-800 ring-1 ring-indigo-200/80"
+                aria-label={`当前角色：${roleBadge}`}
+              >
+                {roleBadge}
+              </span>
+            )}
           </div>
           <AccountNavActions
             onOpenDelete={() => setAccountDeleteOpen(true)}

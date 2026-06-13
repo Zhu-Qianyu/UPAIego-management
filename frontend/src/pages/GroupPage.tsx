@@ -17,8 +17,7 @@ import Spinner from "../components/Spinner";
 import RefreshStrip from "../components/RefreshStrip";
 import { readRouteViewCache, routeViewCacheKey, writeRouteViewCache } from "../utils/routeViewCache";
 import { useAuth } from "../auth/AuthContext";
-import { ROLE_LABELS } from "../auth/roleLabels";
-import { isUserRole } from "../types/roles";
+import { hasRole, formatRolesLabel } from "../auth/roleUtils";
 import GroupTabs from "../components/GroupTabs";
 
 function membershipLabel(s: GroupMember["membership_status"]): string {
@@ -36,7 +35,7 @@ type GroupPageCacheV1 = {
 };
 
 export default function GroupPage() {
-  const { profile, session } = useAuth();
+  const { profile, session, activeRole } = useAuth();
   const location = useLocation();
   const cacheKey = useMemo(
     () => routeViewCacheKey(session?.user?.id, location.pathname),
@@ -105,14 +104,13 @@ export default function GroupPage() {
       const pMap = new Map(profs.map((p) => [p.id, p]));
       const enriched = gmRows.map((m) => {
         const p = pMap.get(m.user_id);
-        const role = p?.role && isUserRole(p.role) ? p.role : null;
         const displayName =
           (p?.display_name?.trim() || "").length > 0
             ? p!.display_name!
             : (m.request_email?.trim() || "").length > 0
               ? m.request_email!
               : `用户 ${m.user_id.slice(0, 8)}…`;
-        const roleLabel = role ? ROLE_LABELS[role] : "—";
+        const roleLabel = p?.roles?.length ? formatRolesLabel(p.roles) : "—";
         return { ...m, displayName, roleLabel };
       });
       setMembers(enriched);
@@ -191,7 +189,7 @@ export default function GroupPage() {
     () => new Map(members.map((m) => [m.user_id, m.displayName])),
     [members]
   );
-  const isPlatformAdmin = profile?.role === "admin";
+  const isPlatformAdmin = hasRole(profile?.roles, "admin");
   const ownerId = workGroup?.owner_user_id;
   const canModerateMembers = isPlatformAdmin || (!!uid && !!ownerId && uid === ownerId);
   const myMembership = members.find((m) => m.user_id === uid);
@@ -303,12 +301,13 @@ export default function GroupPage() {
         {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
       </div>
 
-      {groupId && profile?.role && isUserRole(profile.role) && (
+      {groupId && profile?.roles?.length ? (
         <ImShell
           groupId={groupId}
           groupName={workGroup?.display_name ?? "本工作群"}
           members={members}
-          userRole={profile.role}
+          userRole={activeRole ?? profile.role}
+          userRoles={profile.roles}
           userId={uid}
           canSend={canSendChat}
           displayNameByUserId={displayNameByUserId}
@@ -316,7 +315,7 @@ export default function GroupPage() {
           canModerateMembers={canModerateMembers}
           onOpenMembers={() => setMembersOpen(true)}
         />
-      )}
+      ) : null}
 
       {membersOpen && (
         <>

@@ -3,9 +3,9 @@ import { useAuth } from "../auth/AuthContext";
 
 /** 各角色统一入口「群组」；第二项「群组管理」仅平台管理员可见（创建群、审批入群） */
 export default function GroupTabs() {
-  const { profile } = useAuth();
+  const { hasRole } = useAuth();
   const location = useLocation();
-  const isAdmin = profile?.role === "admin";
+  const isAdmin = hasRole("admin");
   const onMember = location.pathname === "/group";
   const onManage = location.pathname.startsWith("/group/manage");
 

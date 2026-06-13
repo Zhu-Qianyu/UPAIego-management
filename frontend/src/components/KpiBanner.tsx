@@ -22,19 +22,26 @@ function formatRange(k: KpiRow): string {
 }
 
 export default function KpiBanner() {
-  const { profile } = useAuth();
+  const { profile, activeRole } = useAuth();
+  const kpiRole =
+    activeRole && profile && (activeRole === "device_operator" || activeRole === "scene_operator" || activeRole === "collection_executor")
+      ? activeRole
+      : profile?.roles.find(
+          (r): r is KpiTargetRole =>
+            r === "device_operator" || r === "scene_operator" || r === "collection_executor"
+        ) ?? null;
   const [items, setItems] = useState<KpiRow[]>([]);
   const [currentById, setCurrentById] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    if (!profile || !roleTargetsKpi(profile.role)) {
+    if (!profile || !kpiRole || !roleTargetsKpi(kpiRole)) {
       setItems([]);
       return;
     }
-    listActiveKpisForRole(profile.role)
+    listActiveKpisForRole(kpiRole)
       .then(setItems)
       .catch(() => setItems([]));
-  }, [profile?.role]);
+  }, [profile, kpiRole]);
 
   useEffect(() => {
     if (items.length === 0) {
@@ -63,12 +70,12 @@ export default function KpiBanner() {
     };
   }, [items]);
 
-  if (!profile || !roleTargetsKpi(profile.role) || items.length === 0) return null;
+  if (!profile || !kpiRole || !roleTargetsKpi(kpiRole) || items.length === 0) return null;
 
   return (
     <div className="mb-6 space-y-3">
       <p className="text-xs font-medium text-indigo-800/90">
-        {ROLE_LABELS[profile.role]} · KPI 完成进度
+        {ROLE_LABELS[kpiRole]} · KPI 完成进度
       </p>
       {items.map((k) => {
         const mid = parseKpiMetricId(k.title);

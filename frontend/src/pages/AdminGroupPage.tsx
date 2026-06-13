@@ -9,8 +9,11 @@ import {
   type GroupMember,
   type WorkGroup,
 } from "../api/groups";
-import { fetchProfilesByIds, profileDisplayName } from "../api/profiles";
+import { adminUpdateMemberRoles, fetchProfilesByIds, profileDisplayName } from "../api/profiles";
 import { ROLE_LABELS } from "../auth/roleLabels";
+import { formatRolesLabel, sortRolesByPriority } from "../auth/roleUtils";
+import type { UserRole } from "../types/roles";
+import { NON_ADMIN_ROLES } from "../types/roles";
 import { formatPhoneDisplay } from "../utils/phoneAuth";
 import { CardList, CardListItem, CompactList, CompactListRow, ListViewSection } from "../components/ui/PageLayout";
 import Spinner from "../components/Spinner";
@@ -21,7 +24,11 @@ import GroupTabs from "../components/GroupTabs";
 
 type AdminGroupCacheV1 = { v: 1; owned: WorkGroup | null; pending: GroupMember[]; rejected: GroupMember[] };
 
-type MemberProfileMap = Record<string, { name: string; phone: string; role: string }>;
+type MemberInfo = { name: string; phone: string; role: string; roles: UserRole[] };
+
+type MemberProfileMap = Record<string, MemberInfo>;
+
+const EDITABLE_ROLES: UserRole[] = [...NON_ADMIN_ROLES];
 
 async function loadMemberProfiles(members: GroupMember[]): Promise<MemberProfileMap> {
   if (!members.length) return {};
@@ -29,13 +36,54 @@ async function loadMemberProfiles(members: GroupMember[]): Promise<MemberProfile
   const map: MemberProfileMap = {};
   for (const row of members) {
     const prof = profs.find((x) => x.id === row.user_id);
+    const roles = prof?.roles?.length ? sortRolesByPriority(prof.roles) : (["device_operator"] as UserRole[]);
     map[row.user_id] = {
       name: prof ? profileDisplayName(prof) : row.user_id.slice(0, 8),
       phone: formatPhoneDisplay(prof?.phone ?? row.request_phone),
-      role: prof?.role ? ROLE_LABELS[prof.role] : "—",
+      roles,
+      role: formatRolesLabel(roles),
     };
   }
   return map;
+}
+
+function RoleCheckboxRow({
+  roles,
+  onChange,
+}: {
+  roles: UserRole[];
+  onChange: (next: UserRole[]) => void;
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {EDITABLE_ROLES.map((r) => {
+        const checked = roles.includes(r);
+        return (
+          <label
+            key={r}
+            className={`inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] ${
+              checked ? "border-indigo-400 bg-indigo-50 text-indigo-900" : "border-gray-200 text-gray-600"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              className="sr-only"
+              onChange={() => {
+                if (checked) {
+                  const next = roles.filter((x) => x !== r);
+                  if (next.length) onChange(sortRolesByPriority(next));
+                } else {
+                  onChange(sortRolesByPriority([...roles, r]));
+                }
+              }}
+            />
+            {ROLE_LABELS[r]}
+          </label>
+        );
+      })}
+    </div>
+  );
 }
 
 function MemberReviewCard({
@@ -46,19 +94,25 @@ function MemberReviewCard({
   onReject,
   rejectLabel = "拒绝",
   approveLabel = "同意",
+  editRoles,
+  roles,
+  onRolesChange,
 }: {
   m: GroupMember;
-  info?: { name: string; phone: string; role: string };
+  info?: MemberInfo;
   busyId: string | null;
   onApprove: () => void;
   onReject?: () => void;
   rejectLabel?: string;
   approveLabel?: string;
+  editRoles?: boolean;
+  roles?: UserRole[];
+  onRolesChange?: (roles: UserRole[]) => void;
 }) {
   return (
     <CardListItem>
       <div className="rounded-xl border border-gray-200 bg-white p-4 h-full w-full min-w-0 overflow-hidden box-border flex flex-wrap items-center justify-between gap-2">
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-gray-900">{info?.name ?? m.user_id.slice(0, 8)}</p>
           <p className="text-xs text-gray-600 mt-0.5">
             {info?.role ?? "—"} · 手机 {info?.phone ?? "—"}
@@ -66,12 +120,18 @@ function MemberReviewCard({
               <span> · {m.request_email}</span>
             )}
           </p>
-          <p className="text-xs text-gray-400">
+          {editRoles && roles && onRolesChange ? (
+            <>
+              <p className="text-[11px] text-gray-500 mt-1">审批前可调整职能（可多选）</p>
+              <RoleCheckboxRow roles={roles} onChange={onRolesChange} />
+            </>
+          ) : null}
+          <p className="text-xs text-gray-400 mt-1">
             申请 {new Date(m.created_at).toLocaleString()}
             {m.decided_at ? ` · 处理 ${new Date(m.decided_at).toLocaleString()}` : ""}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <button
             type="button"
             disabled={busyId === m.id}
@@ -109,6 +169,7 @@ export default function AdminGroupPage() {
   const [rejected, setRejected] = useState<GroupMember[]>([]);
   const [pendingProfiles, setPendingProfiles] = useState<MemberProfileMap>({});
   const [rejectedProfiles, setRejectedProfiles] = useState<MemberProfileMap>({});
+  const [roleEdits, setRoleEdits] = useState<Record<string, UserRole[]>>({});
   const [name, setName] = useState("");
   const [customCode, setCustomCode] = useState("");
   const [loading, setLoading] = useState(true);
@@ -141,16 +202,21 @@ export default function AdminGroupPage() {
         const [pProf, rProf] = await Promise.all([loadMemberProfiles(p), loadMemberProfiles(rej)]);
         setPendingProfiles(pProf);
         setRejectedProfiles(rProf);
+        setRoleEdits(
+          Object.fromEntries(p.map((m) => [m.user_id, pProf[m.user_id]?.roles ?? ["device_operator"]]))
+        );
         if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, owned: g, pending: p, rejected: rej });
       } else {
         setPending([]);
         setRejected([]);
         setPendingProfiles({});
         setRejectedProfiles({});
+        setRoleEdits({});
         if (cacheKey) writeRouteViewCache(cacheKey, { v: 1, owned: null, pending: [], rejected: [] });
       }
-    } catch (e: any) {
-      setErr(e.message ?? "加载失败");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "加载失败";
+      setErr(msg);
       setOwned(null);
     } finally {
       setLoading(false);
@@ -170,8 +236,8 @@ export default function AdminGroupPage() {
       setName("");
       setCustomCode("");
       await refresh();
-    } catch (e: any) {
-      setErr(e.message ?? "创建失败：每位平台管理员仅可拥有一个作为群主的工作群组。");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "创建失败：每位平台管理员仅可拥有一个作为群主的工作群组。");
     }
   }
 
@@ -179,10 +245,14 @@ export default function AdminGroupPage() {
     setBusyId(m.id);
     setErr("");
     try {
+      if (ok) {
+        const roles = roleEdits[m.user_id] ?? pendingProfiles[m.user_id]?.roles ?? ["device_operator"];
+        await adminUpdateMemberRoles(m.user_id, roles);
+      }
       await setMembershipStatus(m.id, ok ? "active" : "rejected");
       await refresh();
-    } catch (e: any) {
-      setErr(e.message ?? "操作失败");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "操作失败");
     } finally {
       setBusyId(null);
     }
@@ -198,7 +268,7 @@ export default function AdminGroupPage() {
         <h1 className="text-2xl font-bold text-gray-900">群组管理</h1>
         <p className="text-sm text-gray-500 mt-1">
           仅<strong>平台管理员</strong>可在此<strong>创建一个</strong>工作群组（各有独立群组号）。
-          成员注册时填写<strong>你的群组号</strong>即归入本群，申请会出现在下方「待审批入群」；不同管理员的群组号不同，填哪个归哪个。
+          成员注册时填写<strong>你的群组号</strong>即归入本群，申请会出现在下方「待审批入群」；审批时可调整其职能组合。
         </p>
       </div>
 
@@ -249,11 +319,12 @@ export default function AdminGroupPage() {
               <CompactList>
                 {pending.map((m) => {
                   const info = pendingProfiles[m.user_id];
+                  const roles = roleEdits[m.user_id] ?? info?.roles ?? ["device_operator"];
                   return (
                     <CompactListRow
                       key={m.id}
                       primary={info?.name ?? m.user_id.slice(0, 8)}
-                      secondary={`${info?.role ?? "—"} · 手机 ${info?.phone ?? "—"}`}
+                      secondary={`${formatRolesLabel(roles)} · 手机 ${info?.phone ?? "—"}`}
                       meta={new Date(m.created_at).toLocaleString()}
                     />
                   );
@@ -267,6 +338,11 @@ export default function AdminGroupPage() {
                   m={m}
                   info={pendingProfiles[m.user_id]}
                   busyId={busyId}
+                  editRoles
+                  roles={roleEdits[m.user_id] ?? pendingProfiles[m.user_id]?.roles ?? ["device_operator"]}
+                  onRolesChange={(next) =>
+                    setRoleEdits((prev) => ({ ...prev, [m.user_id]: next }))
+                  }
                   onApprove={() => void approve(m, true)}
                   onReject={() => void approve(m, false)}
                 />
@@ -299,6 +375,11 @@ export default function AdminGroupPage() {
                   info={rejectedProfiles[m.user_id]}
                   busyId={busyId}
                   approveLabel="重新同意"
+                  editRoles
+                  roles={roleEdits[m.user_id] ?? rejectedProfiles[m.user_id]?.roles ?? ["device_operator"]}
+                  onRolesChange={(next) =>
+                    setRoleEdits((prev) => ({ ...prev, [m.user_id]: next }))
+                  }
                   onApprove={() => void approve(m, true)}
                 />
               ))}

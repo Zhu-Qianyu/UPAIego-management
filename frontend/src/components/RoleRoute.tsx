@@ -10,13 +10,13 @@ export default function RoleRoute({
   allow: readonly UserRole[];
   children: ReactNode;
 }) {
-  const { profile, loading } = useAuth();
+  const { profile, loading, hasAnyRole } = useAuth();
 
   if (loading || !profile) {
     return <div className="py-16 text-center text-gray-500">加载权限...</div>;
   }
 
-  if (!allow.includes(profile.role)) {
+  if (!hasAnyRole(allow)) {
     return <Navigate to="/" replace />;
   }
 

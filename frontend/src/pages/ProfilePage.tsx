@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { updateMyAuthEmail, updateMyPassword, updateMyProfile } from "../api/profiles";
-import { ROLE_LABELS } from "../auth/roleLabels";
+import { formatRolesLabel } from "../auth/roleUtils";
 import {
   describeAuthLoginEmail,
   formatPhoneDisplay,
@@ -123,7 +123,7 @@ export default function ProfilePage() {
       <Panel title="基本资料" description="悬赏联系人、群内展示等会使用真实姓名与手机号">
         <form onSubmit={onSaveProfile} className="space-y-4 max-w-lg">
           <div className="text-sm text-slate-600 rounded-lg bg-slate-50 px-3 py-2">
-            角色：<strong>{ROLE_LABELS[profile.role]}</strong>
+            角色：<strong>{formatRolesLabel(profile.roles)}</strong>
             <span className="text-slate-400 ml-2 font-mono text-xs">{profile.id.slice(0, 8)}…</span>
           </div>
           <label className="block">

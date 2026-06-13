@@ -313,12 +313,15 @@ function snippetAroundKeyword(text: string, keyword: string, maxLen = 72): strin
 export default function BotChatPanel({
   groupId,
   userRole,
+  userRoles,
   onShowSessionList,
 }: {
   groupId: string;
   userRole: UserRole;
+  userRoles?: UserRole[];
   onShowSessionList?: () => void;
 }) {
+  const roles = userRoles?.length ? userRoles : [userRole];
   const enabled = sceneAiFeatureEnabled();
   const { pageContext, executeActions, toast, clearToast } = useAitebot();
   const [unreadCount, setUnreadCount] = useState(0);
@@ -685,7 +688,7 @@ export default function BotChatPanel({
       setErr("请先上传所需图片后再点「直接帮我干」");
       return;
     }
-    const result = await executeAgentFormFills(groupId, userRole, specs, imageMap);
+    const result = await executeAgentFormFills(groupId, roles, specs, imageMap);
     const sceneForms = new Set([
       "party_demand_create",
       "party_demand_update",
@@ -820,6 +823,7 @@ export default function BotChatPanel({
         groupId,
         pageContext,
         role: userRole,
+        roles,
       });
 
       const assistantText =
