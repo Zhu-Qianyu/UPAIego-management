@@ -117,6 +117,7 @@ const NAV_BY_ROLE: Record<UserRole, { to: string; label: string }[]> = {
   ],
   collection_executor: [
     { to: "/map", label: "数采地图" },
+    { to: "/", label: "设备总览" },
     { to: "/bounties", label: "悬赏令" },
     { to: "/wallet", label: "我的钱包" },
     { to: "/scene", label: "采集排班" },

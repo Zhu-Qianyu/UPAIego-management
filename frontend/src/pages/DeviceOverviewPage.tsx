@@ -39,9 +39,17 @@ type DashboardProps = { listScopeOverride?: DeviceListScope };
 export default function DeviceOverviewPage({ listScopeOverride }: DashboardProps = {}) {
   const { session, hasRole } = useAuth();
   const location = useLocation();
+  const canManageDevices = hasRole("admin") || hasRole("device_operator");
+  const readOnly = !canManageDevices && hasRole("collection_executor");
   const listScope: DeviceListScope =
     listScopeOverride ??
-    (location.pathname === "/fleet" && hasRole("admin") ? "fleet" : "own");
+    (location.pathname === "/fleet" && hasRole("admin")
+      ? "fleet"
+      : hasRole("device_operator")
+        ? "own"
+        : hasRole("collection_executor")
+          ? "fleet"
+          : "own");
 
   const cacheKey = useMemo(
     () =>
@@ -171,15 +179,20 @@ export default function DeviceOverviewPage({ listScopeOverride }: DashboardProps
       <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {listScope === "fleet" ? "全平台设备总览" : "设备总览"}
+            {listScope === "fleet" && hasRole("admin") ? "全平台设备总览" : "设备总览"}
           </h1>
+          {readOnly && (
+            <p className="text-xs text-slate-600 mt-1 max-w-xl">
+              只读模式：可查看本工作群联网与离线设备状态，无法登记、分配或修改。
+            </p>
+          )}
           <p className="text-xs text-gray-500 mt-1 max-w-xl">
             联网设备列表已优先展示<strong>心跳离线</strong>、<strong>非 active 状态</strong>与<strong>待校准/需重校准</strong>项；离线设备优先展示<strong>返厂维修</strong>、<strong>异常</strong>，其次为正常。
             {listScope !== "fleet" && (
               <> 离线设备仅展示<strong>当前工作群</strong>内登记。</>
             )}
           </p>
-          {listScope === "fleet" && (
+          {listScope === "fleet" && hasRole("admin") && (
             <p className="text-xs text-gray-500 mt-1 max-w-xl">
               仅展示当前工作群内成员名下的设备（与入群、群主范围一致）；未入群或群外用户设备不会出现在此列表。
             </p>
@@ -225,10 +238,12 @@ export default function DeviceOverviewPage({ listScopeOverride }: DashboardProps
         <Spinner />
       ) : devices.length === 0 && manualRows.length === 0 && !loading ? (
         <div className="text-center py-16 text-gray-400">
-          <p className="text-lg">暂无设备数据</p>
-          <Link to="/devices/manage" className="text-indigo-600 underline text-sm mt-2 inline-block">
-            去注册第一台设备
-          </Link>
+          <p className="text-lg">{readOnly ? "暂无本群设备数据" : "暂无设备数据"}</p>
+          {!readOnly && (
+            <Link to="/devices/manage" className="text-indigo-600 underline text-sm mt-2 inline-block">
+              去注册第一台设备
+            </Link>
+          )}
         </div>
       ) : (
         <>
@@ -283,7 +298,7 @@ export default function DeviceOverviewPage({ listScopeOverride }: DashboardProps
                       </th>
                     )
                   )}
-                  <th className="px-4 py-3" />
+                  {!readOnly && <th className="px-4 py-3" />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -297,14 +312,16 @@ export default function DeviceOverviewPage({ listScopeOverride }: DashboardProps
                     <td className="px-4 py-3 text-gray-500 text-xs">
                       {d.registered_at ? new Date(d.registered_at).toLocaleDateString() : "-"}
                     </td>
-                    <td className="px-4 py-3">
-                      <Link
-                        to={`/devices/${encodeURIComponent(d.device_id)}`}
-                        className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
-                      >
-                        查看
-                      </Link>
-                    </td>
+                    {!readOnly && (
+                      <td className="px-4 py-3">
+                        <Link
+                          to={`/devices/${encodeURIComponent(d.device_id)}`}
+                          className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
+                        >
+                          查看
+                        </Link>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -325,7 +342,7 @@ export default function DeviceOverviewPage({ listScopeOverride }: DashboardProps
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">内部 ID</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">状态</th>
                     <th className="px-4 py-3 text-left font-semibold text-gray-600">登记时间</th>
-                    <th className="px-4 py-3" />
+                    {!readOnly && <th className="px-4 py-3" />}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -352,14 +369,16 @@ export default function DeviceOverviewPage({ listScopeOverride }: DashboardProps
                         <td className="px-4 py-3 text-gray-500 text-xs">
                           {new Date(m.created_at).toLocaleString()}
                         </td>
-                        <td className="px-4 py-3">
-                          <Link
-                            to={`/devices/manual/${encodeURIComponent(m.public_code)}`}
-                            className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
-                          >
-                            打开
-                          </Link>
-                        </td>
+                        {!readOnly && (
+                          <td className="px-4 py-3">
+                            <Link
+                              to={`/devices/manual/${encodeURIComponent(m.public_code)}`}
+                              className="text-indigo-600 hover:text-indigo-800 text-xs font-medium"
+                            >
+                              打开
+                            </Link>
+                          </td>
+                        )}
                       </tr>
                     ))}
                 </tbody>

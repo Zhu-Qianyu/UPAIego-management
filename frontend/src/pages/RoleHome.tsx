@@ -10,7 +10,7 @@ export default function RoleHome() {
     return <div className="py-16 text-center text-gray-500">加载中...</div>;
   }
 
-  if (hasRole("device_operator")) {
+  if (hasRole("device_operator") || hasRole("collection_executor")) {
     return <DeviceOverviewPage />;
   }
 
