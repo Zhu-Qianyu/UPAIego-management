@@ -1142,7 +1142,7 @@ function ScenarioWorkstationsTab({
 
   async function onMacroBatchDelete() {
     if (macroBatch.count === 0) return;
-    if (!confirm(`确定删除选中的 ${macroBatch.count} 个大场景？有下属小岗位的大场景将无法删除。`)) return;
+    if (!confirm(`确定删除选中的 ${macroBatch.count} 个大场景？将同时删除其下小岗位与草稿排班；若存在已发布/已关闭排班则无法删除。`)) return;
     setErr("");
     setMacroBatchDeleting(true);
     try {

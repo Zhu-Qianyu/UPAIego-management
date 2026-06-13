@@ -385,15 +385,7 @@ export async function updateSceneMacroSite(
 }
 
 export async function deleteSceneMacroSite(id: string): Promise<void> {
-  const { count, error: cErr } = await supabase
-    .from(SP)
-    .select("id", { count: "exact", head: true })
-    .eq("macro_scene_id", id);
-  if (cErr) throw new Error(cErr.message);
-  if ((count ?? 0) > 0) {
-    throw new Error("该大场景下仍有小岗位，请先删除或迁移小岗位");
-  }
-  const { error } = await supabase.from(SMS).delete().eq("id", id);
+  const { error } = await supabase.rpc("delete_scene_macro_site", { p_macro_id: id });
   if (error) throw new Error(error.message);
 }
 
@@ -566,14 +558,21 @@ export async function updateScenarioPosition(
 }
 
 export async function deleteScenarioPosition(id: string): Promise<void> {
-  const { error } = await supabase.from(SP).delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  const { data, error } = await supabase.from(SP).delete().eq("id", id).select("id").maybeSingle();
+  if (error) {
+    if (/collection_shifts|foreign key/i.test(error.message)) {
+      throw new Error("该小岗位有关联的采集排班，请先删除草稿排班或关闭已发布排班");
+    }
+    throw new Error(error.message);
+  }
+  if (!data) throw new Error("删除失败：无权限、记录不存在，或存在关联数据");
 }
 
 export async function deleteScenarioPositions(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  const { error } = await supabase.from(SP).delete().in("id", ids);
-  if (error) throw new Error(error.message);
+  for (const id of ids) {
+    await deleteScenarioPosition(id);
+  }
 }
 
 export async function syncSceneTaskAssignments(groupId: string): Promise<void> {
