@@ -694,9 +694,9 @@ BEGIN
     COALESCE(
       (
         SELECT cap.approved_hours
-        FROM public.party_demand_position_caps cap
+        FROM public.party_demand_macro_caps cap
         WHERE cap.party_demand_id = d.id
-          AND cap.scenario_position_id = p.id
+          AND cap.macro_scene_id = p.macro_scene_id
       ),
       d.max_hours_per_scene
     )
@@ -713,9 +713,10 @@ BEGIN
 
   UPDATE public.scene_task_assignments sta
   SET max_hours_cap = cap.approved_hours
-  FROM public.party_demand_position_caps cap, public.scene_tasks st
+  FROM public.party_demand_macro_caps cap, public.scene_tasks st, public.scenario_positions p
   WHERE sta.party_demand_id = cap.party_demand_id
-    AND sta.scenario_position_id = cap.scenario_position_id
+    AND sta.scenario_position_id = p.id
+    AND p.macro_scene_id = cap.macro_scene_id
     AND sta.scene_task_id = st.id
     AND st.group_id = p_group_id;
 END;

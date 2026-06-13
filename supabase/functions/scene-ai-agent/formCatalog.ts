@@ -28,8 +28,8 @@ export const FORM_FILL_SKILL_PROMPT = `## 代填表单 form_fills（须先请示
 → actions: []
 
 ### party_demand_create（admin）
-data: client_company, device_type, max_hours_per_scene(可选默认8，会作为各场景岗位初始批复小时), total_hours_unlimited(true), requirement_summary?, client_hourly_rate?
-仅给公司名时 device_type 可用「通用设备」，max_hours_per_scene 用 8；各场景岗位可在甲方业务页分别调整批复小时
+data: client_company, device_type, max_hours_per_scene(可选默认8，会作为各大场景初始批复小时), total_hours_unlimited(true), requirement_summary?, client_hourly_rate?
+仅给公司名时 device_type 可用「通用设备」，max_hours_per_scene 用 8；各大场景可在甲方业务页分别调整批复小时
 
 ### party_demand_update（admin）
 target_id + data（部分字段）

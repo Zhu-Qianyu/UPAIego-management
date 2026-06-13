@@ -23,7 +23,7 @@ import {
   listSceneMacroSites,
   listScenarioPositions,
   normalizeExternalDeviceStatus,
-  replacePartyDemandPositionCaps,
+  replacePartyDemandMacroCaps,
   syncSceneTaskAssignments,
   updatePartyDemand,
   updateScenarioPosition,
@@ -36,7 +36,7 @@ import { updateMyProfile } from "./profiles";
 import type { AgentFormKind, AgentPendingFormFill } from "../aitebot/agentFormTypes";
 import { formRequiresImage, getFormImageUploadLabel } from "../aitebot/agentFormImages";
 import { defaultLabelPrefix } from "../aitebot/formFillInferShared";
-import { DEFAULT_SCENE_CATEGORIES, sceneCategoriesOverlap, type SceneCategoryKey } from "../utils/sceneCategories";
+import { DEFAULT_SCENE_CATEGORIES, type SceneCategoryKey } from "../utils/sceneCategories";
 import { hasAnyRole } from "../auth/roleUtils";
 import type { UserRole } from "../types/roles";
 
@@ -298,13 +298,12 @@ export async function executeAgentFormFill(
           requirement_summary: optionalStr(d, "requirement_summary") ?? undefined,
           client_hourly_rate: optionalNum(d, "client_hourly_rate"),
         });
-        const positions = await listScenarioPositions(groupId);
-        const overlapping = positions.filter((p) => sceneCategoriesOverlap(scene_categories, p.scene_categories));
-        if (overlapping.length > 0) {
-          await replacePartyDemandPositionCaps(
+        const macros = await listSceneMacroSites(groupId);
+        if (macros.length > 0) {
+          await replacePartyDemandMacroCaps(
             created.id,
-            overlapping.map((p) => ({
-              scenario_position_id: p.id,
+            macros.map((m) => ({
+              macro_scene_id: m.id,
               approved_hours: max_hours_per_scene,
             }))
           );

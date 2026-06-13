@@ -1,11 +1,11 @@
 import type {
   PartyDemand,
-  PartyDemandPositionCap,
+  PartyDemandMacroCap,
   ScenarioPosition,
   SceneMacroSite,
   SceneTaskAssignment,
 } from "../api/operations";
-import { formatScenarioPositionLabel, getSnapshotPublicUrl } from "../api/operations";
+import { getSnapshotPublicUrl } from "../api/operations";
 import type { SceneTask } from "../api/scenes";
 
 const SNAPSHOT_SIGN_SEC = 7200;
@@ -82,37 +82,32 @@ export async function buildPartyDemandsPrintHtml(
   docTitle: string,
   subtitle: string,
   rows: PartyDemand[],
-  positions: ScenarioPosition[] = [],
   macros: SceneMacroSite[] = [],
-  caps: PartyDemandPositionCap[] = []
+  caps: PartyDemandMacroCap[] = []
 ): Promise<string> {
   const when = fmtZhDateTime(new Date().toISOString());
   const imgStyle = "max-width:140px;max-height:100px;object-fit:contain;display:block;margin:0 auto;border:1px solid #ccc";
-  const macroMap = new Map(macros.map((m) => [m.id, m]));
-  const capsByDemand = new Map<string, PartyDemandPositionCap[]>();
+  const macroById = new Map(macros.map((m) => [m.id, m]));
+  const capsByDemand = new Map<string, PartyDemandMacroCap[]>();
   for (const c of caps) {
     const arr = capsByDemand.get(c.party_demand_id) ?? [];
     arr.push(c);
     capsByDemand.set(c.party_demand_id, arr);
   }
-  const positionById = new Map(positions.map((p) => [p.id, p]));
 
-  function formatDemandPositionHours(demandId: string): string {
+  function formatDemandMacroHours(demandId: string): string {
     const demandCaps = capsByDemand.get(demandId) ?? [];
     if (demandCaps.length === 0) return "—";
     return demandCaps
       .slice()
       .sort((a, b) => {
-        const pa = positionById.get(a.scenario_position_id);
-        const pb = positionById.get(b.scenario_position_id);
-        const la = pa ? formatScenarioPositionLabel(pa, macroMap) : a.scenario_position_id;
-        const lb = pb ? formatScenarioPositionLabel(pb, macroMap) : b.scenario_position_id;
+        const la = macroById.get(a.macro_scene_id)?.title ?? a.macro_scene_id;
+        const lb = macroById.get(b.macro_scene_id)?.title ?? b.macro_scene_id;
         return la.localeCompare(lb, "zh-CN");
       })
       .map((c) => {
-        const p = positionById.get(c.scenario_position_id);
-        const label = p ? formatScenarioPositionLabel(p, macroMap) : c.scenario_position_id;
-        return `${label}: ${c.approved_hours}h`;
+        const label = macroById.get(c.macro_scene_id)?.title ?? c.macro_scene_id;
+        return `${escapeHtml(label)}: ${c.approved_hours}h`;
       })
       .join("<br/>");
   }
@@ -135,7 +130,7 @@ export async function buildPartyDemandsPrintHtml(
         <td>${escapeHtml(company)}</td>
         <td>${escapeHtml(r.device_type?.trim() || "—")}</td>
         <td style="text-align:right">${escapeHtml(price)}</td>
-        <td>${formatDemandPositionHours(r.id)}</td>
+        <td>${formatDemandMacroHours(r.id)}</td>
         <td style="text-align:right">${r.total_hours_required != null ? r.total_hours_required : "无限"}</td>
         <td>${escapeHtml(r.requirement_summary?.trim() || "—")}</td>
         <td>${escapeHtml(fmtZhDateTime(r.created_at))}</td>
@@ -157,7 +152,7 @@ export async function buildPartyDemandsPrintHtml(
         <th>甲方公司</th>
         <th>设备类型</th>
         <th style="width:72px">甲方价格(元/h)</th>
-        <th style="width:180px">各场景批复(h)</th>
+        <th style="width:180px">各大场景批复(h)</th>
         <th style="width:52px">需求总计(h)</th>
         <th>其它说明</th>
         <th style="width:96px">创建时间</th>
