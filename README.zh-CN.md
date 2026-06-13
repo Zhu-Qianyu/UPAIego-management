@@ -1,8 +1,9 @@
 # upaieasy!
 
-**数采公司内部管理平台** — 接揽多甲方业务，把设备、人力、排班与成本收进一个系统，降低管理与协同开销，支撑智能制造现场交付。
+**数采内部管理系统** — 内置 **AI 智能员工「豆小秘」**，用对话完成导航、代填表单与流程答疑，显著提升系统 **affordance（可发现性）**，降低上手门槛。
 
 [![Website](https://img.shields.io/badge/🌐_在线体验-upaieasy.cn-6366F1?style=for-the-badge)](https://upaieasy.cn)
+[![AI](https://img.shields.io/badge/AI-豆小秘-8B5CF6?style=for-the-badge)](https://upaieasy.cn)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
@@ -10,7 +11,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
 > **在线地址：** [https://upaieasy.cn](https://upaieasy.cn)  
-> 面向**同时承接多个甲方数据采集项目**的数采公司：用工作群隔离不同甲方业务，把设备贴签、现场排班、执行打卡与工时结算串成一条内部管理链路，**减少表格、群聊与人工对账带来的管理成本**，让智能制造数采现场更可控、更可算。
+> upaieasy! 是面向数采团队的**内部管理系统**，覆盖设备、排班、结算与管理台。核心亮点是群聊里的 **AI 智能员工豆小秘**：@ 即可问「点哪里」「帮我填表」「这一步怎么做」——在功能模块多、表单长的系统里**抬高 affordance、压低学习成本**，让管理员、场景业务员与执行员更快进入工作状态。
 
 [English README](README.md)
 
@@ -22,12 +23,12 @@
   <a href="https://upaieasy.cn"><img src="show/2.png" alt="管理员数据看板" width="90%"></a>
 </p>
 
-<p align="center"><sub>管理员数据看板 — 甲方业务、设备规模与财务估算一屏汇总</sub></p>
+<p align="center"><sub>管理台一览 — 设备、KPI 与财务估算；不会用时随时 @ 豆小秘</sub></p>
 
 <table>
   <tr>
     <td width="50%" align="center"><b>登录 · 多职能注册</b><br><sub>入群码 + 管理员 / 运维 / 场景 / 执行员</sub><br><br><a href="https://upaieasy.cn"><img src="show/1.png" alt="登录注册" width="100%"></a></td>
-    <td width="50%" align="center"><b>群组 · 豆小秘</b><br><sub>@ 机器人导航、代填表单、流程问答</sub><br><br><a href="https://upaieasy.cn"><img src="show/3.png" alt="群组与 AI 助手" width="100%"></a></td>
+    <td width="50%" align="center"><b>群组 · 豆小秘</b><br><sub>AI 智能员工：@ 导航、代填、按角色答疑</sub><br><br><a href="https://upaieasy.cn"><img src="show/3.png" alt="豆小秘 AI 智能员工" width="100%"></a></td>
   </tr>
   <tr>
     <td width="50%" align="center"><b>设备登记 · 贴签二维码</b><br><sub>关联甲方业务，自动生成登记编号</sub><br><br><a href="https://upaieasy.cn"><img src="show/4.png" alt="设备登记" width="100%"></a></td>
@@ -43,22 +44,35 @@
 
 ## 为什么选 upaieasy!
 
-| 数采公司常见难题 | upaieasy! 如何降本增效 |
+| 使用门槛 / 体验痛点 | upaieasy! 如何提升 affordance |
 |------|------------------|
-| 多甲方业务并行，设备与台账散落在 Excel、群聊和纸质贴签里 | 按工作群隔离甲方业务，在线 + 离线设备**统一登记与二维码贴签**，状态一屏总览 |
-| 场景、排班、人员调度各用各的表，协调成本高 | **大场景 → 小岗位 → 采集排班** 层级清晰，发布即分配设备编号，减少反复沟通 |
-| 执行员不清楚任务与设备归属，现场空转 | 执行员只看**分配给自己的设备**与排班，支持上下班打卡，降低调度失误 |
-| 多甲方并行时，管理人员难算清收入、成本与利润 | 管理台 **KPI + 财务估算**（甲方单价 × 工时 − 执行员成本），按甲方拆分一目了然 |
-| 新人培训与表单填写占用大量管理精力 | 群内 **AI 助手（豆小秘）** 代填甲方业务、大场景、排班等表单，降低培训与差错成本 |
+| 模块多、菜单深，新人不知道先点哪里 | 群聊 **@ 豆小秘**，按角色给出**操作路径**与下一步建议 |
+| 甲方业务、大场景、排班等表单字段多、易填错 | **豆小秘**根据对话**代填表单**，减少翻文档与试错 |
+| 培训文档冗长且易过时 | **豆小秘**实时解答业务流程，权限与角色对齐 |
+| 设备与台账散落在 Excel、群聊和纸质贴签里 | 在线 + 离线设备**统一登记与二维码贴签**，状态一屏总览 |
+| 排班与人员调度依赖多张表 | **大场景 → 小岗位 → 采集排班** 层级清晰，发布即分配设备编号 |
+| 执行员不清楚任务与设备归属 | 执行员只看**分配给自己的设备**与排班，支持上下班打卡 |
 
-**开箱即用：** React 单页应用 + Supabase（Postgres / Auth / RLS / Storage / Edge Functions），数采公司无需自写后端业务 API。  
-**可私有化部署：** 支持自建 Supabase（Docker on CVM），甲方与现场数据留在企业自有服务器。
+**开箱即用：** React 单页应用 + Supabase（Postgres / Auth / RLS / Storage / Edge Functions），无需自写后端业务 API。  
+**可私有化部署：** 支持自建 Supabase（Docker on CVM），业务与现场数据留在企业自有服务器。
+
+---
+
+## 豆小秘 · AI 智能员工
+
+> 产品的 **affordance 层**：把「我不会用这个系统」变成「在群里问一句」。
+
+- **群内 @ 即用** — 不另装客户端，在现有工作群协作流里完成
+- **导航引导** — 「设备在哪登记？」→ 按角色给出可点击路径说明
+- **代填表单** — 用自然语言描述意图，代填甲方业务、大场景、排班等
+- **流程答疑** — 入群审批、悬赏、钱包规则等，结合当前角色作答
+- **技术实现：** Edge Function `scene-ai-agent`（火山方舟 / 豆包）+ 前端 [`frontend/src/aitebot/`](frontend/src/aitebot/) 意图推断
 
 ---
 
 ## 核心能力
 
-> 围绕「**多甲方业务并行 → 内部统一调度 → 成本可算**」设计，服务数采承包商的日常运营。
+> **数采内部管理底座**（设备、场景、排班、KPI）+ **豆小秘**，让同一套系统对不同角色都「用得起来」。
 
 ### 设备管理
 - **在线设备**：注册、心跳、校准、固件与备注；设备二维码扫码识别
@@ -77,17 +91,13 @@
 
 ### 管理台
 - 分角色 **KPI**（设备完好率 / 场景数 / 数据量）与考核周期
-- **全员公告**、**财务估算看板**（按甲方拆分）
-
-### AI 助手
-- Supabase Edge Function `scene-ai-agent` + 前端 **豆小秘**
-- 群聊 @ 机器人：导航、代填表单、业务流程问答（权限与角色对齐）
+- **全员公告**、**财务估算看板**
 
 ---
 
-## 多角色，一个数采公司
+## 多角色，一个团队
 
-权限为 `profiles.roles[]` **并集**；支持一人身兼多职（如运维 + 场景），适配数采团队编制灵活、项目并行的组织方式。
+权限为 `profiles.roles[]` **并集**；支持一人身兼多职（如运维 + 场景）。**豆小秘**会按你持有的角色组合调整回答内容。
 
 | 职能 | 典型能力 |
 |------|----------|
@@ -235,12 +245,12 @@ upaiego-management/
 
 ## 关于
 
-**upaieasy!** 面向接揽不同甲方数据采集业务的企业，提供**内部管理与成本管控**能力，帮助数采公司在智能制造交付中减少协同损耗、算清每个项目的投入产出。
+**upaieasy!** 是数采**内部管理系统**，以 **AI 智能员工豆小秘** 提升 **affordance**，让团队少花时间学菜单、多花时间做现场交付。
 
 **官网：** [https://upaieasy.cn](https://upaieasy.cn)
 
 ---
 
 <p align="center">
-  <sub>如果这个项目对你有帮助，欢迎 Star ⭐ 并分享给正在承接多甲方数采业务的团队。</sub>
+  <sub>如果豆小秘和低门槛的内部管理对你有帮助，欢迎 Star ⭐ 并分享 upaieasy!</sub>
 </p>

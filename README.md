@@ -1,8 +1,9 @@
 # upaieasy!
 
-**Internal ops platform for data-collection contractors** — manage multiple client projects, devices, crews, schedules, and costs in one place. Cut coordination overhead and deliver smarter manufacturing field ops.
+**Internal management for data-collection teams** — **豆小秘**, your built-in AI coworker, raises system **affordance**: ask in chat for navigation, form fill, and workflow help so anyone can pick up the platform with less training.
 
 [![Website](https://img.shields.io/badge/🌐_Live-upaieasy.cn-6366F1?style=for-the-badge)](https://upaieasy.cn)
+[![AI](https://img.shields.io/badge/AI-豆小秘-8B5CF6?style=for-the-badge)](https://upaieasy.cn)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
@@ -10,7 +11,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 
 > **Live site:** [https://upaieasy.cn](https://upaieasy.cn)  
-> Built for **data-collection companies running several client (甲方) projects at once**. Work groups isolate each client’s ops; device labeling, field scheduling, clock-in/out, and labor settlement sit on one internal workflow—**replacing spreadsheets, chat threads, and manual reconciliation** so smart-manufacturing collection sites stay controllable and cost-transparent.
+> upaieasy! is a **data-collection internal management system** for devices, crews, schedules, and settlement. Its core differentiator is **豆小秘**—an AI teammate embedded in group chat: @ mention to get **where to click**, **forms filled for you**, and **role-aware workflow answers**. That lifts **affordance** across a deep admin UI and **lowers the barrier** for new operators, scene planners, and field executors.
 
 [中文版 README](README.zh-CN.md)
 
@@ -22,12 +23,12 @@
   <a href="https://upaieasy.cn"><img src="show/2.png" alt="Admin dashboard" width="90%"></a>
 </p>
 
-<p align="center"><sub>Admin dashboard — client projects, fleet size, and financial estimates at a glance</sub></p>
+<p align="center"><sub>Admin dashboard — fleet, KPIs, and financial estimates; ask 豆小秘 when you need help finding a screen</sub></p>
 
 <table>
   <tr>
     <td width="50%" align="center"><b>Sign-in · multi-role signup</b><br><sub>Group invite code · admin / ops / scene / executor</sub><br><br><a href="https://upaieasy.cn"><img src="show/1.png" alt="Auth" width="100%"></a></td>
-    <td width="50%" align="center"><b>Groups · AI assistant</b><br><sub>@ bot for navigation, form fill, workflow Q&amp;A</sub><br><br><a href="https://upaieasy.cn"><img src="show/3.png" alt="Group chat and AI" width="100%"></a></td>
+    <td width="50%" align="center"><b>豆小秘 · AI coworker</b><br><sub>@ in group chat: navigate, fill forms, Q&amp;A by role</sub><br><br><a href="https://upaieasy.cn"><img src="show/3.png" alt="豆小秘 AI assistant" width="100%"></a></td>
   </tr>
   <tr>
     <td width="50%" align="center"><b>Device registration · QR labels</b><br><sub>Linked to client project, auto-generated IDs</sub><br><br><a href="https://upaieasy.cn"><img src="show/4.png" alt="Device registration" width="100%"></a></td>
@@ -43,22 +44,35 @@
 
 ## Why upaieasy!
 
-| Pain for collection contractors | How upaieasy! helps |
+| Usability gap | How upaieasy! improves affordance |
 |------|------------------|
-| Multiple client projects in parallel; devices and records scattered across Excel, chat, and paper labels | **Work groups per client**; online + offline devices registered in one place with **QR labels** and a single overview |
-| Scenes, schedules, and crew dispatch on separate sheets—high coordination cost | Clear **macro site → micro position → collection shift** hierarchy; publish once and auto-assign device IDs |
-| Executors unsure where to go or which device to use—idle time on site | Executors see **only assigned devices** and shifts; clock-in/out reduces dispatch errors |
-| Hard to track revenue, cost, and margin across parallel clients | Admin **KPI + financial estimates** (client rate × hours − executor cost), split by client |
-| Onboarding and form entry eat management time | In-group **AI assistant (豆小秘)** fills client projects, macro sites, shifts, etc.—less training and fewer mistakes |
+| Many modules and menus—new users don’t know where to start | **豆小秘** in group chat: ask “what’s next?” and get **click paths** matched to your role |
+| Long forms (projects, macro sites, shifts) are easy to get wrong | **豆小秘** infers context and **fills forms for you** from natural language |
+| Training docs lag behind product changes | **豆小秘** answers **live workflow questions** with permissions aligned to your role |
+| Devices and records scattered across Excel, chat, and paper labels | Unified online + offline registration with **QR labels** and one overview |
+| Crew dispatch and shift coordination over separate sheets | **Macro site → micro position → collection shift**; publish once and auto-assign device IDs |
+| Executors unsure which device or shift is theirs | Executors see **assigned devices and shifts only**; clock-in/out on site |
 
 **Batteries included:** React SPA + Supabase (Postgres / Auth / RLS / Storage / Edge Functions)—no custom business API required.  
-**Self-hostable:** Run Supabase on your own server (Docker on CVM); client and field data stay on your infrastructure.
+**Self-hostable:** Run Supabase on your own server (Docker on CVM); business and field data stay on your infrastructure.
+
+---
+
+## 豆小秘 · AI coworker
+
+> The product’s **affordance layer**: turn “I don’t know this system” into a conversation.
+
+- **In-group @ mention** — no separate bot app; works where teams already chat
+- **Navigation** — “Where do I register a device?” → step-by-step, role-aware
+- **Form fill** — describe intent in plain language; 豆小秘 drafts project, scene, and shift forms
+- **Workflow Q&A** — onboarding, approvals, bounties, wallet rules—answered in context
+- **Backend:** Supabase Edge Function `scene-ai-agent` (Volcengine Ark / Doubao) + frontend intent routing in [`frontend/src/aitebot/`](frontend/src/aitebot/)
 
 ---
 
 ## Features
 
-> Designed around **parallel client projects → unified internal dispatch → costs you can calculate**.
+> **Internal ops backbone** (devices, scenes, shifts, KPIs) + **豆小秘** so the same system stays approachable for every role.
 
 ### Device management
 - **Online devices:** registration, heartbeat, calibration, firmware, notes; QR scan to identify
@@ -77,17 +91,13 @@
 
 ### Admin console
 - Role-based **KPIs** (device health / scene count / data volume) and review periods
-- **Broadcast announcements**, **financial estimate board** (by client)
-
-### AI assistant
-- Supabase Edge Function `scene-ai-agent` + frontend **豆小秘**
-- @ mention in group chat: navigation, form fill, workflow Q&A (aligned with roles and permissions)
+- **Broadcast announcements**, **financial estimate board**
 
 ---
 
-## Multi-role, one contractor org
+## Multi-role, one team
 
-Permissions are the **union** of `profiles.roles[]`; one person can hold several hats (e.g. ops + scene planner), matching flexible crews and parallel projects.
+Permissions are the **union** of `profiles.roles[]`; one person can hold several hats (e.g. ops + scene planner). **豆小秘** adapts answers to whichever roles you hold.
 
 | Role | Typical access |
 |------|----------|
@@ -235,12 +245,12 @@ upaiego-management/
 
 ## About
 
-**upaieasy!** helps companies that **take on multiple client data-collection projects** run **internal ops and cost control**—less coordination waste on smart-manufacturing sites, clearer ROI per project.
+**upaieasy!** is a **data-collection internal management system** whose standout feature is **豆小秘**—raising **affordance** so teams spend less time learning menus and more time on smart-manufacturing field delivery.
 
 **Website:** [https://upaieasy.cn](https://upaieasy.cn)
 
 ---
 
 <p align="center">
-  <sub>If this project helps your team, consider starring ⭐ and sharing it with others running multi-client collection ops.</sub>
+  <sub>If 豆小秘 and low-friction ops help your team, consider starring ⭐ and sharing upaieasy!</sub>
 </p>
